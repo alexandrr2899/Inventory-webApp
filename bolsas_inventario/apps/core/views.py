@@ -105,32 +105,41 @@ def _calcular_produccion(fecha):
 
 @login_required
 def inventario_lista(request):
-    q = request.GET.get('q', '')
-    tipo = request.GET.get('tipo', '')
-    solo_bajo = request.GET.get('bajo_stock', '')
+    q = request.GET.get('q', '').strip()
 
-    items = Item.objects.select_related('categoria').filter(activo=True)
-
+    qs = Item.objects.select_related('categoria').order_by('nombre')
     if q:
-        items = items.filter(Q(nombre__icontains=q) | Q(codigo__icontains=q))
-    if tipo:
-        items = items.filter(tipo=tipo)
+        qs = qs.filter(Q(nombre__icontains=q) | Q(codigo__icontains=q))
 
-    items_con_stock = []
-    for item in items:
-        stock = item.stock_total()
-        bajo = item.bajo_stock()
-        if solo_bajo and not bajo:
-            continue
-        items_con_stock.append({'item': item, 'stock': stock, 'bajo': bajo})
+    # Un solo query para todos los stocks (evita N+1)
+    stocks_raw = (
+        Stock.objects
+        .filter(item__in=qs)
+        .select_related('ubicacion')
+        .values('item_id', 'ubicacion__nombre', 'cantidad_actual')
+    )
+    stocks_por_item: dict = {}
+    for s in stocks_raw:
+        iid = s['item_id']
+        stocks_por_item.setdefault(iid, []).append(s)
 
-    context = {
-        'items_con_stock': items_con_stock,
-        'q': q,
-        'tipo': tipo,
-        'solo_bajo': solo_bajo,
-        'tipos': Item.TIPO_CHOICES,
-    }
+    items_data = []
+    for item in qs:
+        item_stocks = stocks_por_item.get(item.pk, [])
+        stock_total = sum(s['cantidad_actual'] for s in item_stocks) or Decimal('0')
+        bajo = stock_total <= item.stock_minimo
+        ub_principal = (
+            max(item_stocks, key=lambda s: s['cantidad_actual'])['ubicacion__nombre']
+            if item_stocks else '–'
+        )
+        items_data.append({
+            'item': item,
+            'stock': stock_total,
+            'bajo': bajo,
+            'ub_principal': ub_principal,
+        })
+
+    context = {'items_data': items_data, 'q': q}
     return render(request, 'inventario/lista.html', context)
 
 
@@ -510,86 +519,96 @@ def conteo_lista(request):
 def conteo_nuevo(request):
     hoy = date.today()
     items_productos = Item.objects.filter(tipo='producto', activo=True).order_by('nombre')
-
-    # Stock actual por item (suma de todas las ubicaciones)
-    stock_por_item = {}
-    for item in items_productos:
-        stock_por_item[item.pk] = item.stock_total()
-
     ubicaciones = Ubicacion.objects.all()
 
-    if request.method == 'POST':
-        form = ConteoForm(request.POST)
-        if form.is_valid():
-            fecha = form.cleaned_data['fecha']
-            turno = form.cleaned_data['turno']
-
-            # Verificar si ya existe
-            if Conteo.objects.filter(fecha=fecha, turno=turno).exists():
-                messages.error(request, f'Ya existe un conteo de {turno} para {fecha}.')
-                return redirect('conteo_lista')
-
-            with transaction.atomic():
-                conteo = form.save(commit=False)
-                conteo.usuario = request.user
-                conteo.save()
-
-                # Guardar detalles
-                ubicacion_default = request.POST.get('ubicacion_default')
-                ubicacion_obj = None
-                if ubicacion_default:
-                    try:
-                        ubicacion_obj = Ubicacion.objects.get(pk=ubicacion_default)
-                    except Ubicacion.DoesNotExist:
-                        pass
-
-                for item in items_productos:
-                    key = f'cantidad_{item.pk}'
-                    cantidad_str = request.POST.get(key, '').strip()
-                    if cantidad_str == '':
-                        continue
-                    try:
-                        cantidad_contada = Decimal(cantidad_str)
-                    except Exception:
-                        continue
-
-                    # Ubicación por item o la default
-                    ub_key = f'ubicacion_{item.pk}'
-                    ub_id = request.POST.get(ub_key, ubicacion_default)
-                    try:
-                        ub = Ubicacion.objects.get(pk=ub_id)
-                    except Ubicacion.DoesNotExist:
-                        ub = ubicacion_obj
-                    if not ub:
-                        continue
-
-                    cantidad_sistema = stock_por_item.get(item.pk, Decimal('0'))
-
-                    ConteoDetalle.objects.create(
-                        conteo=conteo,
-                        item=item,
-                        ubicacion=ub,
-                        cantidad_contada=cantidad_contada,
-                        cantidad_sistema=cantidad_sistema,
-                    )
-
-            messages.success(request, f'Conteo de {conteo.get_turno_display()} registrado.')
-            return redirect('conteo_detalle', pk=conteo.pk)
-    else:
-        form = ConteoForm(initial={'fecha': hoy})
+    # Prefetch stocks en un solo query
+    stocks_raw = Stock.objects.filter(item__in=items_productos).values('item_id', 'cantidad_actual')
+    stock_por_item: dict = {}
+    for s in stocks_raw:
+        stock_por_item[s['item_id']] = stock_por_item.get(s['item_id'], Decimal('0')) + s['cantidad_actual']
 
     items_para_conteo = [
         {'item': item, 'stock': stock_por_item.get(item.pk, Decimal('0'))}
         for item in items_productos
     ]
 
-    context = {
-        'form': form,
-        'items_para_conteo': items_para_conteo,
-        'ubicaciones': ubicaciones,
-        'hoy': hoy,
-    }
-    return render(request, 'conteos/form.html', context)
+    def _contexto(form):
+        return {'form': form, 'items_para_conteo': items_para_conteo,
+                'ubicaciones': ubicaciones, 'hoy': hoy}
+
+    if request.method == 'POST':
+        form = ConteoForm(request.POST)
+        if not form.is_valid():
+            return render(request, 'conteos/form.html', _contexto(form))
+
+        fecha = form.cleaned_data['fecha']
+        turno = form.cleaned_data['turno']
+
+        if Conteo.objects.filter(fecha=fecha, turno=turno).exists():
+            messages.error(request, f'Ya existe un conteo de {form.cleaned_data["turno"]} para {fecha}.')
+            return redirect('conteo_lista')
+
+        ubicacion_default_id = request.POST.get('ubicacion_default')
+        ubicacion_default_obj = None
+        if ubicacion_default_id:
+            ubicacion_default_obj = Ubicacion.objects.filter(pk=ubicacion_default_id).first()
+
+        errores, filas = [], []
+
+        for item in items_productos:
+            cantidad_str = request.POST.get(f'cantidad_{item.pk}', '').strip()
+            if cantidad_str == '':
+                continue  # campo vacío = no se contó este ítem, se omite
+
+            # Validar cantidad
+            try:
+                cantidad_contada = Decimal(cantidad_str)
+            except Exception:
+                errores.append(f'"{item.nombre}": cantidad inválida.')
+                continue
+            if cantidad_contada < 0:
+                errores.append(f'"{item.nombre}": la cantidad no puede ser negativa.')
+                continue
+
+            # Resolver ubicación
+            ub_id = request.POST.get(f'ubicacion_{item.pk}') or ubicacion_default_id
+            ub = Ubicacion.objects.filter(pk=ub_id).first() if ub_id else ubicacion_default_obj
+            if not ub:
+                errores.append(f'"{item.nombre}": selecciona una ubicación.')
+                continue
+
+            filas.append((item, ub, cantidad_contada, stock_por_item.get(item.pk, Decimal('0'))))
+
+        # Si hay errores de validación: mostrarlos y no guardar nada
+        if errores:
+            for e in errores:
+                messages.error(request, e)
+            return render(request, 'conteos/form.html', _contexto(form))
+
+        # Al menos un ítem debe haberse contado
+        if not filas:
+            messages.error(request, 'Debes ingresar la cantidad para al menos un producto.')
+            return render(request, 'conteos/form.html', _contexto(form))
+
+        with transaction.atomic():
+            conteo = form.save(commit=False)
+            conteo.usuario = request.user
+            conteo.save()
+            for item, ub, cantidad_contada, cantidad_sistema in filas:
+                ConteoDetalle.objects.create(
+                    conteo=conteo, item=item, ubicacion=ub,
+                    cantidad_contada=cantidad_contada,
+                    cantidad_sistema=cantidad_sistema,
+                )
+
+        messages.success(
+            request,
+            f'Conteo de {conteo.get_turno_display()} registrado con {len(filas)} ítem(s).'
+        )
+        return redirect('conteo_detalle', pk=conteo.pk)
+
+    form = ConteoForm(initial={'fecha': hoy})
+    return render(request, 'conteos/form.html', _contexto(form))
 
 
 @login_required

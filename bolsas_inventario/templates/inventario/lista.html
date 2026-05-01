@@ -1,144 +1,363 @@
 {% extends "base.html" %}
 {% block title %}Inventario{% endblock %}
 
+{% block extra_head %}
+<style>
+  /* Tabs con scroll horizontal en mobile */
+  .tabs-scroll { overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .tabs-scroll::-webkit-scrollbar { display: none; }
+  .tabs-scroll .nav { flex-wrap: nowrap; }
+
+  /* Badge de tipo */
+  .badge-producto  { background: #198754; }
+  .badge-repuesto  { background: #fd7e14; }
+  .badge-consumible{ background: #0dcaf0; color: #000 !important; }
+
+  /* Stock bajo destacado */
+  .row-bajo-stock td, .card-bajo-stock { border-left: 4px solid #dc3545 !important; }
+
+  /* Sticky primera columna en tabla móvil */
+  @media (max-width: 767px) {
+    .table-inventario { font-size: .82rem; }
+  }
+
+  /* Animación de filtrado */
+  .item-fila { transition: opacity .15s; }
+</style>
+{% endblock %}
+
 {% block content %}
+
+<!-- Encabezado -->
 <div class="page-header d-flex justify-content-between align-items-center">
   <div>
     <h1><i class="bi bi-box-fill me-2"></i>Inventario</h1>
-    <small class="opacity-75">{{ items_con_stock|length }} ítem(s)</small>
+    <small class="opacity-75">
+      <span id="cnt-visible">0</span> ítem(s) · busca o filtra abajo
+    </small>
   </div>
   <a href="{% url 'item_crear' %}" class="btn btn-light btn-sm fw-semibold">
     <i class="bi bi-plus-lg me-1"></i>Nuevo
   </a>
 </div>
 
-<!-- Filtros -->
-<div class="card mb-3">
-  <div class="card-body py-2 px-3">
-    <form method="get" class="row g-2 align-items-end">
-      <div class="col-12 col-md-5">
-        <input type="text" name="q" value="{{ q }}" class="form-control"
-               placeholder="&#128269; Buscar por nombre o código...">
-      </div>
-      <div class="col-6 col-md-3">
-        <select name="tipo" class="form-select">
-          <option value="">Todos los tipos</option>
-          {% for val, label in tipos %}
-          <option value="{{ val }}" {% if tipo == val %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-6 col-md-2">
-        <div class="form-check mt-2">
-          <input class="form-check-input" type="checkbox" name="bajo_stock" id="bajo_stock"
-                 value="1" {% if solo_bajo %}checked{% endif %}>
-          <label class="form-check-label small fw-semibold" for="bajo_stock">Solo bajo stock</label>
-        </div>
-      </div>
-      <div class="col-12 col-md-2 d-flex gap-2">
-        <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
-        <a href="{% url 'inventario_lista' %}" class="btn btn-outline-secondary">
-          <i class="bi bi-x-lg"></i>
-        </a>
-      </div>
-    </form>
+<!-- Buscador -->
+<div class="input-group mb-3 shadow-sm">
+  <span class="input-group-text bg-white border-end-0">
+    <i class="bi bi-search text-muted"></i>
+  </span>
+  <input id="buscador" type="text" class="form-control border-start-0 form-control-lg"
+         placeholder="Buscar por nombre o código..." value="{{ q }}" autocomplete="off">
+  <button id="btn-limpiar" class="btn btn-outline-secondary {% if not q %}d-none{% endif %}"
+          type="button"><i class="bi bi-x-lg"></i></button>
+</div>
+
+<!-- Tabs -->
+<div class="tabs-scroll mb-3">
+  <ul class="nav nav-pills gap-1" id="tabs-tipo">
+    <li class="nav-item">
+      <button class="nav-link active tab-btn fw-semibold" data-tab="todos">
+        Todos <span class="badge bg-white text-dark ms-1" id="cnt-todos">0</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link tab-btn fw-semibold" data-tab="producto" style="--tab-color:#198754">
+        <span class="d-inline-block rounded-circle me-1"
+              style="width:8px;height:8px;background:#198754"></span>
+        Productos <span class="badge bg-success ms-1" id="cnt-producto">0</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link tab-btn fw-semibold" data-tab="repuesto">
+        <span class="d-inline-block rounded-circle me-1"
+              style="width:8px;height:8px;background:#fd7e14"></span>
+        Repuestos <span class="badge ms-1" style="background:#fd7e14" id="cnt-repuesto">0</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link tab-btn fw-semibold" data-tab="consumible">
+        <span class="d-inline-block rounded-circle me-1"
+              style="width:8px;height:8px;background:#0dcaf0"></span>
+        Consumibles <span class="badge ms-1" style="background:#0dcaf0;color:#000" id="cnt-consumible">0</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link tab-btn fw-semibold text-danger" data-tab="bajo_stock">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        Stock bajo <span class="badge bg-danger ms-1" id="cnt-bajo">0</span>
+      </button>
+    </li>
+  </ul>
+</div>
+
+<!-- Estado vacío -->
+<div id="empty-state" class="text-center py-5 d-none">
+  <i class="bi bi-inbox fs-1 text-muted d-block mb-2"></i>
+  <p class="text-muted" id="empty-msg">No hay ítems en esta categoría.</p>
+  <a href="{% url 'item_crear' %}" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-2"></i>Crear primer ítem
+  </a>
+</div>
+
+<!-- ══ TABLA DESKTOP ══════════════════════════════════════════════════════ -->
+<div class="card d-none d-md-block" id="tabla-wrapper">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 table-inventario align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Tipo</th>
+          <th>Categoría</th>
+          <th class="text-end">Stock total</th>
+          <th class="text-end">Mínimo</th>
+          <th>Ubic. principal</th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody-desktop">
+        {% for r in items_data %}
+        <tr class="item-fila {% if r.bajo %}row-bajo-stock{% endif %}"
+            data-item-id="{{ r.item.pk }}"
+            data-tipo="{{ r.item.tipo }}"
+            data-bajo="{{ r.bajo|yesno:'true,false' }}"
+            data-busq="{{ r.item.nombre|lower }} {{ r.item.codigo|lower }} {{ r.item.categoria|lower }}">
+          <td class="text-muted small fw-mono">{{ r.item.codigo }}</td>
+          <td>
+            <a href="{% url 'item_detalle' r.item.pk %}"
+               class="fw-semibold text-decoration-none text-dark">
+              {{ r.item.nombre }}
+            </a>
+          </td>
+          <td>
+            <span class="badge rounded-pill badge-{{ r.item.tipo }}">
+              {{ r.item.get_tipo_display }}
+            </span>
+          </td>
+          <td class="text-muted small">{{ r.item.categoria|default:"–" }}</td>
+          <td class="text-end fw-bold {% if r.bajo %}text-danger{% else %}text-success{% endif %}">
+            {{ r.stock }} {{ r.item.unidad_medida }}
+          </td>
+          <td class="text-end text-muted small">{{ r.item.stock_minimo }}</td>
+          <td class="text-muted small">{{ r.ub_principal }}</td>
+          <td>
+            {% if not r.item.activo %}
+              <span class="badge bg-secondary">Inactivo</span>
+            {% elif r.bajo %}
+              <span class="badge bg-danger">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>Stock bajo
+              </span>
+            {% else %}
+              <span class="badge bg-success bg-opacity-25 text-success">OK</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'item_editar' r.item.pk %}"
+               class="btn btn-sm btn-outline-secondary" title="Editar">
+              <i class="bi bi-pencil-fill"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr id="tr-empty-initial">
+          <td colspan="9" class="text-center text-muted py-5">
+            <i class="bi bi-box-fill fs-3 d-block mb-2"></i>No hay ítems registrados.
+            <a href="{% url 'item_crear' %}" class="btn btn-primary btn-sm mt-2">Crear ítem</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
-<!-- Lista items (mobile: cards, desktop: tabla) -->
-<div class="d-md-none">
-  {% for r in items_con_stock %}
-  <a href="{% url 'item_detalle' r.item.pk %}" class="text-decoration-none">
-    <div class="card mb-2 {% if r.bajo %}border-danger border-2{% endif %}">
+<!-- ══ CARDS MOBILE ═══════════════════════════════════════════════════════ -->
+<div id="lista-mobile" class="d-md-none">
+  {% for r in items_data %}
+  <div class="item-fila {% if r.bajo %}card-bajo-stock{% endif %} card mb-2"
+       data-item-id="{{ r.item.pk }}"
+       data-tipo="{{ r.item.tipo }}"
+       data-bajo="{{ r.bajo|yesno:'true,false' }}"
+       data-busq="{{ r.item.nombre|lower }} {{ r.item.codigo|lower }} {{ r.item.categoria|lower }}">
+    <a href="{% url 'item_detalle' r.item.pk %}" class="text-decoration-none text-dark">
       <div class="card-body py-2 px-3">
         <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <span class="badge rounded-pill
-              {% if r.item.tipo == 'producto' %}bg-success
-              {% elif r.item.tipo == 'repuesto' %}bg-warning text-dark
-              {% else %}bg-info text-dark{% endif %} me-1">
-              {{ r.item.get_tipo_display }}
-            </span>
-            <span class="fw-semibold text-dark">{{ r.item.nombre }}</span>
-            <div class="text-muted small">{{ r.item.codigo }}</div>
+          <div class="flex-fill pe-2">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <span class="badge rounded-pill badge-{{ r.item.tipo }}">
+                {{ r.item.get_tipo_display }}
+              </span>
+              <span class="fw-semibold">{{ r.item.nombre }}</span>
+            </div>
+            <div class="text-muted small">
+              {{ r.item.codigo }}
+              {% if r.item.categoria %} · {{ r.item.categoria }}{% endif %}
+              · {{ r.ub_principal }}
+            </div>
           </div>
-          <div class="text-end">
-            <div class="fw-bold fs-5 {% if r.bajo %}text-danger{% else %}text-success{% endif %}">
+          <div class="text-end flex-shrink-0">
+            <div class="fw-bold fs-5 lh-1
+              {% if r.bajo %}text-danger{% else %}text-success{% endif %}">
               {{ r.stock }}
             </div>
-            <div class="text-muted" style="font-size:.75rem">{{ r.item.unidad_medida }}</div>
-            {% if r.bajo %}<span class="badge bg-danger" style="font-size:.65rem">BAJO STOCK</span>{% endif %}
+            <div class="text-muted small">{{ r.item.unidad_medida }}</div>
+            {% if r.bajo %}
+            <span class="badge bg-danger mt-1" style="font-size:.65rem">
+              <i class="bi bi-exclamation-triangle-fill"></i> Stock bajo
+            </span>
+            {% endif %}
           </div>
         </div>
+        <!-- Mini barra de stock -->
+        {% if r.item.stock_minimo > 0 %}
+        <div class="progress mt-2" style="height:4px;" title="Stock vs mínimo">
+          {% widthratio r.stock r.item.stock_minimo 100 as pct %}
+          <div class="progress-bar {% if r.bajo %}bg-danger{% else %}bg-success{% endif %}"
+               style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
+        </div>
+        {% endif %}
       </div>
-    </div>
-  </a>
+    </a>
+  </div>
   {% empty %}
   <div class="text-center text-muted py-5">
-    <i class="bi bi-inbox fs-1 d-block mb-2"></i>No hay ítems que mostrar.
+    <i class="bi bi-box-fill fs-1 d-block mb-2"></i>
+    <p>No hay ítems registrados.</p>
+    <a href="{% url 'item_crear' %}" class="btn btn-primary">Crear ítem</a>
   </div>
   {% endfor %}
 </div>
 
-<!-- Tabla desktop -->
-<div class="d-none d-md-block">
-  <div class="card">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead>
-          <tr>
-            <th>Código</th><th>Nombre</th><th>Tipo</th><th>Categoría</th>
-            <th class="text-end">Stock actual</th><th class="text-end">Stock mín.</th>
-            <th>Estado</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in items_con_stock %}
-          <tr>
-            <td class="text-muted small">{{ r.item.codigo }}</td>
-            <td class="fw-semibold">
-              <a href="{% url 'item_detalle' r.item.pk %}" class="text-decoration-none text-dark">
-                {{ r.item.nombre }}
-              </a>
-            </td>
-            <td>
-              <span class="badge rounded-pill
-                {% if r.item.tipo == 'producto' %}bg-success
-                {% elif r.item.tipo == 'repuesto' %}bg-warning text-dark
-                {% else %}bg-info text-dark{% endif %}">
-                {{ r.item.get_tipo_display }}
-              </span>
-            </td>
-            <td class="text-muted small">{{ r.item.categoria|default:"–" }}</td>
-            <td class="text-end fw-bold {% if r.bajo %}text-danger{% else %}text-success{% endif %}">
-              {{ r.stock }} {{ r.item.unidad_medida }}
-            </td>
-            <td class="text-end text-muted small">{{ r.item.stock_minimo }}</td>
-            <td>
-              {% if r.bajo %}
-              <span class="badge bg-danger">Bajo stock</span>
-              {% else %}
-              <span class="badge bg-success bg-opacity-25 text-success">OK</span>
-              {% endif %}
-            </td>
-            <td>
-              <a href="{% url 'item_editar' r.item.pk %}" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-pencil-fill"></i>
-              </a>
-            </td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="8" class="text-center text-muted py-4">No hay ítems que mostrar.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<div class="mt-3 d-flex gap-2">
+<!-- Acciones secundarias -->
+<div class="mt-3 d-flex gap-2 flex-wrap">
   <a href="{% url 'ubicacion_lista' %}" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-geo-alt-fill me-1"></i>Gestionar ubicaciones
+    <i class="bi bi-geo-alt-fill me-1"></i>Ubicaciones
+  </a>
+  <a href="{% url 'movimiento_entrada' %}" class="btn btn-outline-success btn-sm">
+    <i class="bi bi-arrow-down-circle-fill me-1"></i>Nueva entrada
+  </a>
+  <a href="{% url 'reporte_stock_bajo' %}?export=csv" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-file-earmark-spreadsheet me-1"></i>Exportar stock bajo
   </a>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Datos: colectar items únicos del DOM ──────────────────────────────────
+const todosLosItems = new Map();
+document.querySelectorAll('.item-fila[data-item-id]').forEach(el => {
+  const id = el.dataset.itemId;
+  if (!todosLosItems.has(id)) {
+    todosLosItems.set(id, {
+      tipo: el.dataset.tipo,
+      bajo: el.dataset.bajo === 'true',
+      busq: el.dataset.busq,
+    });
+  }
+});
+
+// ── Estado ────────────────────────────────────────────────────────────────
+let tabActual = 'todos';
+let busquedaActual = '{{ q|lower|escapejs }}';
+
+// ── Filtrar ───────────────────────────────────────────────────────────────
+function filtrar() {
+  const counts = { todos: 0, producto: 0, repuesto: 0, consumible: 0, bajo_stock: 0 };
+  let visibles = 0;
+
+  todosLosItems.forEach((data, id) => {
+    const matchBusq = !busquedaActual ||
+      data.busq.includes(busquedaActual);
+
+    const matchTab = tabActual === 'todos' ||
+      (tabActual === 'bajo_stock' && data.bajo) ||
+      tabActual === data.tipo;
+
+    const visible = matchBusq && matchTab;
+
+    // Alternar TODOS los elementos con este id (desktop row + mobile card)
+    document.querySelectorAll(`[data-item-id="${id}"]`).forEach(el => {
+      el.style.display = visible ? '' : 'none';
+    });
+
+    if (visible) visibles++;
+
+    // Contar para badges (solo filtro de búsqueda, no de tab)
+    if (matchBusq) {
+      counts.todos++;
+      counts[data.tipo] = (counts[data.tipo] || 0) + 1;
+      if (data.bajo) counts.bajo_stock++;
+    }
+  });
+
+  // Actualizar badges
+  document.getElementById('cnt-todos').textContent     = counts.todos;
+  document.getElementById('cnt-producto').textContent  = counts.producto || 0;
+  document.getElementById('cnt-repuesto').textContent  = counts.repuesto || 0;
+  document.getElementById('cnt-consumible').textContent= counts.consumible || 0;
+  document.getElementById('cnt-bajo').textContent      = counts.bajo_stock || 0;
+  document.getElementById('cnt-visible').textContent   = visibles;
+
+  // Estado vacío
+  const emptyState = document.getElementById('empty-state');
+  const tablaWrap  = document.getElementById('tabla-wrapper');
+  const listaMob   = document.getElementById('lista-mobile');
+
+  if (visibles === 0 && todosLosItems.size > 0) {
+    emptyState.classList.remove('d-none');
+    const msgs = {
+      todos:       'No hay ítems que coincidan con tu búsqueda.',
+      producto:    'No hay productos terminados que coincidan.',
+      repuesto:    'No hay repuestos que coincidan.',
+      consumible:  'No hay consumibles que coincidan.',
+      bajo_stock:  '¡Todos los stocks están en nivel correcto! ✅',
+    };
+    document.getElementById('empty-msg').textContent = msgs[tabActual] || msgs.todos;
+    if (tablaWrap) tablaWrap.style.display = 'none';
+    if (listaMob)  listaMob.style.display  = 'none';
+  } else {
+    emptyState.classList.add('d-none');
+    if (tablaWrap) tablaWrap.style.display = '';
+    if (listaMob)  listaMob.style.display  = '';
+  }
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    tabActual = this.dataset.tab;
+    filtrar();
+  });
+});
+
+// ── Buscador ──────────────────────────────────────────────────────────────
+const buscador   = document.getElementById('buscador');
+const btnLimpiar = document.getElementById('btn-limpiar');
+
+buscador.addEventListener('input', function() {
+  busquedaActual = this.value.toLowerCase().trim();
+  btnLimpiar.classList.toggle('d-none', !busquedaActual);
+  filtrar();
+});
+
+btnLimpiar.addEventListener('click', function() {
+  buscador.value = '';
+  busquedaActual = '';
+  this.classList.add('d-none');
+  buscador.focus();
+  filtrar();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+filtrar();
+
+// Si llegó con ?q=... desde el formulario anterior, limpiarlo de la URL
+if (window.location.search.includes('q=') && !busquedaActual) {
+  history.replaceState(null, '', window.location.pathname);
+}
+</script>
 {% endblock %}
