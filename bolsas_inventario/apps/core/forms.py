@@ -211,12 +211,25 @@ class MovimientoTransferenciaForm(forms.Form):
 class ConteoForm(forms.ModelForm):
     class Meta:
         model = Conteo
-        fields = ['fecha', 'turno', 'observaciones']
+        fields = ['fecha', 'turno', 'fecha_hora_conteo', 'observaciones']
         widgets = {
             'fecha': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'turno': forms.Select(attrs={'class': 'form-select'}),
-            'observaciones': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Observaciones opcionales...'}),
+            'fecha_hora_conteo': forms.DateTimeInput(
+                attrs={'class': 'form-control', 'type': 'datetime-local'},
+                format='%Y-%m-%dT%H:%M',
+            ),
+            'observaciones': forms.Textarea(attrs={
+                'class': 'form-control', 'rows': 2,
+                'placeholder': 'Observaciones opcionales...'
+            }),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Pre-format datetime for the datetime-local input
+        if self.instance and self.instance.fecha_hora_conteo:
+            self.initial['fecha_hora_conteo'] = self.instance.fecha_hora_conteo.strftime('%Y-%m-%dT%H:%M')
 
 
 class FiltroMovimientosForm(forms.Form):

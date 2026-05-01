@@ -1,86 +1,125 @@
 {% extends "base.html" %}
-{% block title %}Conteos Físicos{% endblock %}
+{% block title %}Conteos{% endblock %}
 
 {% block content %}
-<div class="page-header d-flex justify-content-between align-items-center">
+<div class="page-header d-flex justify-content-between align-items-center"
+     style="background:linear-gradient(135deg,#6610f2,#0d6efd);">
   <div>
     <h1><i class="bi bi-clipboard-check-fill me-2"></i>Conteos Físicos</h1>
-    <small class="opacity-75">Registro de inventarios físicos</small>
+    <small class="opacity-75">Historial de conteos registrados</small>
   </div>
   <a href="{% url 'conteo_nuevo' %}" class="btn btn-light btn-sm fw-semibold">
-    <i class="bi bi-plus-lg me-1"></i>Nuevo Conteo
+    <i class="bi bi-plus-lg me-1"></i>Nuevo conteo
   </a>
 </div>
 
-<!-- Acceso rápido producción -->
-<a href="{% url 'reporte_produccion' %}" class="card mb-3 text-decoration-none">
-  <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
-    <div>
-      <i class="bi bi-graph-up-arrow text-success me-2 fs-5"></i>
-      <span class="fw-semibold">Ver producción del día</span>
-    </div>
-    <i class="bi bi-chevron-right text-muted"></i>
-  </div>
-</a>
-
-<!-- Lista de conteos -->
-{% regroup conteos by fecha as conteos_por_fecha %}
-{% for grupo in conteos_por_fecha %}
-<div class="mb-1">
-  <div class="text-muted small fw-semibold px-1 mb-1">
-    {{ grupo.grouper|date:"l d \d\e F, Y" }}
-  </div>
-  {% for conteo in grupo.list %}
-  <a href="{% url 'conteo_detalle' conteo.pk %}" class="text-decoration-none">
-    <div class="card mb-2">
-      <div class="card-body py-2 px-3">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="d-flex align-items-center gap-3">
-            <div class="text-center" style="min-width:60px;">
-              {% if conteo.turno == 'manana' %}
-              <i class="bi bi-sunrise-fill text-warning fs-4"></i>
-              <div class="small text-warning fw-semibold">Mañana</div>
-              {% else %}
-              <i class="bi bi-sunset-fill text-orange fs-4" style="color:#fd7e14"></i>
-              <div class="small fw-semibold" style="color:#fd7e14">Tarde</div>
-              {% endif %}
-            </div>
-            <div>
-              <div class="fw-semibold">Conteo {{ conteo.get_turno_display }}</div>
-              <div class="text-muted small">
-                {{ conteo.usuario.get_full_name|default:conteo.usuario.username }}
-                · {{ conteo.detalles.count }} ítem(s)
-              </div>
-              {% if conteo.observaciones %}
-              <div class="text-muted small fst-italic">{{ conteo.observaciones|truncatechars:50 }}</div>
-              {% endif %}
-            </div>
-          </div>
-          <div class="text-end">
-            {% if conteo.ajuste_aplicado %}
-            <span class="badge bg-success">Ajustado</span>
+{% if conteos %}
+<!-- Desktop -->
+<div class="card d-none d-md-block">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Fecha</th>
+          <th>Turno</th>
+          <th>Hora conteo</th>
+          <th>Ítems</th>
+          <th>Estado</th>
+          <th>Usuario</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in conteos %}
+        <tr>
+          <td class="text-muted small">{{ c.pk }}</td>
+          <td class="fw-semibold">{{ c.fecha|date:"d/m/Y" }}</td>
+          <td>
+            <span class="badge {% if c.turno == 'manana' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+              <i class="bi {% if c.turno == 'manana' %}bi-sunrise-fill{% else %}bi-moon-stars-fill{% endif %} me-1"></i>
+              {{ c.get_turno_display }}
+            </span>
+          </td>
+          <td class="text-muted small">{{ c.fecha_hora_conteo|date:"H:i" }}</td>
+          <td class="text-muted small">{{ c.detalles.count }} ítem(s)</td>
+          <td>
+            {% if c.estado == 'conciliado' %}
+              <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Conciliado</span>
+            {% elif c.estado == 'parcial' %}
+              <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Parcial</span>
             {% else %}
-            {% with diffs=conteo.detalles.all %}
-            {% if diffs %}
-            <span class="badge bg-warning text-dark">Pendiente</span>
+              <span class="badge bg-secondary"><i class="bi bi-clock me-1"></i>Pendiente</span>
             {% endif %}
-            {% endwith %}
-            {% endif %}
-            <i class="bi bi-chevron-right text-muted ms-2"></i>
+          </td>
+          <td class="text-muted small">{{ c.usuario.get_full_name|default:c.usuario.username }}</td>
+          <td>
+            <div class="d-flex gap-1">
+              <a href="{% url 'conteo_detalle' c.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver detalle">
+                <i class="bi bi-eye-fill"></i>
+              </a>
+              {% if c.estado != 'conciliado' %}
+              <a href="{% url 'conteo_conciliar' c.pk %}" class="btn btn-outline-primary btn-sm" title="Conciliar">
+                <i class="bi bi-clipboard-check-fill"></i>
+              </a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Mobile -->
+<div class="d-md-none">
+  {% for c in conteos %}
+  <div class="card mb-2">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="fw-semibold">{{ c.fecha|date:"d/m/Y" }}
+            <span class="badge ms-1 {% if c.turno == 'manana' %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
+                  style="font-size:.65rem;">{{ c.get_turno_display }}</span>
+          </div>
+          <div class="text-muted small">
+            {{ c.detalles.count }} ítem(s) · {{ c.fecha_hora_conteo|date:"H:i" }}
+            · {{ c.usuario.get_full_name|default:c.usuario.username }}
           </div>
         </div>
+        <div>
+          {% if c.estado == 'conciliado' %}
+            <span class="badge bg-success">Conciliado</span>
+          {% elif c.estado == 'parcial' %}
+            <span class="badge bg-warning text-dark">Parcial</span>
+          {% else %}
+            <span class="badge bg-secondary">Pendiente</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-2">
+        <a href="{% url 'conteo_detalle' c.pk %}" class="btn btn-outline-secondary btn-sm flex-fill">
+          <i class="bi bi-eye-fill me-1"></i>Ver
+        </a>
+        {% if c.estado != 'conciliado' %}
+        <a href="{% url 'conteo_conciliar' c.pk %}" class="btn btn-outline-primary btn-sm flex-fill">
+          <i class="bi bi-clipboard-check-fill me-1"></i>Conciliar
+        </a>
+        {% endif %}
       </div>
     </div>
-  </a>
+  </div>
   {% endfor %}
 </div>
-{% empty %}
-<div class="text-center text-muted py-5">
-  <i class="bi bi-clipboard-x fs-1 d-block mb-3"></i>
-  <p>No hay conteos registrados.</p>
-  <a href="{% url 'conteo_nuevo' %}" class="btn btn-primary btn-lg">
-    <i class="bi bi-plus-lg me-2"></i>Registrar primer conteo
+
+{% else %}
+<div class="text-center py-5">
+  <i class="bi bi-clipboard fs-1 text-muted d-block mb-3"></i>
+  <p class="text-muted">No hay conteos registrados.</p>
+  <a href="{% url 'conteo_nuevo' %}" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-2"></i>Crear primer conteo
   </a>
 </div>
-{% endfor %}
+{% endif %}
 {% endblock %}

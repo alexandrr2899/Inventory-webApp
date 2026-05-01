@@ -129,7 +129,12 @@ class MovimientoInventario(models.Model):
         ('transferencia', 'Transferencia'),
     ]
 
-    fecha = models.DateTimeField(default=timezone.now)
+    fecha = models.DateTimeField(default=timezone.now, verbose_name='Fecha registro')
+    # Cuándo ocurrió realmente el movimiento (puede ser anterior a la fecha de registro)
+    fecha_movimiento = models.DateTimeField(
+        default=timezone.now,
+        verbose_name='Fecha del movimiento',
+    )
     item = models.ForeignKey(Item, on_delete=models.PROTECT)
     tipo_movimiento = models.CharField(max_length=20, choices=TIPO_CHOICES, verbose_name='Tipo')
     cantidad = models.DecimalField(max_digits=12, decimal_places=2)
@@ -199,7 +204,7 @@ class MovimientoInventario(models.Model):
             stock_destino.save()
 
         elif self.tipo_movimiento == 'ajuste':
-            # cantidad puede ser positiva o negativa (representa la diferencia)
+            # cantidad puede ser positiva (sobrante) o negativa (faltante)
             stock, _ = Stock.objects.get_or_create(
                 item=self.item,
                 ubicacion=self.ubicacion_destino,
@@ -214,12 +219,22 @@ class Conteo(models.Model):
         ('manana', 'Mañana'),
         ('tarde', 'Tarde'),
     ]
+    ESTADO_CHOICES = [
+        ('pendiente', 'Pendiente'),
+        ('parcial', 'Parcial'),
+        ('conciliado', 'Conciliado'),
+    ]
 
     fecha = models.DateField()
     turno = models.CharField(max_length=10, choices=TURNO_CHOICES)
+    # Cuándo ocurrió físicamente el conteo (puede diferir de creado_en)
+    fecha_hora_conteo = models.DateTimeField(
+        default=timezone.now,
+        verbose_name='Fecha y hora del conteo',
+    )
     usuario = models.ForeignKey(User, on_delete=models.PROTECT)
     observaciones = models.TextField(blank=True)
-    ajuste_aplicado = models.BooleanField(default=False)
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='pendiente')
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -231,22 +246,67 @@ class Conteo(models.Model):
     def __str__(self):
         return f'Conteo {self.get_turno_display()} - {self.fecha}'
 
+    def actualizar_estado(self):
+        detalles = self.detalles.all()
+        if not detalles.exists():
+            self.estado = 'pendiente'
+            self.save(update_fields=['estado'])
+            return
+        pendientes = detalles.filter(
+            ajuste_aplicado=False, diferencia_final__isnull=False
+        ).exclude(diferencia_final=0).count()
+        aplicados = detalles.filter(ajuste_aplicado=True).count()
+        sin_diferencia = detalles.filter(diferencia_final=0).count()
+        calculados = detalles.filter(diferencia_final__isnull=False).count()
+
+        if calculados == 0:
+            self.estado = 'pendiente'
+        elif pendientes == 0:
+            self.estado = 'conciliado'
+        elif aplicados > 0:
+            self.estado = 'parcial'
+        else:
+            self.estado = 'pendiente'
+        self.save(update_fields=['estado'])
+
 
 class ConteoDetalle(models.Model):
     conteo = models.ForeignKey(Conteo, on_delete=models.CASCADE, related_name='detalles')
     item = models.ForeignKey(Item, on_delete=models.PROTECT)
     ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT, verbose_name='Ubicación')
     cantidad_contada = models.DecimalField(max_digits=12, decimal_places=2)
-    cantidad_sistema = models.DecimalField(max_digits=12, decimal_places=2)
-    diferencia = models.DecimalField(max_digits=12, decimal_places=2)
+    cantidad_sistema_al_conteo = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Sistema al conteo'
+    )
+    diferencia_original = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Diferencia original'
+    )
+    # Calculado durante conciliación (incorpora movimientos atrasados)
+    diferencia_final = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Diferencia final'
+    )
+    ajuste_aplicado = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = 'Detalle de Conteo'
         verbose_name_plural = 'Detalles de Conteo'
 
     def __str__(self):
-        return f'{self.item.nombre}: contado={self.cantidad_contada}, sistema={self.cantidad_sistema}'
+        return f'{self.item.nombre}: contado={self.cantidad_contada}, sistema={self.cantidad_sistema_al_conteo}'
 
     def save(self, *args, **kwargs):
-        self.diferencia = self.cantidad_contada - self.cantidad_sistema
+        self.diferencia_original = self.cantidad_contada - self.cantidad_sistema_al_conteo
         super().save(*args, **kwargs)
+
+    @property
+    def estado_badge(self):
+        if self.ajuste_aplicado:
+            return 'ajustado'
+        if self.diferencia_final is None:
+            return 'pendiente'
+        if self.diferencia_final == 0:
+            return 'ok'
+        return 'sobrante' if self.diferencia_final > 0 else 'faltante'

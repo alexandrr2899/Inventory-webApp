@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Conciliación — Conteo #{{ conteo.pk }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .badge-ok         { background:#198754; }
+  .badge-sobrante   { background:#0d6efd; }
+  .badge-faltante   { background:#dc3545; }
+  .badge-ajustado   { background:#6c757d; }
+  .badge-pendiente  { background:#ffc107; color:#000; }
+
+  .row-ok       { }
+  .row-sobrante { border-left: 4px solid #0d6efd; }
+  .row-faltante { border-left: 4px solid #dc3545; }
+  .row-ajustado { opacity: .7; }
+
+  .diff-pos { color: #0d6efd; font-weight: 700; }
+  .diff-neg { color: #dc3545; font-weight: 700; }
+  .diff-zero{ color: #198754; }
+
+  .late-movs { font-size: .78rem; }
+  .table-plan th { font-size:.75rem; text-transform:uppercase; color:#6c757d; }
+  @media(max-width:767px){ .table-plan { font-size:.82rem; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center"
+     style="background:linear-gradient(135deg,#6610f2,#0d6efd);">
+  <div>
+    <h1><i class="bi bi-clipboard-check-fill me-2"></i>Conciliación</h1>
+    <small class="opacity-75">
+      Conteo #{{ conteo.pk }} · {{ conteo.get_turno_display }} {{ conteo.fecha }}
+      · <strong>{{ conteo.get_estado_display }}</strong>
+    </small>
+  </div>
+  <a href="{% url 'conteo_detalle' conteo.pk %}" class="btn btn-light btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Detalle
+  </a>
+</div>
+
+<!-- Resumen rápido -->
+{% with total=plan|length %}
+{% if total %}
+<div class="row g-2 mb-3">
+  {% with ok_count=0 sob_count=0 fal_count=0 adj_count=0 %}
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-2">
+      <div class="fs-4 fw-bold text-success">
+        {% for p in plan %}{% if p.diferencia_final == 0 and not p.detalle.ajuste_aplicado %}+{% endif %}{% endfor %}
+        {{ plan|length }}
+      </div>
+      <div class="small text-muted">líneas totales</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-2">
+      <div class="fs-4 fw-bold text-danger">
+        {% for p in plan %}{% if p.diferencia_final != 0 and not p.detalle.ajuste_aplicado %}&bull;{% endif %}{% endfor %}
+      </div>
+      <div class="small text-muted">con diferencia</div>
+    </div>
+  </div>
+  {% endwith %}
+</div>
+{% endif %}
+{% endwith %}
+
+<!-- Explicación de movimientos atrasados -->
+<div class="alert alert-info border-0 mb-3" style="font-size:.88rem;">
+  <i class="bi bi-info-circle-fill me-2"></i>
+  <strong>Movimientos atrasados</strong>: registrados <em>después</em> del conteo
+  ({{ conteo.fecha_hora_conteo|date:"d/m/Y H:i" }}) pero con fecha de movimiento
+  <em>anterior</em> a él. Se suman al stock sistema para calcular la diferencia real.
+</div>
+
+{% if conteo.estado != 'conciliado' %}
+<!-- Acciones globales -->
+<div class="d-flex gap-2 flex-wrap mb-3">
+  <form method="post" action="{% url 'conteo_ajustar_todos' conteo.pk %}"
+        onsubmit="return confirm('¿Aplicar TODOS los ajustes pendientes con diferencia?')">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-warning fw-semibold">
+      <i class="bi bi-check-all me-1"></i>Aplicar todos los ajustes
+    </button>
+  </form>
+  <form method="post" action="{% url 'conteo_marcar_conciliado' conteo.pk %}"
+        onsubmit="return confirm('¿Marcar este conteo como conciliado? No podrás deshacer esto.')">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-success fw-semibold">
+      <i class="bi bi-lock-fill me-1"></i>Cerrar conciliación
+    </button>
+  </form>
+</div>
+{% else %}
+<div class="alert alert-success mb-3">
+  <i class="bi bi-check-circle-fill me-2"></i>Este conteo está <strong>conciliado</strong>.
+</div>
+{% endif %}
+
+<!-- Tabla del plan -->
+{% if plan %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle table-plan">
+      <thead class="table-light">
+        <tr>
+          <th>Ítem</th>
+          <th>Ubicación</th>
+          <th class="text-end">Sistema<br><span class="fw-normal">al conteo</span></th>
+          <th class="text-end">Contado</th>
+          <th class="text-end">Dif.<br><span class="fw-normal">original</span></th>
+          <th>Movs.<br>atrasados</th>
+          <th class="text-end">Sistema<br><span class="fw-normal">corregido</span></th>
+          <th class="text-end">Dif.<br><span class="fw-normal">final</span></th>
+          <th>Estado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in plan %}
+        {% with d=p.detalle estado=p.detalle.estado_badge %}
+        <tr class="row-{{ estado }}">
+          <td>
+            <div class="fw-semibold">{{ d.item.nombre }}</div>
+            <div class="text-muted small">{{ d.item.codigo }}
+              <span class="badge rounded-pill ms-1
+                {% if d.item.tipo == 'producto' %}bg-success
+                {% elif d.item.tipo == 'repuesto' %}bg-warning text-dark
+                {% else %}bg-info text-dark{% endif %}"
+                style="font-size:.6rem">{{ d.item.get_tipo_display }}</span>
+            </div>
+          </td>
+          <td class="text-muted small">{{ d.ubicacion.nombre }}</td>
+          <td class="text-end">{{ d.cantidad_sistema_al_conteo }} <span class="text-muted small">{{ d.item.unidad_medida }}</span></td>
+          <td class="text-end fw-semibold">{{ d.cantidad_contada }} <span class="text-muted small">{{ d.item.unidad_medida }}</span></td>
+          <td class="text-end
+            {% if d.diferencia_original > 0 %}diff-pos
+            {% elif d.diferencia_original < 0 %}diff-neg
+            {% else %}diff-zero{% endif %}">
+            {% if d.diferencia_original > 0 %}+{% endif %}{{ d.diferencia_original }}
+          </td>
+          <td class="late-movs">
+            {% if p.late_movimientos %}
+              <span class="badge bg-warning text-dark" title="Movimientos atrasados detectados">
+                {{ p.late_movimientos.count }} mov.
+              </span>
+              <div class="text-muted mt-1">
+                {% if p.late_entradas %}
+                  <i class="bi bi-arrow-down-circle-fill text-success"></i> +{{ p.late_entradas }}
+                {% endif %}
+                {% if p.late_salidas %}
+                  <i class="bi bi-arrow-up-circle-fill text-danger"></i> -{{ p.late_salidas }}
+                {% endif %}
+              </div>
+            {% else %}
+              <span class="text-muted">–</span>
+            {% endif %}
+          </td>
+          <td class="text-end">{{ p.stock_teorico }} <span class="text-muted small">{{ d.item.unidad_medida }}</span></td>
+          <td class="text-end">
+            {% if p.diferencia_final > 0 %}
+              <span class="diff-pos">+{{ p.diferencia_final }}</span>
+            {% elif p.diferencia_final < 0 %}
+              <span class="diff-neg">{{ p.diferencia_final }}</span>
+            {% else %}
+              <span class="diff-zero">0</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if estado == 'ajustado' %}
+              <span class="badge badge-ajustado">Ajustado</span>
+            {% elif estado == 'ok' %}
+              <span class="badge badge-ok">Sin diferencia</span>
+            {% elif estado == 'sobrante' %}
+              <span class="badge badge-sobrante">Sobrante</span>
+            {% elif estado == 'faltante' %}
+              <span class="badge badge-faltante">Faltante</span>
+            {% else %}
+              <span class="badge badge-pendiente">Sin calcular</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if not d.ajuste_aplicado and p.diferencia_final != 0 and conteo.estado != 'conciliado' %}
+            <form method="post"
+                  action="{% url 'conteo_ajustar_detalle' conteo.pk d.pk %}"
+                  onsubmit="return confirm('¿Aplicar ajuste de {{ p.diferencia_final }} para {{ d.item.nombre }}?')">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm
+                {% if p.diferencia_final > 0 %}btn-outline-primary{% else %}btn-outline-danger{% endif %}
+                fw-semibold" title="Aplicar ajuste">
+                <i class="bi bi-check-lg me-1"></i>Ajustar
+              </button>
+            </form>
+            {% elif d.ajuste_aplicado %}
+              <span class="text-muted small"><i class="bi bi-check-circle-fill text-success me-1"></i>Aplicado</span>
+            {% elif p.diferencia_final == 0 %}
+              <span class="text-muted small"><i class="bi bi-check-circle-fill text-success me-1"></i>OK</span>
+            {% endif %}
+          </td>
+        </tr>
+        <!-- Detalle de movimientos atrasados (expandible por fila) -->
+        {% if p.late_movimientos %}
+        <tr class="table-warning" style="font-size:.8rem;">
+          <td colspan="10" class="py-1 px-4">
+            <strong><i class="bi bi-clock-history me-1"></i>Movimientos atrasados detectados:</strong>
+            {% for mov in p.late_movimientos %}
+              <span class="badge bg-secondary ms-2">
+                {{ mov.get_tipo_movimiento_display }} {{ mov.cantidad }} {{ d.item.unidad_medida }}
+                · {{ mov.fecha_movimiento|date:"d/m H:i" }}
+                (registrado {{ mov.fecha|date:"d/m H:i" }})
+              </span>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-clipboard fs-1 d-block mb-2"></i>
+  <p>No hay detalles en este conteo.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -36,10 +36,8 @@ def dashboard(request):
         'item', 'usuario', 'ubicacion_origen', 'ubicacion_destino'
     ).order_by('-fecha')[:10]
 
-    # Producción estimada del día
     produccion_hoy = _calcular_produccion(hoy)
 
-    # Repuestos más consumidos (últimos 30 días)
     hace_30 = timezone.now() - timedelta(days=30)
     repuestos_top = (
         MovimientoInventario.objects
@@ -111,7 +109,6 @@ def inventario_lista(request):
     if q:
         qs = qs.filter(Q(nombre__icontains=q) | Q(codigo__icontains=q))
 
-    # Un solo query para todos los stocks (evita N+1)
     stocks_raw = (
         Stock.objects
         .filter(item__in=qs)
@@ -247,15 +244,14 @@ def movimiento_lista(request):
 
     if form.is_valid():
         if form.cleaned_data.get('fecha_inicio'):
-            movimientos = movimientos.filter(fecha__date__gte=form.cleaned_data['fecha_inicio'])
+            movimientos = movimientos.filter(fecha_movimiento__date__gte=form.cleaned_data['fecha_inicio'])
         if form.cleaned_data.get('fecha_fin'):
-            movimientos = movimientos.filter(fecha__date__lte=form.cleaned_data['fecha_fin'])
+            movimientos = movimientos.filter(fecha_movimiento__date__lte=form.cleaned_data['fecha_fin'])
         if form.cleaned_data.get('tipo_movimiento'):
             movimientos = movimientos.filter(tipo_movimiento=form.cleaned_data['tipo_movimiento'])
         if form.cleaned_data.get('item'):
             movimientos = movimientos.filter(item=form.cleaned_data['item'])
 
-    # Exportar CSV
     if request.GET.get('export') == 'csv':
         return _exportar_movimientos_csv(movimientos)
 
@@ -268,10 +264,11 @@ def _exportar_movimientos_csv(movimientos):
     response['Content-Disposition'] = 'attachment; filename="movimientos.csv"'
     response.write('﻿')  # BOM para Excel
     writer = csv.writer(response)
-    writer.writerow(['Fecha', 'Tipo', 'Ítem', 'Código', 'Cantidad', 'Unidad',
+    writer.writerow(['Fecha Movimiento', 'Fecha Registro', 'Tipo', 'Ítem', 'Código', 'Cantidad', 'Unidad',
                      'Origen', 'Destino', 'Cliente', 'Máquina', 'Motivo', 'Usuario'])
     for m in movimientos:
         writer.writerow([
+            m.fecha_movimiento.strftime('%Y-%m-%d %H:%M'),
             m.fecha.strftime('%Y-%m-%d %H:%M'),
             m.get_tipo_movimiento_display(),
             m.item.nombre,
@@ -296,24 +293,34 @@ def movimiento_entrada(request):
     if request.method == 'POST':
         ubicacion_destino_id = request.POST.get('ubicacion_destino')
         motivo = request.POST.get('motivo', '')
+        fecha_mov_str = request.POST.get('fecha_movimiento', '').strip()
         item_ids = request.POST.getlist('item[]')
         cantidades = request.POST.getlist('cantidad[]')
 
         errores = []
 
-        # Validar encabezado
         try:
             ubicacion_destino = Ubicacion.objects.get(pk=ubicacion_destino_id)
         except Ubicacion.DoesNotExist:
             errores.append('Debes seleccionar una ubicación de destino.')
             ubicacion_destino = None
 
-        # Validar filas
+        # Parsear fecha_movimiento
+        fecha_movimiento = timezone.now()
+        if fecha_mov_str:
+            try:
+                from django.utils.dateparse import parse_datetime
+                parsed = parse_datetime(fecha_mov_str)
+                if parsed:
+                    fecha_movimiento = timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
+            except Exception:
+                pass
+
         filas_validas = []
         for i, (item_id, cant_str) in enumerate(zip(item_ids, cantidades), 1):
             cant_str = cant_str.strip()
             if not item_id and not cant_str:
-                continue  # fila vacía, ignorar
+                continue
             if not item_id:
                 errores.append(f'Fila {i}: selecciona un ítem.')
                 continue
@@ -349,6 +356,7 @@ def movimiento_entrada(request):
                         cantidad=cantidad,
                         ubicacion_destino=ubicacion_destino,
                         motivo=motivo,
+                        fecha_movimiento=fecha_movimiento,
                         usuario=request.user,
                     )
             messages.success(request, f'{len(filas_validas)} entrada(s) registrada(s) exitosamente.')
@@ -368,11 +376,23 @@ def movimiento_salida(request):
 
     if request.method == 'POST':
         motivo = request.POST.get('motivo', '')
+        fecha_mov_str = request.POST.get('fecha_movimiento', '').strip()
         item_ids = request.POST.getlist('item[]')
         cantidades = request.POST.getlist('cantidad[]')
         ubicacion_ids = request.POST.getlist('ubicacion_origen[]')
         cliente_ids = request.POST.getlist('cliente[]')
         maquina_ids = request.POST.getlist('maquina[]')
+
+        # Parsear fecha_movimiento
+        fecha_movimiento = timezone.now()
+        if fecha_mov_str:
+            try:
+                from django.utils.dateparse import parse_datetime
+                parsed = parse_datetime(fecha_mov_str)
+                if parsed:
+                    fecha_movimiento = timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
+            except Exception:
+                pass
 
         errores = []
         filas_validas = []
@@ -410,7 +430,6 @@ def movimiento_salida(request):
                 errores.append(f'Fila {i}: ubicación no encontrada.')
                 continue
 
-            # Validar stock suficiente
             try:
                 stock = Stock.objects.get(item=item, ubicacion=ubicacion)
                 if stock.cantidad_actual < cantidad:
@@ -423,7 +442,6 @@ def movimiento_salida(request):
                 errores.append(f'Fila {i} ({item.nombre}): no hay stock en esa ubicación.')
                 continue
 
-            # Validar cliente/máquina según tipo
             cliente = None
             maquina = None
             if item.tipo == 'producto':
@@ -469,6 +487,7 @@ def movimiento_salida(request):
                         cliente=cliente,
                         maquina=maquina,
                         motivo=motivo,
+                        fecha_movimiento=fecha_movimiento,
                         usuario=request.user,
                     )
             messages.success(request, f'{len(filas_validas)} salida(s) registrada(s) exitosamente.')
@@ -518,97 +537,146 @@ def conteo_lista(request):
 @login_required
 def conteo_nuevo(request):
     hoy = date.today()
-    items_productos = Item.objects.filter(tipo='producto', activo=True).order_by('nombre')
+    items = Item.objects.filter(activo=True).order_by('tipo', 'nombre')
     ubicaciones = Ubicacion.objects.all()
 
-    # Prefetch stocks en un solo query
-    stocks_raw = Stock.objects.filter(item__in=items_productos).values('item_id', 'cantidad_actual')
-    stock_por_item: dict = {}
-    for s in stocks_raw:
-        stock_por_item[s['item_id']] = stock_por_item.get(s['item_id'], Decimal('0')) + s['cantidad_actual']
+    # Stock actual por (item, ubicacion) para mostrar en el formulario
+    stocks_map = {}
+    for s in Stock.objects.select_related('item', 'ubicacion').filter(item__activo=True):
+        stocks_map[(s.item_id, s.ubicacion_id)] = s.cantidad_actual
 
-    items_para_conteo = [
-        {'item': item, 'stock': stock_por_item.get(item.pk, Decimal('0'))}
-        for item in items_productos
-    ]
+    # Stock total por item (para mostrar en el selector)
+    stocks_totales = {}
+    for s in Stock.objects.filter(item__activo=True).values('item_id').annotate(t=Sum('cantidad_actual')):
+        stocks_totales[s['item_id']] = s['t'] or Decimal('0')
 
-    def _contexto(form):
-        return {'form': form, 'items_para_conteo': items_para_conteo,
-                'ubicaciones': ubicaciones, 'hoy': hoy}
+    items_json = json.dumps([
+        {
+            'pk': item.pk,
+            'nombre': item.nombre,
+            'codigo': item.codigo,
+            'tipo': item.tipo,
+            'tipo_display': item.get_tipo_display(),
+            'unidad': item.unidad_medida,
+            'stock_total': str(stocks_totales.get(item.pk, Decimal('0'))),
+        }
+        for item in items
+    ])
+
+    ubicaciones_json = json.dumps([
+        {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
+        for u in ubicaciones
+    ])
 
     if request.method == 'POST':
         form = ConteoForm(request.POST)
         if not form.is_valid():
-            return render(request, 'conteos/form.html', _contexto(form))
+            return render(request, 'conteos/form.html', {
+                'form': form, 'items_json': items_json,
+                'ubicaciones_json': ubicaciones_json, 'hoy': hoy
+            })
 
         fecha = form.cleaned_data['fecha']
         turno = form.cleaned_data['turno']
 
         if Conteo.objects.filter(fecha=fecha, turno=turno).exists():
-            messages.error(request, f'Ya existe un conteo de {form.cleaned_data["turno"]} para {fecha}.')
-            return redirect('conteo_lista')
+            messages.error(request, f'Ya existe un conteo de {dict(Conteo.TURNO_CHOICES)[turno]} para {fecha}.')
+            return render(request, 'conteos/form.html', {
+                'form': form, 'items_json': items_json,
+                'ubicaciones_json': ubicaciones_json, 'hoy': hoy
+            })
 
-        ubicacion_default_id = request.POST.get('ubicacion_default')
-        ubicacion_default_obj = None
-        if ubicacion_default_id:
-            ubicacion_default_obj = Ubicacion.objects.filter(pk=ubicacion_default_id).first()
+        item_ids = request.POST.getlist('item[]')
+        ubicacion_ids = request.POST.getlist('ubicacion[]')
+        cantidades = request.POST.getlist('cantidad_contada[]')
 
-        errores, filas = [], []
+        errores = []
+        filas = []
 
-        for item in items_productos:
-            cantidad_str = request.POST.get(f'cantidad_{item.pk}', '').strip()
-            if cantidad_str == '':
-                continue  # campo vacío = no se contó este ítem, se omite
+        for i, (item_id, ub_id, cant_str) in enumerate(
+            zip(item_ids, ubicacion_ids, cantidades), 1
+        ):
+            cant_str = cant_str.strip()
+            if not item_id and not cant_str:
+                continue
+            if not item_id:
+                errores.append(f'Fila {i}: selecciona un ítem.')
+                continue
+            if not cant_str:
+                errores.append(f'Fila {i}: ingresa una cantidad.')
+                continue
+            if not ub_id:
+                errores.append(f'Fila {i}: selecciona una ubicación.')
+                continue
 
-            # Validar cantidad
             try:
-                cantidad_contada = Decimal(cantidad_str)
+                cantidad_contada = Decimal(cant_str)
             except Exception:
-                errores.append(f'"{item.nombre}": cantidad inválida.')
+                errores.append(f'Fila {i}: cantidad inválida.')
                 continue
             if cantidad_contada < 0:
-                errores.append(f'"{item.nombre}": la cantidad no puede ser negativa.')
+                errores.append(f'Fila {i}: la cantidad no puede ser negativa.')
                 continue
 
-            # Resolver ubicación
-            ub_id = request.POST.get(f'ubicacion_{item.pk}') or ubicacion_default_id
-            ub = Ubicacion.objects.filter(pk=ub_id).first() if ub_id else ubicacion_default_obj
-            if not ub:
-                errores.append(f'"{item.nombre}": selecciona una ubicación.')
+            try:
+                item = Item.objects.get(pk=item_id, activo=True)
+            except Item.DoesNotExist:
+                errores.append(f'Fila {i}: ítem no encontrado.')
+                continue
+            try:
+                ubicacion = Ubicacion.objects.get(pk=ub_id)
+            except Ubicacion.DoesNotExist:
+                errores.append(f'Fila {i}: ubicación no encontrada.')
                 continue
 
-            filas.append((item, ub, cantidad_contada, stock_por_item.get(item.pk, Decimal('0'))))
+            cantidad_sistema = stocks_map.get((item.pk, ubicacion.pk), Decimal('0'))
+            filas.append((item, ubicacion, cantidad_contada, cantidad_sistema))
 
-        # Si hay errores de validación: mostrarlos y no guardar nada
         if errores:
             for e in errores:
                 messages.error(request, e)
-            return render(request, 'conteos/form.html', _contexto(form))
+            return render(request, 'conteos/form.html', {
+                'form': form, 'items_json': items_json,
+                'ubicaciones_json': ubicaciones_json, 'hoy': hoy
+            })
 
-        # Al menos un ítem debe haberse contado
         if not filas:
-            messages.error(request, 'Debes ingresar la cantidad para al menos un producto.')
-            return render(request, 'conteos/form.html', _contexto(form))
+            messages.error(request, 'Debes ingresar al menos un ítem con cantidad.')
+            return render(request, 'conteos/form.html', {
+                'form': form, 'items_json': items_json,
+                'ubicaciones_json': ubicaciones_json, 'hoy': hoy
+            })
 
         with transaction.atomic():
             conteo = form.save(commit=False)
             conteo.usuario = request.user
             conteo.save()
-            for item, ub, cantidad_contada, cantidad_sistema in filas:
+            for item, ubicacion, cantidad_contada, cantidad_sistema in filas:
                 ConteoDetalle.objects.create(
-                    conteo=conteo, item=item, ubicacion=ub,
+                    conteo=conteo,
+                    item=item,
+                    ubicacion=ubicacion,
                     cantidad_contada=cantidad_contada,
-                    cantidad_sistema=cantidad_sistema,
+                    cantidad_sistema_al_conteo=cantidad_sistema,
                 )
 
         messages.success(
             request,
-            f'Conteo de {conteo.get_turno_display()} registrado con {len(filas)} ítem(s).'
+            f'Conteo de {conteo.get_turno_display()} registrado con {len(filas)} ítem(s). '
+            f'Revisá la conciliación para calcular diferencias.'
         )
-        return redirect('conteo_detalle', pk=conteo.pk)
+        return redirect('conteo_conciliar', pk=conteo.pk)
 
-    form = ConteoForm(initial={'fecha': hoy})
-    return render(request, 'conteos/form.html', _contexto(form))
+    form = ConteoForm(initial={
+        'fecha': hoy,
+        'fecha_hora_conteo': timezone.now().strftime('%Y-%m-%dT%H:%M'),
+    })
+    return render(request, 'conteos/form.html', {
+        'form': form,
+        'items_json': items_json,
+        'ubicaciones_json': ubicaciones_json,
+        'hoy': hoy,
+    })
 
 
 @login_required
@@ -616,55 +684,170 @@ def conteo_detalle(request, pk):
     conteo = get_object_or_404(Conteo, pk=pk)
     detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__nombre')
     total_contado = detalles.aggregate(t=Sum('cantidad_contada'))['t'] or 0
-    total_diferencia = detalles.aggregate(t=Sum('diferencia'))['t'] or 0
-    hay_diferencias = detalles.exclude(diferencia=0).exists()
+    total_dif_original = detalles.aggregate(t=Sum('diferencia_original'))['t'] or 0
 
     context = {
         'conteo': conteo,
         'detalles': detalles,
         'total_contado': total_contado,
-        'total_diferencia': total_diferencia,
-        'hay_diferencias': hay_diferencias,
+        'total_dif_original': total_dif_original,
     }
     return render(request, 'conteos/detalle.html', context)
 
 
 @login_required
-def conteo_ajustar(request, pk):
+def conteo_conciliar(request, pk):
+    conteo = get_object_or_404(Conteo, pk=pk)
+    detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__nombre')
+
+    plan = []
+    with transaction.atomic():
+        for detalle in detalles:
+            # Movimientos atrasados: registrados DESPUÉS del conteo, pero con fecha_movimiento
+            # ANTERIOR al momento del conteo → debían haber sido parte del stock al contar
+            late_movs = MovimientoInventario.objects.filter(
+                item=detalle.item,
+                fecha__gt=conteo.fecha_hora_conteo,
+                fecha_movimiento__lte=conteo.fecha_hora_conteo,
+            ).filter(
+                Q(ubicacion_destino=detalle.ubicacion) | Q(ubicacion_origen=detalle.ubicacion)
+            ).select_related('ubicacion_origen', 'ubicacion_destino', 'usuario')
+
+            late_entradas = late_movs.filter(
+                tipo_movimiento='entrada',
+                ubicacion_destino=detalle.ubicacion,
+            ).aggregate(s=Sum('cantidad'))['s'] or Decimal('0')
+
+            late_salidas = late_movs.filter(
+                tipo_movimiento='salida',
+                ubicacion_origen=detalle.ubicacion,
+            ).aggregate(s=Sum('cantidad'))['s'] or Decimal('0')
+
+            stock_teorico = detalle.cantidad_sistema_al_conteo + late_entradas - late_salidas
+            diferencia_final = detalle.cantidad_contada - stock_teorico
+
+            # Guardar diferencia_final calculada si cambió
+            if detalle.diferencia_final != diferencia_final:
+                detalle.diferencia_final = diferencia_final
+                ConteoDetalle.objects.filter(pk=detalle.pk).update(diferencia_final=diferencia_final)
+
+            plan.append({
+                'detalle': detalle,
+                'late_movimientos': late_movs,
+                'late_entradas': late_entradas,
+                'late_salidas': late_salidas,
+                'stock_teorico': stock_teorico,
+                'diferencia_final': diferencia_final,
+            })
+
+    return render(request, 'conteos/conciliar.html', {
+        'conteo': conteo,
+        'plan': plan,
+    })
+
+
+@login_required
+def conteo_ajustar_detalle(request, pk, det_pk):
+    if request.method != 'POST':
+        return redirect('conteo_conciliar', pk=pk)
+
+    conteo = get_object_or_404(Conteo, pk=pk)
+    detalle = get_object_or_404(ConteoDetalle, pk=det_pk, conteo=conteo)
+
+    if detalle.ajuste_aplicado:
+        messages.warning(request, 'Este ajuste ya fue aplicado.')
+        return redirect('conteo_conciliar', pk=pk)
+
+    if detalle.diferencia_final is None:
+        messages.error(request, 'Primero calculá la diferencia final en la pantalla de conciliación.')
+        return redirect('conteo_conciliar', pk=pk)
+
+    if detalle.diferencia_final == 0:
+        messages.info(request, f'{detalle.item.nombre}: no hay diferencia que ajustar.')
+        return redirect('conteo_conciliar', pk=pk)
+
+    with transaction.atomic():
+        MovimientoInventario.objects.create(
+            item=detalle.item,
+            tipo_movimiento='ajuste',
+            cantidad=detalle.diferencia_final,
+            ubicacion_destino=detalle.ubicacion,
+            motivo=f'Ajuste por conciliación — Conteo #{conteo.pk} ({conteo.get_turno_display()} {conteo.fecha})',
+            usuario=request.user,
+        )
+        ConteoDetalle.objects.filter(pk=detalle.pk).update(ajuste_aplicado=True)
+        conteo.refresh_from_db()
+        conteo.actualizar_estado()
+
+    messages.success(request, f'Ajuste aplicado: {detalle.item.nombre} ({detalle.diferencia_final:+g} {detalle.item.unidad_medida}).')
+    return redirect('conteo_conciliar', pk=pk)
+
+
+@login_required
+def conteo_ajustar_todos(request, pk):
+    if request.method != 'POST':
+        return redirect('conteo_conciliar', pk=pk)
+
+    conteo = get_object_or_404(Conteo, pk=pk)
+    detalles = conteo.detalles.filter(
+        ajuste_aplicado=False,
+        diferencia_final__isnull=False,
+    ).exclude(diferencia_final=0).select_related('item', 'ubicacion')
+
+    if not detalles.exists():
+        messages.info(request, 'No hay ajustes pendientes con diferencia.')
+        return redirect('conteo_conciliar', pk=pk)
+
+    count = 0
+    with transaction.atomic():
+        for detalle in detalles:
+            MovimientoInventario.objects.create(
+                item=detalle.item,
+                tipo_movimiento='ajuste',
+                cantidad=detalle.diferencia_final,
+                ubicacion_destino=detalle.ubicacion,
+                motivo=f'Ajuste por conciliación — Conteo #{conteo.pk} ({conteo.get_turno_display()} {conteo.fecha})',
+                usuario=request.user,
+            )
+            count += 1
+        ConteoDetalle.objects.filter(
+            conteo=conteo, ajuste_aplicado=False,
+            diferencia_final__isnull=False
+        ).exclude(diferencia_final=0).update(ajuste_aplicado=True)
+        conteo.refresh_from_db()
+        conteo.actualizar_estado()
+
+    messages.success(request, f'{count} ajuste(s) aplicado(s) exitosamente.')
+    return redirect('conteo_conciliar', pk=pk)
+
+
+@login_required
+def conteo_marcar_conciliado(request, pk):
+    if request.method != 'POST':
+        return redirect('conteo_conciliar', pk=pk)
+
     conteo = get_object_or_404(Conteo, pk=pk)
 
-    if conteo.ajuste_aplicado:
-        messages.warning(request, 'El ajuste ya fue aplicado para este conteo.')
-        return redirect('conteo_detalle', pk=pk)
+    # Verificar que no queden diferencias sin ajustar
+    pendientes = conteo.detalles.filter(
+        ajuste_aplicado=False,
+        diferencia_final__isnull=False,
+    ).exclude(diferencia_final=0).count()
 
-    if request.method == 'POST':
-        detalles_con_diferencia = conteo.detalles.exclude(diferencia=0)
+    sin_calcular = conteo.detalles.filter(diferencia_final__isnull=True).count()
 
-        if not detalles_con_diferencia.exists():
-            messages.info(request, 'No hay diferencias que ajustar.')
-            return redirect('conteo_detalle', pk=pk)
+    if sin_calcular > 0:
+        messages.warning(request, f'Hay {sin_calcular} línea(s) sin diferencia calculada. Abrí la conciliación primero.')
+        return redirect('conteo_conciliar', pk=pk)
 
-        with transaction.atomic():
-            for detalle in detalles_con_diferencia:
-                MovimientoInventario.objects.create(
-                    item=detalle.item,
-                    tipo_movimiento='ajuste',
-                    cantidad=detalle.diferencia,
-                    ubicacion_destino=detalle.ubicacion,
-                    motivo=f'Ajuste por conteo físico #{conteo.pk} - {conteo.get_turno_display()} {conteo.fecha}',
-                    usuario=request.user,
-                )
-            conteo.ajuste_aplicado = True
-            conteo.save()
+    if pendientes > 0:
+        messages.warning(request, f'Hay {pendientes} ajuste(s) pendiente(s) con diferencia. Aplicalos o ignoralos antes de cerrar.')
+        return redirect('conteo_conciliar', pk=pk)
 
-        messages.success(request, 'Ajuste de inventario aplicado exitosamente.')
-        return redirect('conteo_detalle', pk=pk)
-
-    # GET: mostrar confirmación
-    detalles = conteo.detalles.exclude(diferencia=0).select_related('item', 'ubicacion')
-    return render(request, 'conteos/confirmar_ajuste.html', {
-        'conteo': conteo, 'detalles': detalles
-    })
+    conteo.estado = 'conciliado'
+    conteo.save(update_fields=['estado'])
+    messages.success(request, 'Conteo marcado como conciliado.')
+    return redirect('conteo_detalle', pk=pk)
 
 
 # ─── MÁQUINAS ─────────────────────────────────────────────────────────────────
@@ -805,7 +988,6 @@ def reporte_produccion(request):
 
     produccion = _calcular_produccion(fecha)
 
-    # Detalle por item
     detalle_manana = []
     detalle_tarde = []
     if produccion['tiene_manana']:

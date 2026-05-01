@@ -1,39 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Nuevo Conteo Físico{% endblock %}
+{% block title %}Nuevo Conteo{% endblock %}
+
+{% block extra_head %}
+<style>
+  .tipo-badge-producto  { background:#198754; }
+  .tipo-badge-repuesto  { background:#fd7e14; }
+  .tipo-badge-consumible{ background:#0dcaf0; color:#000; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="page-header" style="background: linear-gradient(135deg,#6610f2,#0d6efd);">
-  <h1><i class="bi bi-clipboard-plus-fill me-2"></i>Nuevo Conteo</h1>
-  <small class="opacity-75">Inventario físico de productos terminados</small>
+<div class="page-header" style="background:linear-gradient(135deg,#6610f2,#0d6efd);">
+  <h1><i class="bi bi-clipboard-plus-fill me-2"></i>Nuevo Conteo Físico</h1>
+  <small class="opacity-75">Podés contar cualquier tipo de ítem</small>
 </div>
 
-<form method="post" novalidate>
+<form method="post" novalidate id="form-conteo">
   {% csrf_token %}
 
   <!-- Encabezado del conteo -->
   <div class="card mb-3">
-    <div class="card-header bg-white fw-bold">Datos del conteo</div>
+    <div class="card-header bg-white fw-bold"><i class="bi bi-calendar3 me-2"></i>Datos del conteo</div>
     <div class="card-body">
       <div class="row g-3">
-        <div class="col-12 col-md-4">
+        <div class="col-6 col-md-3">
           <label class="form-label">Fecha *</label>
           {{ form.fecha }}
-          {% if form.fecha.errors %}<div class="text-danger small">{{ form.fecha.errors }}</div>{% endif %}
+          {% if form.fecha.errors %}<div class="invalid-feedback d-block">{{ form.fecha.errors|join:", " }}</div>{% endif %}
         </div>
-        <div class="col-12 col-md-4">
+        <div class="col-6 col-md-3">
           <label class="form-label">Turno *</label>
           {{ form.turno }}
-          {% if form.turno.errors %}<div class="text-danger small">{{ form.turno.errors }}</div>{% endif %}
+          {% if form.turno.errors %}<div class="invalid-feedback d-block">{{ form.turno.errors|join:", " }}</div>{% endif %}
         </div>
-        <div class="col-12 col-md-4">
-          <label class="form-label">Ubicación general</label>
-          <select name="ubicacion_default" class="form-select">
-            <option value="">-- Seleccionar --</option>
-            {% for ub in ubicaciones %}
-            <option value="{{ ub.pk }}">{{ ub.nombre }}</option>
-            {% endfor %}
-          </select>
-          <div class="form-text">Se aplica a ítems sin ubicación específica.</div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Fecha y hora del conteo *</label>
+          {{ form.fecha_hora_conteo }}
+          <div class="form-text">Cuándo se realizó físicamente el conteo (para detectar movimientos atrasados)</div>
+          {% if form.fecha_hora_conteo.errors %}<div class="invalid-feedback d-block">{{ form.fecha_hora_conteo.errors|join:", " }}</div>{% endif %}
         </div>
         <div class="col-12">
           <label class="form-label">Observaciones</label>
@@ -43,99 +47,210 @@
     </div>
   </div>
 
-  <!-- Tabla de conteo -->
+  <!-- Filas de ítems -->
   <div class="card mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
-      <span class="fw-bold"><i class="bi bi-table me-2"></i>Productos a contar</span>
-      <span class="badge bg-primary">{{ items_para_conteo|length }} ítems</span>
+      <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems contados</span>
+      <button type="button" id="btn-agregar" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>Agregar ítem
+      </button>
     </div>
     <div class="card-body p-0">
-      {% if items_para_conteo %}
-
-      <!-- Mobile: una card por ítem -->
-      <div class="d-md-none p-3">
-        {% for r in items_para_conteo %}
-        <div class="border rounded-3 p-3 mb-3">
-          <div class="d-flex justify-content-between align-items-start mb-2">
-            <div>
-              <div class="fw-semibold">{{ r.item.nombre }}</div>
-              <div class="text-muted small">{{ r.item.codigo }} · {{ r.item.unidad_medida }}</div>
-            </div>
-            <span class="badge bg-secondary">Sistema: {{ r.stock }}</span>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1 fw-semibold">Cantidad contada *</label>
-            <input type="number" name="cantidad_{{ r.item.pk }}"
-                   class="form-control form-control-lg"
-                   placeholder="0" step="0.01" min="0"
-                   value="{{ request.POST|default:'' }}">
-          </div>
-          <div>
-            <label class="form-label small mb-1">Ubicación específica</label>
-            <select name="ubicacion_{{ r.item.pk }}" class="form-select form-select-sm">
-              <option value="">Usar ubicación general</option>
-              {% for ub in ubicaciones %}
-              <option value="{{ ub.pk }}">{{ ub.nombre }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-
-      <!-- Desktop: tabla -->
-      <div class="d-none d-md-block table-responsive">
-        <table class="table table-hover mb-0">
-          <thead>
+      <div class="table-responsive">
+        <table class="table mb-0 align-middle" id="tabla-conteo">
+          <thead class="table-light">
             <tr>
-              <th>Ítem</th>
-              <th>Código</th>
-              <th class="text-end">Stock sistema</th>
-              <th style="min-width:160px;">Cantidad contada *</th>
-              <th style="min-width:180px;">Ubicación</th>
+              <th style="min-width:280px;">Ítem *</th>
+              <th style="min-width:180px;">Ubicación *</th>
+              <th style="min-width:140px;">Cant. contada *</th>
+              <th style="min-width:120px;"><span class="text-muted small">Stock sistema</span></th>
+              <th style="width:44px;"></th>
             </tr>
           </thead>
-          <tbody>
-            {% for r in items_para_conteo %}
-            <tr>
-              <td class="fw-semibold">{{ r.item.nombre }}</td>
-              <td class="text-muted small">{{ r.item.codigo }}</td>
-              <td class="text-end">
-                <span class="badge bg-secondary">{{ r.stock }} {{ r.item.unidad_medida }}</span>
-              </td>
-              <td>
-                <input type="number" name="cantidad_{{ r.item.pk }}"
-                       class="form-control" placeholder="0" step="0.01" min="0">
-              </td>
-              <td>
-                <select name="ubicacion_{{ r.item.pk }}" class="form-select form-select-sm">
-                  <option value="">Usar general</option>
-                  {% for ub in ubicaciones %}
-                  <option value="{{ ub.pk }}">{{ ub.nombre }}</option>
-                  {% endfor %}
-                </select>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
+          <tbody id="cuerpo-tabla"></tbody>
         </table>
       </div>
-
-      {% else %}
-      <div class="text-center text-muted py-4">
-        <i class="bi bi-box-fill fs-3 d-block mb-2"></i>
-        No hay productos terminados activos.
-        <a href="{% url 'item_crear' %}" class="btn btn-sm btn-primary mt-2">Crear ítem</a>
+      <div class="text-center py-4 text-muted" id="hint-empty">
+        <i class="bi bi-clipboard-plus fs-3 d-block mb-2 opacity-50"></i>
+        Presioná <strong>Agregar ítem</strong> para comenzar el conteo
       </div>
-      {% endif %}
     </div>
   </div>
 
   <div class="d-flex gap-2 flex-wrap">
     <button type="submit" class="btn btn-primary btn-lg flex-fill flex-md-grow-0">
-      <i class="bi bi-check-lg me-2"></i>Guardar Conteo
+      <i class="bi bi-check-lg me-2"></i>Guardar conteo (<span id="lbl-count">0</span> ítem(s))
     </button>
     <a href="{% url 'conteo_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
   </div>
 </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ITEMS = {{ items_json|safe }};
+const UBICACIONES = {{ ubicaciones_json|safe }};
+
+const tbody    = document.getElementById('cuerpo-tabla');
+const hint     = document.getElementById('hint-empty');
+const lblCount = document.getElementById('lbl-count');
+
+function actualizarUI() {
+  const n = tbody.querySelectorAll('tr').length;
+  hint.style.display = n === 0 ? '' : 'none';
+  lblCount.textContent = n;
+}
+
+function buildSelect(name, opts, labelKey, valueKey) {
+  const sel = document.createElement('select');
+  sel.name = name;
+  sel.className = 'form-select form-select-sm';
+  sel.required = true;
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = name.includes('item') ? '-- Ítem --' : '-- Ubicación --';
+  sel.appendChild(def);
+  opts.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o[valueKey];
+    opt.textContent = o[labelKey];
+    if (name.includes('item')) {
+      opt.dataset.tipo  = o.tipo;
+      opt.dataset.unidad = o.unidad;
+      opt.dataset.stock  = o.stock_total;
+    }
+    sel.appendChild(opt);
+  });
+  return sel;
+}
+
+function agregarFila() {
+  const tr = document.createElement('tr');
+
+  // ── Ítem ──────────────────────────────────────────────────────
+  const tdItem = document.createElement('td');
+  const selItem = buildSelect('item[]', ITEMS,
+    it => `${it.nombre} (${it.codigo})`,
+    'pk');
+  // fix: buildSelect needs fn for label, let me redo inline
+  selItem.innerHTML = '<option value="">-- Ítem --</option>';
+  ITEMS.forEach(it => {
+    const opt = document.createElement('option');
+    opt.value = it.pk;
+    opt.textContent = `${it.nombre} (${it.codigo})`;
+    opt.dataset.tipo  = it.tipo;
+    opt.dataset.unidad = it.unidad;
+    opt.dataset.stock  = it.stock_total;
+    selItem.appendChild(opt);
+  });
+  selItem.name = 'item[]';
+  selItem.className = 'form-select form-select-sm';
+  selItem.required = true;
+
+  const tipoBadge = document.createElement('span');
+  tipoBadge.className = 'badge rounded-pill mt-1 d-none';
+  tipoBadge.style.fontSize = '.65rem';
+  tdItem.append(selItem, tipoBadge);
+  tr.appendChild(tdItem);
+
+  // ── Ubicación ─────────────────────────────────────────────────
+  const tdUb = document.createElement('td');
+  const selUb = document.createElement('select');
+  selUb.name = 'ubicacion[]';
+  selUb.className = 'form-select form-select-sm';
+  selUb.required = true;
+  selUb.innerHTML = '<option value="">-- Ubicación --</option>';
+  UBICACIONES.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.pk;
+    opt.textContent = `${u.nombre} (${u.tipo})`;
+    selUb.appendChild(opt);
+  });
+  tdUb.appendChild(selUb);
+  tr.appendChild(tdUb);
+
+  // ── Cantidad contada ──────────────────────────────────────────
+  const tdCant = document.createElement('td');
+  const ig = document.createElement('div');
+  ig.className = 'input-group input-group-sm';
+  const inputCant = document.createElement('input');
+  inputCant.type = 'number';
+  inputCant.name = 'cantidad_contada[]';
+  inputCant.className = 'form-control';
+  inputCant.placeholder = '0';
+  inputCant.step = '0.01';
+  inputCant.min = '0';
+  inputCant.required = true;
+  const unidadSpan = document.createElement('span');
+  unidadSpan.className = 'input-group-text text-muted small unidad-lbl';
+  unidadSpan.textContent = 'ud';
+  ig.append(inputCant, unidadSpan);
+  tdCant.appendChild(ig);
+  tr.appendChild(tdCant);
+
+  // ── Stock sistema ─────────────────────────────────────────────
+  const tdSistema = document.createElement('td');
+  const stockSpan = document.createElement('span');
+  stockSpan.className = 'text-muted small';
+  stockSpan.textContent = '–';
+  tdSistema.appendChild(stockSpan);
+  tr.appendChild(tdSistema);
+
+  // ── Eliminar ──────────────────────────────────────────────────
+  const tdDel = document.createElement('td');
+  const btnDel = document.createElement('button');
+  btnDel.type = 'button';
+  btnDel.className = 'btn btn-outline-danger btn-sm';
+  btnDel.innerHTML = '<i class="bi bi-trash-fill"></i>';
+  btnDel.addEventListener('click', () => { tr.remove(); actualizarUI(); });
+  tdDel.appendChild(btnDel);
+  tr.appendChild(tdDel);
+
+  // ── Lógica: cambio de ítem ────────────────────────────────────
+  function actualizarStockPorUbicacion() {
+    const itemOpt = selItem.selectedOptions[0];
+    if (!itemOpt || !itemOpt.value || !selUb.value) return;
+    fetch(`/api/item/${itemOpt.value}/info/`)
+      .then(r => r.json())
+      .then(data => {
+        const s = data.stocks.find(x => String(x.ubicacion_id) === String(selUb.value));
+        const unidad = itemOpt.dataset.unidad || 'ud';
+        stockSpan.textContent = s ? `${s.cantidad} ${unidad}` : `0 ${unidad}`;
+      })
+      .catch(() => {});
+  }
+
+  selItem.addEventListener('change', function() {
+    const opt = this.selectedOptions[0];
+    if (!opt || !opt.value) {
+      tipoBadge.className = 'badge rounded-pill mt-1 d-none';
+      unidadSpan.textContent = 'ud';
+      stockSpan.textContent = '–';
+      return;
+    }
+    unidadSpan.textContent = opt.dataset.unidad || 'ud';
+    const tipo = opt.dataset.tipo;
+    tipoBadge.textContent = { producto: 'Producto', repuesto: 'Repuesto', consumible: 'Consumible' }[tipo] || tipo;
+    tipoBadge.className = `badge rounded-pill mt-1 tipo-badge-${tipo}`;
+    actualizarStockPorUbicacion();
+  });
+
+  selUb.addEventListener('change', actualizarStockPorUbicacion);
+
+  tbody.appendChild(tr);
+  actualizarUI();
+  selItem.focus();
+}
+
+document.getElementById('btn-agregar').addEventListener('click', agregarFila);
+
+document.getElementById('form-conteo').addEventListener('submit', function(e) {
+  if (tbody.querySelectorAll('tr').length === 0) {
+    e.preventDefault();
+    alert('Agrega al menos un ítem al conteo.');
+  }
+});
+
+agregarFila();
+</script>
 {% endblock %}
