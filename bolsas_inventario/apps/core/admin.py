@@ -53,21 +53,22 @@ class ClienteAdmin(admin.ModelAdmin):
 class ConteoDetalleInline(admin.TabularInline):
     model = ConteoDetalle
     extra = 0
-    readonly_fields = ['diferencia']
+    readonly_fields = ['diferencia_original', 'diferencia_final', 'ajuste_aplicado']
 
 
 @admin.register(Conteo)
 class ConteoAdmin(admin.ModelAdmin):
-    list_display = ['fecha', 'turno', 'usuario', 'ajuste_aplicado', 'creado_en']
-    list_filter = ['turno', 'ajuste_aplicado']
+    list_display = ['fecha', 'turno', 'usuario', 'estado', 'fecha_hora_conteo', 'creado_en']
+    list_filter = ['turno', 'estado']
     search_fields = ['fecha']
     inlines = [ConteoDetalleInline]
 
 
 @admin.register(MovimientoInventario)
 class MovimientoInventarioAdmin(admin.ModelAdmin):
-    list_display = ['fecha', 'tipo_movimiento', 'item', 'cantidad', 'ubicacion_origen', 'ubicacion_destino', 'usuario']
-    list_filter = ['tipo_movimiento', 'fecha']
+    list_display = ['fecha_movimiento', 'fecha', 'tipo_movimiento', 'item', 'cantidad',
+                    'ubicacion_origen', 'ubicacion_destino', 'usuario']
+    list_filter = ['tipo_movimiento', 'fecha_movimiento']
     search_fields = ['item__nombre', 'item__codigo', 'motivo']
-    date_hierarchy = 'fecha'
+    date_hierarchy = 'fecha_movimiento'
     raw_id_fields = ['item']
