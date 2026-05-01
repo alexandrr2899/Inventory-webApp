@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Conteo {{ conteo.get_turno_display }} – {{ conteo.fecha }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center"
+     style="background: linear-gradient(135deg,#6610f2,#0d6efd);">
+  <div>
+    <h1>
+      {% if conteo.turno == 'manana' %}
+        <i class="bi bi-sunrise-fill me-2"></i>Conteo Mañana
+      {% else %}
+        <i class="bi bi-sunset-fill me-2"></i>Conteo Tarde
+      {% endif %}
+    </h1>
+    <small class="opacity-75">{{ conteo.fecha|date:"l d \d\e F, Y" }}</small>
+  </div>
+  {% if not conteo.ajuste_aplicado and hay_diferencias %}
+  <a href="{% url 'conteo_ajustar' conteo.pk %}" class="btn btn-warning btn-sm fw-semibold">
+    <i class="bi bi-sliders me-1"></i>Ajustar
+  </a>
+  {% endif %}
+</div>
+
+<!-- Info encabezado -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Usuario</div>
+        <div class="fw-semibold">{{ conteo.usuario.get_full_name|default:conteo.usuario.username }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Ítems contados</div>
+        <div class="fw-semibold">{{ detalles.count }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Total contado</div>
+        <div class="fw-semibold">{{ total_contado }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Estado</div>
+        {% if conteo.ajuste_aplicado %}
+          <span class="badge bg-success fs-6">✓ Ajuste aplicado</span>
+        {% elif hay_diferencias %}
+          <span class="badge bg-warning text-dark fs-6">Con diferencias</span>
+        {% else %}
+          <span class="badge bg-success fs-6">Sin diferencias</span>
+        {% endif %}
+      </div>
+      {% if conteo.observaciones %}
+      <div class="col-12">
+        <div class="text-muted small">Observaciones</div>
+        <div class="fst-italic">{{ conteo.observaciones }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Alerta de ajuste disponible -->
+{% if not conteo.ajuste_aplicado and hay_diferencias %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+  <div>
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Diferencias encontradas.</strong> El inventario físico no coincide con el sistema.
+  </div>
+  <a href="{% url 'conteo_ajustar' conteo.pk %}" class="btn btn-warning btn-sm ms-3 text-nowrap">
+    Aplicar ajuste
+  </a>
+</div>
+{% endif %}
+
+{% if conteo.ajuste_aplicado %}
+<div class="alert alert-success">
+  <i class="bi bi-check-circle-fill me-2"></i>
+  Ajuste de inventario aplicado. El stock fue actualizado según este conteo.
+</div>
+{% endif %}
+
+<!-- Tabla de detalles -->
+<div class="card">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-table me-2"></i>Detalle por ítem
+  </div>
+  <div class="card-body p-0">
+    <!-- Mobile -->
+    <div class="d-md-none">
+      {% for d in detalles %}
+      <div class="border-bottom px-3 py-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="fw-semibold">{{ d.item.nombre }}</div>
+            <div class="text-muted small">{{ d.item.codigo }} · {{ d.ubicacion.nombre }}</div>
+          </div>
+          <div class="text-end">
+            {% if d.diferencia > 0 %}
+              <span class="badge bg-success fs-6">+{{ d.diferencia }}</span>
+            {% elif d.diferencia < 0 %}
+              <span class="badge bg-danger fs-6">{{ d.diferencia }}</span>
+            {% else %}
+              <span class="badge bg-secondary fs-6">0</span>
+            {% endif %}
+            <div class="text-muted" style="font-size:.7rem">diferencia</div>
+          </div>
+        </div>
+        <div class="row g-1 mt-2">
+          <div class="col-6">
+            <div class="bg-light rounded p-2 text-center">
+              <div class="text-muted small">Sistema</div>
+              <div class="fw-bold">{{ d.cantidad_sistema }}</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="bg-primary bg-opacity-10 rounded p-2 text-center">
+              <div class="text-muted small">Contado</div>
+              <div class="fw-bold text-primary">{{ d.cantidad_contada }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <!-- Desktop -->
+    <div class="d-none d-md-block table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Ítem</th><th>Ubicación</th>
+            <th class="text-end">Sistema</th>
+            <th class="text-end">Contado</th>
+            <th class="text-end">Diferencia</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in detalles %}
+          <tr {% if d.diferencia != 0 %}class="{% if d.diferencia > 0 %}table-success{% else %}table-danger{% endif %}"{% endif %}>
+            <td>
+              <div class="fw-semibold">{{ d.item.nombre }}</div>
+              <div class="text-muted small">{{ d.item.codigo }}</div>
+            </td>
+            <td class="text-muted small">{{ d.ubicacion.nombre }}</td>
+            <td class="text-end">{{ d.cantidad_sistema }} {{ d.item.unidad_medida }}</td>
+            <td class="text-end fw-bold text-primary">{{ d.cantidad_contada }}</td>
+            <td class="text-end fw-bold">
+              {% if d.diferencia > 0 %}
+                <span class="text-success">+{{ d.diferencia }}</span>
+              {% elif d.diferencia < 0 %}
+                <span class="text-danger">{{ d.diferencia }}</span>
+              {% else %}
+                <span class="text-muted">0</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="3">Total</td>
+            <td class="text-end">{{ total_contado }}</td>
+            <td class="text-end {% if total_diferencia > 0 %}text-success{% elif total_diferencia < 0 %}text-danger{% endif %}">
+              {% if total_diferencia > 0 %}+{% endif %}{{ total_diferencia }}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="mt-3">
+  <a href="{% url 'conteo_lista' %}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Volver a conteos
+  </a>
+</div>
+{% endblock %}

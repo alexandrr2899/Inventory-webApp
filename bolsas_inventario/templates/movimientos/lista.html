@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Historial de Movimientos{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div>
+    <h1><i class="bi bi-clock-history me-2"></i>Movimientos</h1>
+    <small class="opacity-75">Historial completo</small>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'movimiento_entrada' %}" class="btn btn-light btn-sm">
+      <i class="bi bi-arrow-down-circle-fill text-success me-1"></i>Entrada
+    </a>
+    <a href="{% url 'movimiento_salida' %}" class="btn btn-light btn-sm">
+      <i class="bi bi-arrow-up-circle-fill text-danger me-1"></i>Salida
+    </a>
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+  <div class="card-body py-2 px-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-6 col-md-2">
+        {{ form.fecha_inicio.label_tag }}
+        {{ form.fecha_inicio }}
+      </div>
+      <div class="col-6 col-md-2">
+        {{ form.fecha_fin.label_tag }}
+        {{ form.fecha_fin }}
+      </div>
+      <div class="col-6 col-md-2">
+        {{ form.tipo_movimiento.label_tag }}
+        {{ form.tipo_movimiento }}
+      </div>
+      <div class="col-6 col-md-3">
+        {{ form.item.label_tag }}
+        {{ form.item }}
+      </div>
+      <div class="col-12 col-md-3 d-flex gap-2 align-items-end">
+        <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+        <a href="{% url 'movimiento_lista' %}" class="btn btn-outline-secondary"><i class="bi bi-x-lg"></i></a>
+        <a href="?{{ request.GET.urlencode }}&export=csv" class="btn btn-outline-success" title="Exportar CSV">
+          <i class="bi bi-file-earmark-spreadsheet"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Mobile: cards -->
+<div class="d-md-none">
+  {% for mov in movimientos %}
+  <div class="card mb-2">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <span class="badge rounded-pill
+            {% if mov.tipo_movimiento == 'entrada' %}bg-success
+            {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+            {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
+            {% else %}bg-info text-dark{% endif %} me-1">
+            {{ mov.get_tipo_movimiento_display }}
+          </span>
+          <span class="fw-semibold">{{ mov.item.nombre }}</span>
+          <div class="text-muted small">{{ mov.item.codigo }}</div>
+        </div>
+        <div class="text-end">
+          <div class="fw-bold fs-5">{{ mov.cantidad }}</div>
+          <div class="text-muted small">{{ mov.item.unidad_medida }}</div>
+        </div>
+      </div>
+      <div class="mt-1 text-muted" style="font-size:.72rem">
+        {{ mov.fecha|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
+        {% if mov.cliente %} · <i class="bi bi-person-fill"></i> {{ mov.cliente.nombre }}{% endif %}
+        {% if mov.maquina %} · <i class="bi bi-gear-fill"></i> {{ mov.maquina.nombre }}{% endif %}
+        {% if mov.ubicacion_origen %} · De: {{ mov.ubicacion_origen.nombre }}{% endif %}
+        {% if mov.ubicacion_destino %} · A: {{ mov.ubicacion_destino.nombre }}{% endif %}
+      </div>
+      {% if mov.motivo %}
+      <div class="text-muted small mt-1 fst-italic">{{ mov.motivo|truncatechars:60 }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="text-center text-muted py-5">
+    <i class="bi bi-inbox fs-1 d-block mb-2"></i>No hay movimientos con esos filtros.
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Desktop: tabla -->
+<div class="d-none d-md-block">
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 table-sm">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Tipo</th><th>Ítem</th>
+            <th class="text-end">Cantidad</th><th>Origen</th><th>Destino</th>
+            <th>Cliente / Máquina</th><th>Motivo</th><th>Usuario</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mov in movimientos %}
+          <tr>
+            <td class="text-nowrap small">{{ mov.fecha|date:"d/m/Y H:i" }}</td>
+            <td>
+              <span class="badge rounded-pill
+                {% if mov.tipo_movimiento == 'entrada' %}bg-success
+                {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+                {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
+                {% else %}bg-info text-dark{% endif %}">
+                {{ mov.get_tipo_movimiento_display }}
+              </span>
+            </td>
+            <td>
+              <a href="{% url 'item_detalle' mov.item.pk %}" class="text-decoration-none fw-semibold">
+                {{ mov.item.nombre }}
+              </a>
+              <div class="text-muted" style="font-size:.72rem">{{ mov.item.codigo }}</div>
+            </td>
+            <td class="text-end fw-bold">{{ mov.cantidad }} {{ mov.item.unidad_medida }}</td>
+            <td class="text-muted small">{{ mov.ubicacion_origen.nombre|default:"–" }}</td>
+            <td class="text-muted small">{{ mov.ubicacion_destino.nombre|default:"–" }}</td>
+            <td class="small">
+              {% if mov.cliente %}<i class="bi bi-person-fill"></i> {{ mov.cliente.nombre }}{% endif %}
+              {% if mov.maquina %}<i class="bi bi-gear-fill"></i> {{ mov.maquina.nombre }}{% endif %}
+              {% if not mov.cliente and not mov.maquina %}–{% endif %}
+            </td>
+            <td class="text-muted small">{{ mov.motivo|truncatechars:30|default:"–" }}</td>
+            <td class="text-muted small">{{ mov.usuario.username }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" class="text-center text-muted py-4">Sin movimientos.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

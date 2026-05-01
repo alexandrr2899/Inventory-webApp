@@ -1,0 +1,43 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: bolsas_inventario
+      POSTGRES_USER: bolsas_user
+      POSTGRES_PASSWORD: bolsas_pass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bolsas_user -d bolsas_inventario"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=db
+      - DB_NAME=bolsas_inventario
+      - DB_USER=bolsas_user
+      - DB_PASSWORD=bolsas_pass
+      - DB_PORT=5432
+    volumes:
+      - .:/app
+      - static_files:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  static_files:

@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Inventario Bolsas{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1><i class="bi bi-house-fill me-2"></i>Dashboard</h1>
+  <small class="opacity-75">{{ hoy|date:"l d \d\e F, Y" }}</small>
+</div>
+
+<!-- Tarjetas resumen -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card h-100">
+      <div class="card-body text-center py-3">
+        <div class="fs-1 fw-bold text-danger">{{ total_bajo_stock }}</div>
+        <div class="text-muted small">Stock bajo</div>
+        <i class="bi bi-exclamation-triangle-fill text-danger fs-4"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100">
+      <div class="card-body text-center py-3">
+        <div class="fs-1 fw-bold text-primary">{{ total_items }}</div>
+        <div class="text-muted small">Ítems activos</div>
+        <i class="bi bi-box-fill text-primary fs-4"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100">
+      <div class="card-body text-center py-3">
+        {% if produccion_hoy.produccion is not None %}
+          <div class="fs-1 fw-bold text-success">{{ produccion_hoy.produccion }}</div>
+        {% else %}
+          <div class="fs-2 fw-bold text-muted">–</div>
+        {% endif %}
+        <div class="text-muted small">Producción hoy</div>
+        <i class="bi bi-graph-up-arrow text-success fs-4"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100">
+      <div class="card-body text-center py-3">
+        <div class="d-flex justify-content-center gap-3 mb-1">
+          <div class="text-center">
+            <div class="fw-bold {% if produccion_hoy.tiene_manana %}text-success{% else %}text-muted{% endif %}">
+              <i class="bi bi-{% if produccion_hoy.tiene_manana %}check-circle-fill{% else %}circle{% endif %}"></i>
+            </div>
+            <div class="small text-muted">Mañana</div>
+          </div>
+          <div class="text-center">
+            <div class="fw-bold {% if produccion_hoy.tiene_tarde %}text-success{% else %}text-muted{% endif %}">
+              <i class="bi bi-{% if produccion_hoy.tiene_tarde %}check-circle-fill{% else %}circle{% endif %}"></i>
+            </div>
+            <div class="small text-muted">Tarde</div>
+          </div>
+        </div>
+        <div class="text-muted small">Conteos hoy</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Acciones rápidas -->
+<div class="card mb-4">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-lightning-fill text-warning me-2"></i>Acciones rápidas
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <a href="{% url 'conteo_nuevo' %}" class="quick-action bg-primary bg-opacity-10 text-primary">
+          <i class="bi bi-clipboard-plus-fill"></i>
+          <span class="small fw-semibold">Nuevo Conteo</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a href="{% url 'movimiento_salida' %}" class="quick-action bg-danger bg-opacity-10 text-danger">
+          <i class="bi bi-arrow-up-circle-fill"></i>
+          <span class="small fw-semibold">Nueva Salida</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a href="{% url 'movimiento_entrada' %}" class="quick-action bg-success bg-opacity-10 text-success">
+          <i class="bi bi-arrow-down-circle-fill"></i>
+          <span class="small fw-semibold">Nueva Entrada</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a href="{% url 'inventario_lista' %}" class="quick-action bg-info bg-opacity-10 text-info">
+          <i class="bi bi-box-fill"></i>
+          <span class="small fw-semibold">Ver Inventario</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Stock bajo -->
+  {% if items_bajo_stock %}
+  <div class="col-12 col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-danger bg-opacity-10 fw-bold text-danger">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>Alerta: Stock bajo
+      </div>
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush">
+          {% for item in items_bajo_stock|slice:":8" %}
+          <li class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+            <div>
+              <div class="fw-semibold small">{{ item.nombre }}</div>
+              <div class="text-muted" style="font-size:.75rem">{{ item.codigo }}</div>
+            </div>
+            <div class="text-end">
+              <span class="badge bg-danger">{{ item.stock_total }} {{ item.unidad_medida }}</span>
+              <div class="text-muted" style="font-size:.7rem">mín: {{ item.stock_minimo }}</div>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% if items_bajo_stock|length > 8 %}
+        <div class="text-center py-2">
+          <a href="{% url 'reporte_stock_bajo' %}" class="btn btn-sm btn-outline-danger">Ver todos</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Últimos movimientos -->
+  <div class="col-12 {% if items_bajo_stock %}col-md-6{% endif %}">
+    <div class="card">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-clock-history me-2"></i>Últimos movimientos
+      </div>
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush">
+          {% for mov in ultimos_movimientos %}
+          <li class="list-group-item px-3 py-2">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <span class="badge rounded-pill
+                  {% if mov.tipo_movimiento == 'entrada' %}bg-success
+                  {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+                  {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
+                  {% else %}bg-info text-dark{% endif %} me-2">
+                  {{ mov.get_tipo_movimiento_display }}
+                </span>
+                <span class="small fw-semibold">{{ mov.item.nombre }}</span>
+              </div>
+              <span class="small fw-bold">{{ mov.cantidad }} {{ mov.item.unidad_medida }}</span>
+            </div>
+            <div class="text-muted mt-1" style="font-size:.72rem">
+              {{ mov.fecha|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
+            </div>
+          </li>
+          {% empty %}
+          <li class="list-group-item text-center text-muted py-4">
+            <i class="bi bi-inbox fs-3 d-block mb-2"></i>Sin movimientos aún
+          </li>
+          {% endfor %}
+        </ul>
+        <div class="text-center py-2 border-top">
+          <a href="{% url 'movimiento_lista' %}" class="btn btn-sm btn-outline-secondary">Ver todo el historial</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Repuestos más consumidos -->
+{% if repuestos_top %}
+<div class="card mt-3">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-gear-fill text-warning me-2"></i>Repuestos más consumidos (30 días)
+  </div>
+  <div class="card-body p-0">
+    <ul class="list-group list-group-flush">
+      {% for r in repuestos_top %}
+      <li class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+        <span class="small">{{ r.item__nombre }}</span>
+        <span class="badge bg-warning text-dark">{{ r.total }} {{ r.item__unidad_medida }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

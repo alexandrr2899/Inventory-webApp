@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ item.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="d-flex justify-content-between align-items-start">
+    <div>
+      <h1>{{ item.nombre }}</h1>
+      <div class="opacity-75">
+        <span class="badge rounded-pill bg-white text-primary me-2">{{ item.codigo }}</span>
+        <span class="badge rounded-pill bg-white bg-opacity-25">{{ item.get_tipo_display }}</span>
+      </div>
+    </div>
+    <a href="{% url 'item_editar' item.pk %}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-pencil-fill me-1"></i>Editar
+    </a>
+  </div>
+</div>
+
+<!-- Info general -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      {% if item.descripcion %}
+      <div class="col-12"><p class="text-muted mb-2">{{ item.descripcion }}</p></div>
+      {% endif %}
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Categoría</div>
+        <div class="fw-semibold">{{ item.categoria|default:"–" }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Unidad</div>
+        <div class="fw-semibold">{{ item.unidad_medida }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Stock mínimo</div>
+        <div class="fw-semibold">{{ item.stock_minimo }} {{ item.unidad_medida }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Estado</div>
+        <span class="badge {% if item.activo %}bg-success{% else %}bg-secondary{% endif %}">
+          {% if item.activo %}Activo{% else %}Inactivo{% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Stock por ubicación -->
+<div class="card mb-3">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-geo-alt-fill me-2"></i>Stock por ubicación
+  </div>
+  <div class="card-body p-0">
+    {% if stocks %}
+    <ul class="list-group list-group-flush">
+      {% for s in stocks %}
+      <li class="list-group-item d-flex justify-content-between align-items-center px-3">
+        <div>
+          <div class="fw-semibold">{{ s.ubicacion.nombre }}</div>
+          <div class="text-muted small">{{ s.ubicacion.get_tipo_display }}</div>
+        </div>
+        <span class="badge bg-primary fs-6">{{ s.cantidad_actual }} {{ item.unidad_medida }}</span>
+      </li>
+      {% endfor %}
+      <li class="list-group-item d-flex justify-content-between align-items-center px-3 bg-light">
+        <div class="fw-bold">TOTAL</div>
+        <span class="badge {% if item.bajo_stock %}bg-danger{% else %}bg-success{% endif %} fs-6">
+          {{ item.stock_total }} {{ item.unidad_medida }}
+        </span>
+      </li>
+    </ul>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-inbox fs-3 d-block mb-2"></i>Sin stock registrado
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Acciones rápidas -->
+<div class="row g-2 mb-3">
+  <div class="col-6">
+    <a href="{% url 'movimiento_entrada' %}?item={{ item.pk }}" class="btn btn-success w-100">
+      <i class="bi bi-arrow-down-circle-fill me-2"></i>Entrada
+    </a>
+  </div>
+  <div class="col-6">
+    <a href="{% url 'movimiento_salida' %}?item={{ item.pk }}" class="btn btn-danger w-100">
+      <i class="bi bi-arrow-up-circle-fill me-2"></i>Salida
+    </a>
+  </div>
+</div>
+
+<!-- Últimos movimientos -->
+<div class="card">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-clock-history me-2"></i>Últimos movimientos
+  </div>
+  <div class="card-body p-0">
+    <ul class="list-group list-group-flush">
+      {% for mov in movimientos %}
+      <li class="list-group-item px-3 py-2">
+        <div class="d-flex justify-content-between">
+          <div>
+            <span class="badge rounded-pill
+              {% if mov.tipo_movimiento == 'entrada' %}bg-success
+              {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+              {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
+              {% else %}bg-info text-dark{% endif %}">
+              {{ mov.get_tipo_movimiento_display }}
+            </span>
+            {% if mov.cliente %}<span class="small text-muted ms-1">→ {{ mov.cliente.nombre }}</span>{% endif %}
+            {% if mov.maquina %}<span class="small text-muted ms-1">→ {{ mov.maquina.nombre }}</span>{% endif %}
+          </div>
+          <span class="fw-bold">{{ mov.cantidad }} {{ item.unidad_medida }}</span>
+        </div>
+        <div class="text-muted mt-1" style="font-size:.72rem">
+          {{ mov.fecha|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
+          {% if mov.motivo %} · {{ mov.motivo|truncatechars:40 }}{% endif %}
+        </div>
+      </li>
+      {% empty %}
+      <li class="list-group-item text-center text-muted py-3">Sin movimientos</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<div class="mt-3">
+  <a href="{% url 'inventario_lista' %}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Volver al inventario
+  </a>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1><i class="bi bi-gear-fill me-2"></i>{{ titulo }}</h1>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div class="row g-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Código *</label>
+          {{ form.codigo }}
+          {% if form.codigo.errors %}<div class="text-danger small">{{ form.codigo.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-md-8">
+          <label class="form-label">Nombre *</label>
+          {{ form.nombre }}
+          {% if form.nombre.errors %}<div class="text-danger small">{{ form.nombre.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Área *</label>
+          {{ form.area }}
+        </div>
+        <div class="col-12">
+          <label class="form-label">Descripción</label>
+          {{ form.descripcion }}
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            {{ form.activo }}
+            <label class="form-check-label fw-semibold" for="{{ form.activo.id_for_label }}">Activa</label>
+          </div>
+        </div>
+      </div>
+      <hr class="my-4">
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-lg flex-fill flex-md-grow-0">
+          <i class="bi bi-check-lg me-2"></i>Guardar
+        </button>
+        <a href="{% url 'maquina_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

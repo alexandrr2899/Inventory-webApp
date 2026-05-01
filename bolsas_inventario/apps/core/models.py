@@ -1,0 +1,252 @@
+from django.db import models
+from django.contrib.auth.models import User
+from django.utils import timezone
+from decimal import Decimal
+
+
+class Categoria(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        verbose_name = 'Categoría'
+        verbose_name_plural = 'Categorías'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre
+
+
+class Item(models.Model):
+    TIPO_CHOICES = [
+        ('producto', 'Producto Terminado'),
+        ('repuesto', 'Repuesto'),
+        ('consumible', 'Consumible'),
+    ]
+
+    codigo = models.CharField(max_length=50, unique=True, verbose_name='Código')
+    nombre = models.CharField(max_length=200)
+    descripcion = models.TextField(blank=True, verbose_name='Descripción')
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    categoria = models.ForeignKey(
+        Categoria, on_delete=models.SET_NULL, null=True, blank=True,
+        verbose_name='Categoría'
+    )
+    unidad_medida = models.CharField(max_length=30, verbose_name='Unidad de medida')
+    stock_minimo = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Stock mínimo'
+    )
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Ítem'
+        verbose_name_plural = 'Ítems'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return f'{self.codigo} - {self.nombre}'
+
+    def stock_total(self):
+        resultado = self.stock_set.aggregate(total=models.Sum('cantidad_actual'))
+        return resultado['total'] or Decimal('0')
+
+    def bajo_stock(self):
+        return self.stock_total() <= self.stock_minimo
+
+
+class Ubicacion(models.Model):
+    TIPO_CHOICES = [
+        ('bodega', 'Bodega'),
+        ('produccion', 'Producción'),
+        ('estante', 'Estante'),
+        ('gaveta', 'Gaveta'),
+    ]
+
+    nombre = models.CharField(max_length=100)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    descripcion = models.TextField(blank=True, verbose_name='Descripción')
+
+    class Meta:
+        verbose_name = 'Ubicación'
+        verbose_name_plural = 'Ubicaciones'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return f'{self.nombre} ({self.get_tipo_display()})'
+
+
+class Stock(models.Model):
+    item = models.ForeignKey(Item, on_delete=models.CASCADE)
+    ubicacion = models.ForeignKey(Ubicacion, on_delete=models.CASCADE, verbose_name='Ubicación')
+    cantidad_actual = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        verbose_name = 'Stock'
+        verbose_name_plural = 'Stock'
+        unique_together = ['item', 'ubicacion']
+
+    def __str__(self):
+        return f'{self.item.nombre} en {self.ubicacion.nombre}: {self.cantidad_actual}'
+
+
+class Maquina(models.Model):
+    codigo = models.CharField(max_length=50, unique=True, verbose_name='Código')
+    nombre = models.CharField(max_length=200)
+    area = models.CharField(max_length=100, verbose_name='Área')
+    descripcion = models.TextField(blank=True, verbose_name='Descripción')
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Máquina'
+        verbose_name_plural = 'Máquinas'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return f'{self.codigo} - {self.nombre}'
+
+
+class Cliente(models.Model):
+    nombre = models.CharField(max_length=200)
+    telefono = models.CharField(max_length=20, blank=True)
+    rtn = models.CharField(max_length=20, blank=True, verbose_name='RTN')
+    direccion = models.TextField(blank=True, verbose_name='Dirección')
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Cliente'
+        verbose_name_plural = 'Clientes'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre
+
+
+class MovimientoInventario(models.Model):
+    TIPO_CHOICES = [
+        ('entrada', 'Entrada'),
+        ('salida', 'Salida'),
+        ('ajuste', 'Ajuste'),
+        ('transferencia', 'Transferencia'),
+    ]
+
+    fecha = models.DateTimeField(default=timezone.now)
+    item = models.ForeignKey(Item, on_delete=models.PROTECT)
+    tipo_movimiento = models.CharField(max_length=20, choices=TIPO_CHOICES, verbose_name='Tipo')
+    cantidad = models.DecimalField(max_digits=12, decimal_places=2)
+    ubicacion_origen = models.ForeignKey(
+        Ubicacion, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='movimientos_origen', verbose_name='Ubicación origen'
+    )
+    ubicacion_destino = models.ForeignKey(
+        Ubicacion, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='movimientos_destino', verbose_name='Ubicación destino'
+    )
+    cliente = models.ForeignKey(
+        Cliente, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    maquina = models.ForeignKey(
+        Maquina, on_delete=models.SET_NULL, null=True, blank=True,
+        verbose_name='Máquina'
+    )
+    motivo = models.TextField(blank=True)
+    usuario = models.ForeignKey(User, on_delete=models.PROTECT)
+
+    class Meta:
+        verbose_name = 'Movimiento'
+        verbose_name_plural = 'Movimientos'
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f'{self.get_tipo_movimiento_display()} - {self.item.nombre} ({self.cantidad})'
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new:
+            self._actualizar_stock()
+
+    def _actualizar_stock(self):
+        if self.tipo_movimiento == 'entrada':
+            stock, _ = Stock.objects.get_or_create(
+                item=self.item,
+                ubicacion=self.ubicacion_destino,
+                defaults={'cantidad_actual': Decimal('0')}
+            )
+            stock.cantidad_actual += self.cantidad
+            stock.save()
+
+        elif self.tipo_movimiento == 'salida':
+            try:
+                stock = Stock.objects.get(item=self.item, ubicacion=self.ubicacion_origen)
+                stock.cantidad_actual -= self.cantidad
+                stock.save()
+            except Stock.DoesNotExist:
+                pass
+
+        elif self.tipo_movimiento == 'transferencia':
+            try:
+                stock_origen = Stock.objects.get(item=self.item, ubicacion=self.ubicacion_origen)
+                stock_origen.cantidad_actual -= self.cantidad
+                stock_origen.save()
+            except Stock.DoesNotExist:
+                pass
+            stock_destino, _ = Stock.objects.get_or_create(
+                item=self.item,
+                ubicacion=self.ubicacion_destino,
+                defaults={'cantidad_actual': Decimal('0')}
+            )
+            stock_destino.cantidad_actual += self.cantidad
+            stock_destino.save()
+
+        elif self.tipo_movimiento == 'ajuste':
+            # cantidad puede ser positiva o negativa (representa la diferencia)
+            stock, _ = Stock.objects.get_or_create(
+                item=self.item,
+                ubicacion=self.ubicacion_destino,
+                defaults={'cantidad_actual': Decimal('0')}
+            )
+            stock.cantidad_actual += self.cantidad
+            stock.save()
+
+
+class Conteo(models.Model):
+    TURNO_CHOICES = [
+        ('manana', 'Mañana'),
+        ('tarde', 'Tarde'),
+    ]
+
+    fecha = models.DateField()
+    turno = models.CharField(max_length=10, choices=TURNO_CHOICES)
+    usuario = models.ForeignKey(User, on_delete=models.PROTECT)
+    observaciones = models.TextField(blank=True)
+    ajuste_aplicado = models.BooleanField(default=False)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Conteo'
+        verbose_name_plural = 'Conteos'
+        ordering = ['-fecha', 'turno']
+        unique_together = ['fecha', 'turno']
+
+    def __str__(self):
+        return f'Conteo {self.get_turno_display()} - {self.fecha}'
+
+
+class ConteoDetalle(models.Model):
+    conteo = models.ForeignKey(Conteo, on_delete=models.CASCADE, related_name='detalles')
+    item = models.ForeignKey(Item, on_delete=models.PROTECT)
+    ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT, verbose_name='Ubicación')
+    cantidad_contada = models.DecimalField(max_digits=12, decimal_places=2)
+    cantidad_sistema = models.DecimalField(max_digits=12, decimal_places=2)
+    diferencia = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Detalle de Conteo'
+        verbose_name_plural = 'Detalles de Conteo'
+
+    def __str__(self):
+        return f'{self.item.nombre}: contado={self.cantidad_contada}, sistema={self.cantidad_sistema}'
+
+    def save(self, *args, **kwargs):
+        self.diferencia = self.cantidad_contada - self.cantidad_sistema
+        super().save(*args, **kwargs)

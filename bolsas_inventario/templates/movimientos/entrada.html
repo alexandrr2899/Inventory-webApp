@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Nueva Entrada{% endblock %}
+
+{% block content %}
+<div class="page-header" style="background: linear-gradient(135deg,#198754,#0f5132);">
+  <h1><i class="bi bi-arrow-down-circle-fill me-2"></i>Nueva Entrada</h1>
+  <small class="opacity-75">Podés registrar varios ítems de una sola vez</small>
+</div>
+
+<form method="post" novalidate id="form-entrada">
+  {% csrf_token %}
+
+  <!-- Encabezado común -->
+  <div class="card mb-3">
+    <div class="card-header bg-white fw-bold">Datos generales</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <label class="form-label">Ubicación de entrada *</label>
+          <select name="ubicacion_destino" class="form-select form-select-lg" required>
+            <option value="">-- Seleccionar ubicación --</option>
+            {% for ub in ubicaciones %}
+            <option value="{{ ub.pk }}">{{ ub.nombre }} ({{ ub.get_tipo_display }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Motivo / Descripción</label>
+          <input type="text" name="motivo" class="form-control form-control-lg"
+                 placeholder="Ej: Compra a proveedor, devolución...">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla de ítems -->
+  <div class="card mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+      <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems a ingresar</span>
+      <button type="button" id="btn-agregar" class="btn btn-success btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>Agregar ítem
+      </button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table mb-0" id="tabla-items">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width:260px;">Ítem *</th>
+              <th style="min-width:130px;">Cantidad *</th>
+              <th style="width:48px;"></th>
+            </tr>
+          </thead>
+          <tbody id="cuerpo-tabla">
+            <!-- Las filas se insertan aquí -->
+          </tbody>
+        </table>
+      </div>
+      <div class="text-center py-3 text-muted" id="hint-empty">
+        <i class="bi bi-arrow-up-circle me-1"></i>Presioná <strong>Agregar ítem</strong> para comenzar
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 flex-wrap">
+    <button type="submit" class="btn btn-success btn-lg flex-fill flex-md-grow-0">
+      <i class="bi bi-check-lg me-2"></i>Registrar <span id="contador-label">entradas</span>
+    </button>
+    <a href="{% url 'movimiento_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+  </div>
+</form>
+
+<!-- Template de fila (oculto) -->
+<template id="tpl-fila">
+  <tr class="fila-item">
+    <td>
+      <select name="item[]" class="form-select select-item" required>
+        <option value="">-- Seleccionar ítem --</option>
+        {% for item in items %}
+        <option value="{{ item.pk }}" data-tipo="{{ item.tipo }}" data-unidad="{{ item.unidad_medida }}">
+          {{ item.nombre }} ({{ item.codigo }})
+        </option>
+        {% endfor %}
+      </select>
+      <div class="stock-info text-muted small mt-1 d-none">
+        <i class="bi bi-box-fill me-1"></i>Stock actual: <span class="stock-val">–</span>
+      </div>
+    </td>
+    <td>
+      <div class="input-group">
+        <input type="number" name="cantidad[]" class="form-control input-cantidad"
+               placeholder="0" step="0.01" min="0.01" required>
+        <span class="input-group-text unidad-label text-muted small">ud</span>
+      </div>
+    </td>
+    <td>
+      <button type="button" class="btn btn-outline-danger btn-sm btn-eliminar" title="Eliminar fila">
+        <i class="bi bi-trash-fill"></i>
+      </button>
+    </td>
+  </tr>
+</template>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const tbody = document.getElementById('cuerpo-tabla');
+const hintEmpty = document.getElementById('hint-empty');
+const contadorLabel = document.getElementById('contador-label');
+
+function actualizarContador() {
+  const n = tbody.querySelectorAll('.fila-item').length;
+  hintEmpty.style.display = n === 0 ? '' : 'none';
+  contadorLabel.textContent = n <= 1 ? 'entrada' : `${n} entradas`;
+}
+
+function agregarFila() {
+  const tpl = document.getElementById('tpl-fila');
+  const fila = tpl.content.cloneNode(true).querySelector('tr');
+  tbody.appendChild(fila);
+  actualizarContador();
+
+  const selectItem = fila.querySelector('.select-item');
+  const stockInfo  = fila.querySelector('.stock-info');
+  const stockVal   = fila.querySelector('.stock-val');
+  const unidadLbl  = fila.querySelector('.unidad-label');
+
+  selectItem.addEventListener('change', function() {
+    const opt = this.selectedOptions[0];
+    if (!opt || !opt.value) {
+      stockInfo.classList.add('d-none');
+      unidadLbl.textContent = 'ud';
+      return;
+    }
+    const unidad = opt.dataset.unidad || 'ud';
+    unidadLbl.textContent = unidad;
+    fetch(`/api/item/${opt.value}/info/`)
+      .then(r => r.json())
+      .then(data => {
+        stockVal.textContent = `${data.stock_total} ${unidad}`;
+        stockInfo.classList.remove('d-none');
+      });
+  });
+
+  fila.querySelector('.btn-eliminar').addEventListener('click', function() {
+    fila.remove();
+    actualizarContador();
+  });
+
+  // Enfocar el select recién creado
+  selectItem.focus();
+}
+
+document.getElementById('btn-agregar').addEventListener('click', agregarFila);
+
+// Arrancar con una fila
+agregarFila();
+</script>
+{% endblock %}

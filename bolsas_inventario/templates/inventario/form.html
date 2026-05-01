@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1><i class="bi bi-box-fill me-2"></i>{{ titulo }}</h1>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="row g-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Código *</label>
+          {{ form.codigo }}
+          {% if form.codigo.errors %}<div class="text-danger small mt-1">{{ form.codigo.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-md-8">
+          <label class="form-label">Nombre *</label>
+          {{ form.nombre }}
+          {% if form.nombre.errors %}<div class="text-danger small mt-1">{{ form.nombre.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12">
+          <label class="form-label">Descripción</label>
+          {{ form.descripcion }}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Tipo *</label>
+          {{ form.tipo }}
+          {% if form.tipo.errors %}<div class="text-danger small mt-1">{{ form.tipo.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Categoría</label>
+          {{ form.categoria }}
+          <a href="#" data-bs-toggle="modal" data-bs-target="#modalCategoria" class="small text-primary mt-1 d-inline-block">
+            + Nueva categoría
+          </a>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Unidad de medida *</label>
+          {{ form.unidad_medida }}
+          {% if form.unidad_medida.errors %}<div class="text-danger small mt-1">{{ form.unidad_medida.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Stock mínimo</label>
+          {{ form.stock_minimo }}
+        </div>
+        <div class="col-12 col-md-4 d-flex align-items-end">
+          <div class="form-check mb-2">
+            {{ form.activo }}
+            <label class="form-check-label fw-semibold" for="{{ form.activo.id_for_label }}">Activo</label>
+          </div>
+        </div>
+      </div>
+
+      <hr class="my-4">
+      <div class="d-flex gap-2 flex-wrap">
+        <button type="submit" class="btn btn-primary btn-lg flex-fill flex-md-grow-0">
+          <i class="bi bi-check-lg me-2"></i>Guardar
+        </button>
+        {% if item %}
+        <a href="{% url 'item_detalle' item.pk %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+        {% else %}
+        <a href="{% url 'inventario_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal nueva categoría -->
+<div class="modal fade" id="modalCategoria" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Nueva Categoría</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formCategoria">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Nombre *</label>
+            <input type="text" id="nuevaCategoriaNombre" class="form-control form-control-lg" placeholder="Nombre de la categoría">
+          </div>
+          <button type="button" class="btn btn-primary w-100" onclick="guardarCategoria()">
+            <i class="bi bi-plus-lg me-2"></i>Crear categoría
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function guardarCategoria() {
+  const nombre = document.getElementById('nuevaCategoriaNombre').value.trim();
+  if (!nombre) return;
+  fetch('/api/categoria/nueva/', {
+    method: 'POST',
+    headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json'},
+    body: JSON.stringify({nombre})
+  }).then(r => r.json()).then(data => {
+    if (data.id) {
+      const select = document.getElementById('{{ form.categoria.id_for_label }}');
+      const opt = new Option(data.nombre, data.id, true, true);
+      select.add(opt);
+      bootstrap.Modal.getInstance(document.getElementById('modalCategoria')).hide();
+    }
+  }).catch(() => alert('Error al crear categoría'));
+}
+</script>
+{% endblock %}

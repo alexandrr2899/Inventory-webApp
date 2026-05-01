@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Nuevo Conteo Físico{% endblock %}
+
+{% block content %}
+<div class="page-header" style="background: linear-gradient(135deg,#6610f2,#0d6efd);">
+  <h1><i class="bi bi-clipboard-plus-fill me-2"></i>Nuevo Conteo</h1>
+  <small class="opacity-75">Inventario físico de productos terminados</small>
+</div>
+
+<form method="post" novalidate>
+  {% csrf_token %}
+
+  <!-- Encabezado del conteo -->
+  <div class="card mb-3">
+    <div class="card-header bg-white fw-bold">Datos del conteo</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Fecha *</label>
+          {{ form.fecha }}
+          {% if form.fecha.errors %}<div class="text-danger small">{{ form.fecha.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Turno *</label>
+          {{ form.turno }}
+          {% if form.turno.errors %}<div class="text-danger small">{{ form.turno.errors }}</div>{% endif %}
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Ubicación general</label>
+          <select name="ubicacion_default" class="form-select">
+            <option value="">-- Seleccionar --</option>
+            {% for ub in ubicaciones %}
+            <option value="{{ ub.pk }}">{{ ub.nombre }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Se aplica a ítems sin ubicación específica.</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Observaciones</label>
+          {{ form.observaciones }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla de conteo -->
+  <div class="card mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+      <span class="fw-bold"><i class="bi bi-table me-2"></i>Productos a contar</span>
+      <span class="badge bg-primary">{{ items_para_conteo|length }} ítems</span>
+    </div>
+    <div class="card-body p-0">
+      {% if items_para_conteo %}
+
+      <!-- Mobile: una card por ítem -->
+      <div class="d-md-none p-3">
+        {% for r in items_para_conteo %}
+        <div class="border rounded-3 p-3 mb-3">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <div class="fw-semibold">{{ r.item.nombre }}</div>
+              <div class="text-muted small">{{ r.item.codigo }} · {{ r.item.unidad_medida }}</div>
+            </div>
+            <span class="badge bg-secondary">Sistema: {{ r.stock }}</span>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1 fw-semibold">Cantidad contada *</label>
+            <input type="number" name="cantidad_{{ r.item.pk }}"
+                   class="form-control form-control-lg"
+                   placeholder="0" step="0.01" min="0"
+                   value="{{ request.POST|default:'' }}">
+          </div>
+          <div>
+            <label class="form-label small mb-1">Ubicación específica</label>
+            <select name="ubicacion_{{ r.item.pk }}" class="form-select form-select-sm">
+              <option value="">Usar ubicación general</option>
+              {% for ub in ubicaciones %}
+              <option value="{{ ub.pk }}">{{ ub.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Desktop: tabla -->
+      <div class="d-none d-md-block table-responsive">
+        <table class="table table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Ítem</th>
+              <th>Código</th>
+              <th class="text-end">Stock sistema</th>
+              <th style="min-width:160px;">Cantidad contada *</th>
+              <th style="min-width:180px;">Ubicación</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in items_para_conteo %}
+            <tr>
+              <td class="fw-semibold">{{ r.item.nombre }}</td>
+              <td class="text-muted small">{{ r.item.codigo }}</td>
+              <td class="text-end">
+                <span class="badge bg-secondary">{{ r.stock }} {{ r.item.unidad_medida }}</span>
+              </td>
+              <td>
+                <input type="number" name="cantidad_{{ r.item.pk }}"
+                       class="form-control" placeholder="0" step="0.01" min="0">
+              </td>
+              <td>
+                <select name="ubicacion_{{ r.item.pk }}" class="form-select form-select-sm">
+                  <option value="">Usar general</option>
+                  {% for ub in ubicaciones %}
+                  <option value="{{ ub.pk }}">{{ ub.nombre }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% else %}
+      <div class="text-center text-muted py-4">
+        <i class="bi bi-box-fill fs-3 d-block mb-2"></i>
+        No hay productos terminados activos.
+        <a href="{% url 'item_crear' %}" class="btn btn-sm btn-primary mt-2">Crear ítem</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 flex-wrap">
+    <button type="submit" class="btn btn-primary btn-lg flex-fill flex-md-grow-0">
+      <i class="bi bi-check-lg me-2"></i>Guardar Conteo
+    </button>
+    <a href="{% url 'conteo_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

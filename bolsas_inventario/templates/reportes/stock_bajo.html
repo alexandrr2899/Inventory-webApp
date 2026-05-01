@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Reporte: Stock Bajo{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center"
+     style="background: linear-gradient(135deg,#dc3545,#842029);">
+  <div>
+    <h1><i class="bi bi-exclamation-triangle-fill me-2"></i>Stock Bajo</h1>
+    <small class="opacity-75">{{ items_bajo|length }} ítem(s) por debajo del mínimo</small>
+  </div>
+  {% if items_bajo %}
+  <a href="?export=csv" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-file-earmark-spreadsheet me-1"></i>CSV
+  </a>
+  {% endif %}
+</div>
+
+{% if items_bajo %}
+<!-- Mobile -->
+<div class="d-md-none">
+  {% for r in items_bajo %}
+  <a href="{% url 'item_detalle' r.item.pk %}" class="text-decoration-none">
+    <div class="card mb-2 border-danger border-2">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <span class="badge rounded-pill
+              {% if r.item.tipo == 'producto' %}bg-success
+              {% elif r.item.tipo == 'repuesto' %}bg-warning text-dark
+              {% else %}bg-info text-dark{% endif %} mb-1">
+              {{ r.item.get_tipo_display }}
+            </span>
+            <div class="fw-semibold text-dark">{{ r.item.nombre }}</div>
+            <div class="text-muted small">{{ r.item.codigo }}</div>
+          </div>
+          <div class="text-end">
+            <div class="fw-bold text-danger fs-5">{{ r.stock }}</div>
+            <div class="text-muted small">/ {{ r.item.stock_minimo }} mín.</div>
+            <div class="badge bg-danger mt-1">Faltan {{ r.deficit }}</div>
+          </div>
+        </div>
+        <div class="progress mt-2" style="height:6px;">
+          {% widthratio r.stock r.item.stock_minimo 100 as pct %}
+          <div class="progress-bar bg-danger" style="width:{% if pct > 100 %}100{% else %}{{ pct }}{% endif %}%"></div>
+        </div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Desktop -->
+<div class="d-none d-md-block">
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Código</th><th>Nombre</th><th>Tipo</th><th>Categoría</th>
+            <th class="text-end">Stock actual</th>
+            <th class="text-end">Stock mínimo</th>
+            <th class="text-end">Déficit</th>
+            <th>Urgencia</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in items_bajo %}
+          <tr>
+            <td class="text-muted small">{{ r.item.codigo }}</td>
+            <td class="fw-semibold">
+              <a href="{% url 'item_detalle' r.item.pk %}" class="text-decoration-none text-dark">
+                {{ r.item.nombre }}
+              </a>
+            </td>
+            <td>
+              <span class="badge rounded-pill
+                {% if r.item.tipo == 'producto' %}bg-success
+                {% elif r.item.tipo == 'repuesto' %}bg-warning text-dark
+                {% else %}bg-info text-dark{% endif %}">
+                {{ r.item.get_tipo_display }}
+              </span>
+            </td>
+            <td class="text-muted small">{{ r.item.categoria|default:"–" }}</td>
+            <td class="text-end fw-bold text-danger">{{ r.stock }} {{ r.item.unidad_medida }}</td>
+            <td class="text-end text-muted">{{ r.item.stock_minimo }}</td>
+            <td class="text-end fw-bold text-danger">{{ r.deficit }}</td>
+            <td>
+              {% if r.stock == 0 %}
+                <span class="badge bg-dark">Agotado</span>
+              {% elif r.deficit >= r.item.stock_minimo %}
+                <span class="badge bg-danger">Crítico</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">Bajo</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="mt-3 d-flex gap-2">
+  <a href="{% url 'movimiento_entrada' %}" class="btn btn-success">
+    <i class="bi bi-arrow-down-circle-fill me-2"></i>Registrar entrada
+  </a>
+</div>
+
+{% else %}
+<div class="text-center py-5">
+  <div style="font-size:4rem;">✅</div>
+  <h4 class="mt-3 text-success">Todo el stock está en nivel correcto</h4>
+  <p class="text-muted">No hay ítems por debajo del stock mínimo.</p>
+  <a href="{% url 'inventario_lista' %}" class="btn btn-outline-primary">Ver inventario completo</a>
+</div>
+{% endif %}
+{% endblock %}

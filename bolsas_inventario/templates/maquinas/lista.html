@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Máquinas{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div>
+    <h1><i class="bi bi-gear-fill me-2"></i>Máquinas</h1>
+    <small class="opacity-75">{{ maquinas.count }} máquina(s)</small>
+  </div>
+  <a href="{% url 'maquina_crear' %}" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-plus-lg me-1"></i>Nueva
+  </a>
+</div>
+
+<div class="d-md-none">
+  {% for m in maquinas %}
+  <div class="card mb-2 {% if not m.activo %}opacity-50{% endif %}">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <span class="fw-bold">{{ m.nombre }}</span>
+          <span class="text-muted ms-2 small">{{ m.codigo }}</span>
+          <div class="text-muted small">Área: {{ m.area }}</div>
+          {% if m.descripcion %}<div class="text-muted small fst-italic">{{ m.descripcion|truncatechars:50 }}</div>{% endif %}
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <span class="badge {% if m.activo %}bg-success{% else %}bg-secondary{% endif %}">
+            {% if m.activo %}Activa{% else %}Inactiva{% endif %}
+          </span>
+          <a href="{% url 'maquina_editar' m.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-pencil-fill"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="text-center text-muted py-5">
+    <i class="bi bi-gear fs-1 d-block mb-2"></i>No hay máquinas registradas.
+  </div>
+  {% endfor %}
+</div>
+
+<div class="d-none d-md-block">
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr><th>Código</th><th>Nombre</th><th>Área</th><th>Descripción</th><th>Estado</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for m in maquinas %}
+          <tr class="{% if not m.activo %}text-muted{% endif %}">
+            <td class="small">{{ m.codigo }}</td>
+            <td class="fw-semibold">{{ m.nombre }}</td>
+            <td class="small">{{ m.area }}</td>
+            <td class="small text-muted">{{ m.descripcion|truncatechars:40|default:"–" }}</td>
+            <td>
+              <span class="badge {% if m.activo %}bg-success{% else %}bg-secondary{% endif %}">
+                {% if m.activo %}Activa{% else %}Inactiva{% endif %}
+              </span>
+            </td>
+            <td>
+              <div class="d-flex gap-1">
+                <a href="{% url 'maquina_editar' m.pk %}" class="btn btn-sm btn-outline-secondary">
+                  <i class="bi bi-pencil-fill"></i>
+                </a>
+                <a href="{% url 'maquina_toggle_activo' m.pk %}" class="btn btn-sm btn-outline-{% if m.activo %}danger{% else %}success{% endif %}">
+                  <i class="bi bi-{% if m.activo %}pause-fill{% else %}play-fill{% endif %}"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="text-center text-muted py-4">Sin máquinas registradas.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
