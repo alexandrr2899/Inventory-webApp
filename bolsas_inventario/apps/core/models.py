@@ -42,6 +42,18 @@ class Item(models.Model):
         verbose_name = 'Ítem'
         verbose_name_plural = 'Ítems'
         ordering = ['nombre']
+        permissions = [
+            ('ver_inventario',       'Puede ver el inventario'),
+            ('crear_item',           'Puede crear ítems'),
+            ('editar_item',          'Puede editar ítems'),
+            ('registrar_entrada',    'Puede registrar entradas'),
+            ('registrar_salida',     'Puede registrar salidas'),
+            ('registrar_conteo',     'Puede registrar conteos físicos'),
+            ('aplicar_conciliacion', 'Puede aplicar conciliación'),
+            ('importar_excel',       'Puede importar ítems desde Excel'),
+            ('ver_reportes',         'Puede ver reportes'),
+            ('registrar_produccion', 'Puede registrar producción'),
+        ]
 
     def __str__(self):
         return f'{self.codigo} - {self.nombre}'

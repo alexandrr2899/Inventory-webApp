@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3">
+  <h1><i class="bi bi-person-fill me-2"></i>{{ titulo }}</h1>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-12 col-md-7 col-lg-5">
+    <div class="card">
+      <div class="card-body p-4">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          {% if not usuario %}
+          {# Campos solo en creación #}
+          <div class="mb-3">
+            <label class="form-label">{{ form.username.label }} <span class="text-danger">*</span></label>
+            {{ form.username }}
+            {% if form.username.errors %}<div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>{% endif %}
+          </div>
+          {% else %}
+          <div class="mb-3">
+            <label class="form-label text-muted small">Usuario</label>
+            <p class="form-control-plaintext fw-semibold">{{ usuario.username }}</p>
+          </div>
+          {% endif %}
+
+          <div class="row g-2 mb-3">
+            <div class="col">
+              <label class="form-label">{{ form.first_name.label }}</label>
+              {{ form.first_name }}
+            </div>
+            <div class="col">
+              <label class="form-label">{{ form.last_name.label }}</label>
+              {{ form.last_name }}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.email.label }}</label>
+            {{ form.email }}
+            {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.grupo.label }} <span class="text-danger">*</span></label>
+            {{ form.grupo }}
+            <div class="form-text">Define qué acciones puede realizar el usuario.</div>
+          </div>
+
+          {% if usuario %}
+          <div class="mb-3">
+            <div class="form-check">
+              {{ form.is_active }}
+              <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                {{ form.is_active.label }}
+              </label>
+            </div>
+          </div>
+          {% endif %}
+
+          <hr>
+          <p class="text-muted small mb-2">
+            {% if usuario %}Nueva contraseña (dejar vacío para no cambiar){% else %}Contraseña <span class="text-danger">*</span>{% endif %}
+          </p>
+
+          {% if usuario %}
+          <div class="mb-3">
+            <label class="form-label">{{ form.nueva_password.label }}</label>
+            {{ form.nueva_password }}
+            {% if form.nueva_password.errors %}<div class="text-danger small mt-1">{{ form.nueva_password.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="mb-4">
+            <label class="form-label">{{ form.nueva_password2.label }}</label>
+            {{ form.nueva_password2 }}
+            {% if form.nueva_password2.errors %}<div class="text-danger small mt-1">{{ form.nueva_password2.errors.0 }}</div>{% endif %}
+          </div>
+          {% else %}
+          <div class="mb-3">
+            <label class="form-label">{{ form.password.label }}</label>
+            {{ form.password }}
+            {% if form.password.errors %}<div class="text-danger small mt-1">{{ form.password.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="mb-4">
+            <label class="form-label">{{ form.password2.label }}</label>
+            {{ form.password2 }}
+            {% if form.password2.errors %}<div class="text-danger small mt-1">{{ form.password2.errors.0 }}</div>{% endif %}
+          </div>
+          {% endif %}
+
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <i class="bi bi-check-circle-fill me-2"></i>
+              {% if usuario %}Guardar cambios{% else %}Crear usuario{% endif %}
+            </button>
+            <a href="{% url 'usuario_lista' %}" class="btn btn-outline-secondary">Cancelar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3 border-0 bg-light">
+      <div class="card-body small text-muted">
+        <strong>Roles disponibles:</strong>
+        <ul class="mb-0 mt-1">
+          <li><strong>Administrador</strong> — acceso total, incluye crear ítems e importar.</li>
+          <li><strong>Supervisor</strong> — entradas, salidas, conteos, reportes y producción.</li>
+          <li><strong>Operador</strong> — solo conteos y registro de producción.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -48,6 +48,18 @@ urlpatterns = [
     path('reportes/stock-bajo/', views.reporte_stock_bajo, name='reporte_stock_bajo'),
     path('reportes/produccion/', views.reporte_produccion, name='reporte_produccion'),
 
+    # Producción
+    path('produccion/nueva/', views.produccion_nueva, name='produccion_nueva'),
+
+    # Importar Excel
+    path('importar/items/', views.importar_items, name='importar_items'),
+    path('importar/plantilla/', views.descargar_plantilla, name='descargar_plantilla'),
+
+    # Usuarios (solo staff)
+    path('usuarios/', views.usuario_lista, name='usuario_lista'),
+    path('usuarios/nuevo/', views.usuario_crear, name='usuario_crear'),
+    path('usuarios/<int:pk>/editar/', views.usuario_editar, name='usuario_editar'),
+
     # API
     path('api/item/<int:pk>/info/', views.api_item_info, name='api_item_info'),
     path('api/categoria/nueva/', views.api_categoria_nueva, name='api_categoria_nueva'),

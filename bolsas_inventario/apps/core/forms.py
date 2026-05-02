@@ -1,5 +1,6 @@
 from django import forms
 from django.core.exceptions import ValidationError
+from django.contrib.auth.models import User, Group
 from decimal import Decimal
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
@@ -230,6 +231,163 @@ class ConteoForm(forms.ModelForm):
         # Pre-format datetime for the datetime-local input
         if self.instance and self.instance.fecha_hora_conteo:
             self.initial['fecha_hora_conteo'] = self.instance.fecha_hora_conteo.strftime('%Y-%m-%dT%H:%M')
+
+
+class ProduccionForm(forms.Form):
+    item = forms.ModelChoiceField(
+        queryset=Item.objects.filter(activo=True, tipo='producto').order_by('nombre'),
+        widget=forms.Select(attrs={'class': 'form-select form-select-lg'}),
+        label='Producto',
+        empty_label='-- Seleccionar producto --',
+    )
+    cantidad = forms.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control form-control-lg',
+            'step': '0.01', 'placeholder': '0',
+            'inputmode': 'decimal',
+        }),
+        label='Cantidad producida',
+    )
+    ubicacion_destino = forms.ModelChoiceField(
+        queryset=Ubicacion.objects.all(),
+        widget=forms.Select(attrs={'class': 'form-select form-select-lg'}),
+        label='Destino en bodega',
+        empty_label='-- Seleccionar ubicación --',
+    )
+    fecha_movimiento = forms.DateTimeField(
+        widget=forms.DateTimeInput(
+            attrs={'class': 'form-control form-control-lg', 'type': 'datetime-local'},
+            format='%Y-%m-%dT%H:%M',
+        ),
+        label='Fecha y hora de producción',
+        input_formats=['%Y-%m-%dT%H:%M'],
+    )
+    motivo = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': 'form-control', 'rows': 2,
+            'placeholder': 'Observaciones opcionales...',
+        }),
+        label='Observaciones',
+    )
+
+
+GRUPOS_CHOICES = [
+    ('', '-- Sin grupo --'),
+    ('Administrador', 'Administrador'),
+    ('Supervisor', 'Supervisor'),
+    ('Operador', 'Operador'),
+]
+
+
+class UsuarioCrearForm(forms.Form):
+    username = forms.CharField(
+        max_length=150,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'nombre.usuario'}),
+        label='Usuario',
+    )
+    first_name = forms.CharField(
+        max_length=150, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre'}),
+        label='Nombre',
+    )
+    last_name = forms.CharField(
+        max_length=150, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Apellido'}),
+        label='Apellido',
+    )
+    email = forms.EmailField(
+        required=False,
+        widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'correo@empresa.com'}),
+        label='Correo',
+    )
+    grupo = forms.ChoiceField(
+        choices=GRUPOS_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Rol',
+        required=False,
+    )
+    password = forms.CharField(
+        min_length=6,
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Mínimo 6 caracteres'}),
+        label='Contraseña',
+    )
+    password2 = forms.CharField(
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Repetir contraseña'}),
+        label='Confirmar contraseña',
+    )
+
+    def clean_username(self):
+        username = self.cleaned_data['username'].strip()
+        if User.objects.filter(username=username).exists():
+            raise ValidationError('Ya existe un usuario con ese nombre.')
+        return username
+
+    def clean(self):
+        cleaned = super().clean()
+        p1 = cleaned.get('password')
+        p2 = cleaned.get('password2')
+        if p1 and p2 and p1 != p2:
+            self.add_error('password2', 'Las contraseñas no coinciden.')
+        return cleaned
+
+
+class UsuarioEditarForm(forms.Form):
+    first_name = forms.CharField(
+        max_length=150, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='Nombre',
+    )
+    last_name = forms.CharField(
+        max_length=150, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='Apellido',
+    )
+    email = forms.EmailField(
+        required=False,
+        widget=forms.EmailInput(attrs={'class': 'form-control'}),
+        label='Correo',
+    )
+    grupo = forms.ChoiceField(
+        choices=GRUPOS_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Rol',
+        required=False,
+    )
+    is_active = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        label='Usuario activo',
+    )
+    nueva_password = forms.CharField(
+        min_length=6, required=False,
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Dejar vacío para no cambiar'}),
+        label='Nueva contraseña',
+    )
+    nueva_password2 = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Repetir nueva contraseña'}),
+        label='Confirmar nueva contraseña',
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        p1 = cleaned.get('nueva_password')
+        p2 = cleaned.get('nueva_password2')
+        if p1 and p2 and p1 != p2:
+            self.add_error('nueva_password2', 'Las contraseñas no coinciden.')
+        if p1 and not p2:
+            self.add_error('nueva_password2', 'Confirma la nueva contraseña.')
+        return cleaned
+
+
+class ImportarItemsForm(forms.Form):
+    archivo = forms.FileField(
+        widget=forms.FileInput(attrs={'class': 'form-control', 'accept': '.xlsx,.xls'}),
+        label='Archivo Excel (.xlsx)',
+        help_text='Descargá la plantilla para ver el formato esperado.',
+    )
 
 
 class FiltroMovimientosForm(forms.Form):

@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib import messages
 from django.db.models import Sum, Q, Count
 from django.db import transaction
@@ -8,17 +8,26 @@ from django.utils import timezone
 from datetime import date, timedelta
 from decimal import Decimal
 import csv
+import io
 import json
 
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, Conteo, ConteoDetalle
 )
+from django.contrib.auth.models import User, Group
 from .forms import (
     ItemForm, CategoriaForm, UbicacionForm, MaquinaForm, ClienteForm,
     MovimientoEntradaForm, MovimientoSalidaForm, MovimientoTransferenciaForm,
-    ConteoForm, FiltroMovimientosForm
+    ConteoForm, FiltroMovimientosForm, ProduccionForm, ImportarItemsForm,
+    UsuarioCrearForm, UsuarioEditarForm,
 )
+from .services.notifications import notify_stock, send_n8n_event
+
+
+def _perm(codename):
+    """Shorthand permission string for core app."""
+    return f'core.{codename}'
 
 
 # ─── DASHBOARD ────────────────────────────────────────────────────────────────
@@ -102,6 +111,7 @@ def _calcular_produccion(fecha):
 # ─── INVENTARIO ───────────────────────────────────────────────────────────────
 
 @login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
 def inventario_lista(request):
     q = request.GET.get('q', '').strip()
 
@@ -141,6 +151,7 @@ def inventario_lista(request):
 
 
 @login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
 def item_detalle(request, pk):
     item = get_object_or_404(Item, pk=pk)
     stocks = Stock.objects.filter(item=item).select_related('ubicacion')
@@ -153,6 +164,7 @@ def item_detalle(request, pk):
 
 
 @login_required
+@permission_required(_perm('crear_item'), raise_exception=True)
 def item_crear(request):
     if request.method == 'POST':
         form = ItemForm(request.POST)
@@ -170,6 +182,7 @@ def item_crear(request):
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def item_editar(request, pk):
     item = get_object_or_404(Item, pk=pk)
     if request.method == 'POST':
@@ -187,6 +200,7 @@ def item_editar(request, pk):
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def item_toggle_activo(request, pk):
     item = get_object_or_404(Item, pk=pk)
     item.activo = not item.activo
@@ -236,6 +250,7 @@ def ubicacion_editar(request, pk):
 # ─── MOVIMIENTOS ──────────────────────────────────────────────────────────────
 
 @login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
 def movimiento_lista(request):
     form = FiltroMovimientosForm(request.GET or None)
     movimientos = MovimientoInventario.objects.select_related(
@@ -286,6 +301,7 @@ def _exportar_movimientos_csv(movimientos):
 
 
 @login_required
+@permission_required(_perm('registrar_entrada'), raise_exception=True)
 def movimiento_entrada(request):
     items = Item.objects.filter(activo=True).order_by('nombre')
     ubicaciones = Ubicacion.objects.all()
@@ -359,6 +375,12 @@ def movimiento_entrada(request):
                         fecha_movimiento=fecha_movimiento,
                         usuario=request.user,
                     )
+                    send_n8n_event('movement_created', {
+                        'tipo': 'entrada', 'item': item.nombre, 'codigo': item.codigo,
+                        'cantidad': str(cantidad), 'ubicacion': ubicacion_destino.nombre,
+                        'usuario': request.user.username,
+                    })
+                    notify_stock(item)
             messages.success(request, f'{len(filas_validas)} entrada(s) registrada(s) exitosamente.')
             return redirect('movimiento_lista')
 
@@ -367,6 +389,7 @@ def movimiento_entrada(request):
 
 
 @login_required
+@permission_required(_perm('registrar_salida'), raise_exception=True)
 def movimiento_salida(request):
     items = Item.objects.filter(activo=True).order_by('nombre')
     ubicaciones = Ubicacion.objects.all()
@@ -490,6 +513,13 @@ def movimiento_salida(request):
                         fecha_movimiento=fecha_movimiento,
                         usuario=request.user,
                     )
+                    send_n8n_event('movement_created', {
+                        'tipo': 'salida', 'item': item.nombre, 'codigo': item.codigo,
+                        'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
+                        'cliente': cliente.nombre if cliente else None,
+                        'usuario': request.user.username,
+                    })
+                    notify_stock(item)
             messages.success(request, f'{len(filas_validas)} salida(s) registrada(s) exitosamente.')
             return redirect('movimiento_lista')
 
@@ -504,6 +534,7 @@ def movimiento_salida(request):
 
 
 @login_required
+@permission_required(_perm('registrar_entrada'), raise_exception=True)
 def movimiento_transferencia(request):
     if request.method == 'POST':
         form = MovimientoTransferenciaForm(request.POST)
@@ -529,12 +560,14 @@ def movimiento_transferencia(request):
 # ─── CONTEOS ──────────────────────────────────────────────────────────────────
 
 @login_required
+@permission_required(_perm('registrar_conteo'), raise_exception=True)
 def conteo_lista(request):
     conteos = Conteo.objects.select_related('usuario').order_by('-fecha', 'turno')[:60]
     return render(request, 'conteos/lista.html', {'conteos': conteos})
 
 
 @login_required
+@permission_required(_perm('registrar_conteo'), raise_exception=True)
 def conteo_nuevo(request):
     hoy = date.today()
     items = Item.objects.filter(activo=True).order_by('tipo', 'nombre')
@@ -680,6 +713,7 @@ def conteo_nuevo(request):
 
 
 @login_required
+@permission_required(_perm('registrar_conteo'), raise_exception=True)
 def conteo_detalle(request, pk):
     conteo = get_object_or_404(Conteo, pk=pk)
     detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__nombre')
@@ -696,6 +730,7 @@ def conteo_detalle(request, pk):
 
 
 @login_required
+@permission_required(_perm('aplicar_conciliacion'), raise_exception=True)
 def conteo_conciliar(request, pk):
     conteo = get_object_or_404(Conteo, pk=pk)
     detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__nombre')
@@ -747,6 +782,7 @@ def conteo_conciliar(request, pk):
 
 
 @login_required
+@permission_required(_perm('aplicar_conciliacion'), raise_exception=True)
 def conteo_ajustar_detalle(request, pk, det_pk):
     if request.method != 'POST':
         return redirect('conteo_conciliar', pk=pk)
@@ -779,11 +815,18 @@ def conteo_ajustar_detalle(request, pk, det_pk):
         conteo.refresh_from_db()
         conteo.actualizar_estado()
 
+    send_n8n_event('count_difference', {
+        'conteo_id': conteo.pk, 'item': detalle.item.nombre, 'codigo': detalle.item.codigo,
+        'diferencia': str(detalle.diferencia_final), 'ubicacion': detalle.ubicacion.nombre,
+        'usuario': request.user.username,
+    })
+    notify_stock(detalle.item)
     messages.success(request, f'Ajuste aplicado: {detalle.item.nombre} ({detalle.diferencia_final:+g} {detalle.item.unidad_medida}).')
     return redirect('conteo_conciliar', pk=pk)
 
 
 @login_required
+@permission_required(_perm('aplicar_conciliacion'), raise_exception=True)
 def conteo_ajustar_todos(request, pk):
     if request.method != 'POST':
         return redirect('conteo_conciliar', pk=pk)
@@ -817,11 +860,16 @@ def conteo_ajustar_todos(request, pk):
         conteo.refresh_from_db()
         conteo.actualizar_estado()
 
+    send_n8n_event('count_difference', {
+        'conteo_id': conteo.pk, 'ajustes_aplicados': count,
+        'usuario': request.user.username,
+    })
     messages.success(request, f'{count} ajuste(s) aplicado(s) exitosamente.')
     return redirect('conteo_conciliar', pk=pk)
 
 
 @login_required
+@permission_required(_perm('aplicar_conciliacion'), raise_exception=True)
 def conteo_marcar_conciliado(request, pk):
     if request.method != 'POST':
         return redirect('conteo_conciliar', pk=pk)
@@ -948,6 +996,7 @@ def cliente_toggle_activo(request, pk):
 # ─── REPORTES ─────────────────────────────────────────────────────────────────
 
 @login_required
+@permission_required(_perm('ver_reportes'), raise_exception=True)
 def reporte_stock_bajo(request):
     items_bajo = []
     for item in Item.objects.filter(activo=True).select_related('categoria'):
@@ -975,6 +1024,7 @@ def reporte_stock_bajo(request):
 
 
 @login_required
+@permission_required(_perm('ver_reportes'), raise_exception=True)
 def reporte_produccion(request):
     fecha_str = request.GET.get('fecha', '')
     if fecha_str:
@@ -1046,4 +1096,331 @@ def api_item_info(request, pk):
              'cantidad': str(s['cantidad_actual'])}
             for s in stocks
         ]
+    })
+
+
+# ─── PRODUCCIÓN ───────────────────────────────────────────────────────────────
+
+@login_required
+@permission_required(_perm('registrar_produccion'), raise_exception=True)
+def produccion_nueva(request):
+    ubicaciones = Ubicacion.objects.all()
+
+    if request.method == 'POST':
+        form = ProduccionForm(request.POST)
+        if form.is_valid():
+            item = form.cleaned_data['item']
+            cantidad = form.cleaned_data['cantidad']
+            ubicacion = form.cleaned_data['ubicacion_destino']
+            fecha_movimiento = form.cleaned_data['fecha_movimiento']
+            motivo = form.cleaned_data.get('motivo', '') or f'Producción registrada'
+
+            if timezone.is_naive(fecha_movimiento):
+                fecha_movimiento = timezone.make_aware(fecha_movimiento)
+
+            with transaction.atomic():
+                MovimientoInventario.objects.create(
+                    item=item,
+                    tipo_movimiento='entrada',
+                    cantidad=cantidad,
+                    ubicacion_destino=ubicacion,
+                    motivo=motivo,
+                    fecha_movimiento=fecha_movimiento,
+                    usuario=request.user,
+                )
+
+            send_n8n_event('production_created', {
+                'item': item.nombre, 'codigo': item.codigo,
+                'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
+                'usuario': request.user.username,
+                'fecha_movimiento': fecha_movimiento.isoformat(),
+            })
+            notify_stock(item)
+
+            messages.success(request, f'Producción registrada: {cantidad} {item.unidad_medida} de {item.nombre}.')
+            return redirect('produccion_nueva')
+    else:
+        form = ProduccionForm(initial={
+            'fecha_movimiento': timezone.now().strftime('%Y-%m-%dT%H:%M'),
+        })
+
+    return render(request, 'produccion/form.html', {
+        'form': form,
+        'ubicaciones': ubicaciones,
+    })
+
+
+# ─── IMPORTAR EXCEL ───────────────────────────────────────────────────────────
+
+@login_required
+@permission_required(_perm('importar_excel'), raise_exception=True)
+def importar_items(request):
+    resultados = None
+
+    if request.method == 'POST':
+        form = ImportarItemsForm(request.POST, request.FILES)
+        if form.is_valid():
+            archivo = request.FILES['archivo']
+            resultados = _procesar_excel_items(archivo)
+    else:
+        form = ImportarItemsForm()
+
+    return render(request, 'importar/form.html', {
+        'form': form,
+        'resultados': resultados,
+    })
+
+
+def _procesar_excel_items(archivo):
+    try:
+        import openpyxl
+    except ImportError:
+        return {'error': 'openpyxl no está instalado.', 'creados': 0, 'actualizados': 0, 'errores': []}
+
+    creados = 0
+    actualizados = 0
+    errores = []
+
+    try:
+        wb = openpyxl.load_workbook(archivo, read_only=True, data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+    except Exception as e:
+        return {'error': f'No se pudo leer el archivo: {e}', 'creados': 0, 'actualizados': 0, 'errores': []}
+
+    if not rows:
+        return {'error': 'El archivo está vacío.', 'creados': 0, 'actualizados': 0, 'errores': []}
+
+    # First row must be headers; find column indices
+    headers = [str(h).strip().lower() if h else '' for h in rows[0]]
+    col = {name: headers.index(name) for name in ('codigo', 'nombre', 'tipo', 'unidad_medida') if name in headers}
+
+    required = ['codigo', 'nombre', 'tipo', 'unidad_medida']
+    missing = [r for r in required if r not in col]
+    if missing:
+        return {
+            'error': f'Columnas requeridas faltantes: {", ".join(missing)}.',
+            'creados': 0, 'actualizados': 0, 'errores': [],
+        }
+
+    col_opt = lambda name: headers.index(name) if name in headers else None
+    idx_desc = col_opt('descripcion')
+    idx_cat = col_opt('categoria')
+    idx_min = col_opt('stock_minimo')
+
+    TIPOS_VALIDOS = {'producto', 'repuesto', 'consumible'}
+
+    for row_num, row in enumerate(rows[1:], start=2):
+        try:
+            codigo = str(row[col['codigo']] or '').strip()
+            nombre = str(row[col['nombre']] or '').strip()
+            tipo = str(row[col['tipo']] or '').strip().lower()
+            unidad = str(row[col['unidad_medida']] or '').strip()
+
+            if not codigo or not nombre:
+                errores.append(f'Fila {row_num}: código o nombre vacío, se omite.')
+                continue
+            if tipo not in TIPOS_VALIDOS:
+                errores.append(f'Fila {row_num} ({codigo}): tipo "{tipo}" inválido (usar: producto/repuesto/consumible).')
+                continue
+            if not unidad:
+                errores.append(f'Fila {row_num} ({codigo}): unidad de medida requerida.')
+                continue
+
+            descripcion = str(row[idx_desc] or '').strip() if idx_desc is not None else ''
+
+            categoria = None
+            if idx_cat is not None and row[idx_cat]:
+                cat_nombre = str(row[idx_cat]).strip()
+                if cat_nombre:
+                    categoria, _ = Categoria.objects.get_or_create(nombre=cat_nombre)
+
+            stock_minimo = Decimal('0')
+            if idx_min is not None and row[idx_min] is not None:
+                try:
+                    stock_minimo = Decimal(str(row[idx_min]))
+                except Exception:
+                    pass
+
+            item, created = Item.objects.update_or_create(
+                codigo=codigo,
+                defaults={
+                    'nombre': nombre,
+                    'tipo': tipo,
+                    'unidad_medida': unidad,
+                    'descripcion': descripcion,
+                    'categoria': categoria,
+                    'stock_minimo': stock_minimo,
+                    'activo': True,
+                },
+            )
+            if created:
+                creados += 1
+            else:
+                actualizados += 1
+
+        except Exception as e:
+            errores.append(f'Fila {row_num}: error inesperado — {e}')
+
+    return {'creados': creados, 'actualizados': actualizados, 'errores': errores, 'error': None}
+
+
+@login_required
+@permission_required(_perm('importar_excel'), raise_exception=True)
+def descargar_plantilla(request):
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        messages.error(request, 'openpyxl no está instalado.')
+        return redirect('importar_items')
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Items'
+
+    headers = ['codigo', 'nombre', 'tipo', 'unidad_medida', 'stock_minimo', 'categoria', 'descripcion']
+    header_fill = PatternFill('solid', fgColor='003087')
+    header_font = Font(bold=True, color='FFFFFF')
+
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+
+    # Example rows
+    ejemplos = [
+        ['BOLSA-001', 'Bolsa de polietileno 10x15', 'producto', 'unidad', 100, 'Bolsas', ''],
+        ['REP-001', 'Rodamiento 6205', 'repuesto', 'pieza', 5, 'Repuestos', 'Para máquina selladora'],
+        ['CONS-001', 'Cinta adhesiva', 'consumible', 'rollo', 10, 'Consumibles', ''],
+    ]
+    for row_data in ejemplos:
+        ws.append(row_data)
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        ws.column_dimensions[col[0].column_letter].width = max(12, max_len + 4)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    response = HttpResponse(
+        buf.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = 'attachment; filename="plantilla_items.xlsx"'
+    return response
+
+
+# ─── USUARIOS ─────────────────────────────────────────────────────────────────
+
+def _staff_required(view_func):
+    """Restrict view to staff/superusers only."""
+    from functools import wraps
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            from django.contrib.auth.views import redirect_to_login
+            return redirect_to_login(request.get_full_path())
+        if not (request.user.is_staff or request.user.is_superuser):
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+
+def _get_grupo(user):
+    return user.groups.first().name if user.groups.exists() else ''
+
+
+@login_required
+@_staff_required
+def usuario_lista(request):
+    usuarios = (
+        User.objects.prefetch_related('groups')
+        .order_by('username')
+    )
+    data = [
+        {'user': u, 'grupo': _get_grupo(u)}
+        for u in usuarios
+    ]
+    return render(request, 'usuarios/lista.html', {'data': data})
+
+
+@login_required
+@_staff_required
+def usuario_crear(request):
+    if request.method == 'POST':
+        form = UsuarioCrearForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            user = User.objects.create_user(
+                username=cd['username'],
+                password=cd['password'],
+                first_name=cd.get('first_name', ''),
+                last_name=cd.get('last_name', ''),
+                email=cd.get('email', ''),
+            )
+            grupo_nombre = cd.get('grupo')
+            if grupo_nombre:
+                try:
+                    grupo = Group.objects.get(name=grupo_nombre)
+                    user.groups.set([grupo])
+                except Group.DoesNotExist:
+                    pass
+            messages.success(request, f'Usuario "{user.username}" creado exitosamente.')
+            return redirect('usuario_lista')
+    else:
+        form = UsuarioCrearForm()
+
+    return render(request, 'usuarios/form.html', {'form': form, 'titulo': 'Nuevo Usuario'})
+
+
+@login_required
+@_staff_required
+def usuario_editar(request, pk):
+    usuario = get_object_or_404(User, pk=pk)
+
+    if request.method == 'POST':
+        form = UsuarioEditarForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            usuario.first_name = cd.get('first_name', '')
+            usuario.last_name = cd.get('last_name', '')
+            usuario.email = cd.get('email', '')
+            usuario.is_active = cd.get('is_active', True)
+
+            nueva_pass = cd.get('nueva_password')
+            if nueva_pass:
+                usuario.set_password(nueva_pass)
+
+            usuario.save()
+
+            grupo_nombre = cd.get('grupo')
+            if grupo_nombre:
+                try:
+                    grupo = Group.objects.get(name=grupo_nombre)
+                    usuario.groups.set([grupo])
+                except Group.DoesNotExist:
+                    usuario.groups.clear()
+            else:
+                usuario.groups.clear()
+
+            messages.success(request, f'Usuario "{usuario.username}" actualizado.')
+            return redirect('usuario_lista')
+    else:
+        form = UsuarioEditarForm(initial={
+            'first_name': usuario.first_name,
+            'last_name': usuario.last_name,
+            'email': usuario.email,
+            'is_active': usuario.is_active,
+            'grupo': _get_grupo(usuario),
+        })
+
+    return render(request, 'usuarios/form.html', {
+        'form': form,
+        'titulo': f'Editar: {usuario.username}',
+        'usuario': usuario,
     })

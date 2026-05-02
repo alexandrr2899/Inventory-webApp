@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Registrar Producción{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3">
+  <h1><i class="bi bi-plus-circle-fill me-2"></i>Registrar Producción</h1>
+  <p class="mb-0 opacity-75 small">Ingresá los productos que salieron de producción hoy.</p>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-12 col-md-6 col-lg-5">
+    <div class="card">
+      <div class="card-body p-4">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="mb-4">
+            <label class="form-label">{{ form.item.label }}</label>
+            {{ form.item }}
+            {% if form.item.errors %}
+              <div class="text-danger small mt-1">{{ form.item.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label">{{ form.cantidad.label }}</label>
+            <div class="input-group input-group-lg">
+              {{ form.cantidad }}
+            </div>
+            {% if form.cantidad.errors %}
+              <div class="text-danger small mt-1">{{ form.cantidad.errors.0 }}</div>
+            {% endif %}
+            <div id="unidad-hint" class="form-text text-muted"></div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label">{{ form.ubicacion_destino.label }}</label>
+            {{ form.ubicacion_destino }}
+            {% if form.ubicacion_destino.errors %}
+              <div class="text-danger small mt-1">{{ form.ubicacion_destino.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label">{{ form.fecha_movimiento.label }}</label>
+            {{ form.fecha_movimiento }}
+            {% if form.fecha_movimiento.errors %}
+              <div class="text-danger small mt-1">{{ form.fecha_movimiento.errors.0 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label">{{ form.motivo.label }}</label>
+            {{ form.motivo }}
+          </div>
+
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-success btn-lg">
+              <i class="bi bi-check-circle-fill me-2"></i>Guardar Producción
+            </button>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Cancelar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {% if perms.core.ver_inventario %}
+    <div class="text-center mt-3">
+      <a href="{% url 'movimiento_lista' %}" class="text-muted small">
+        <i class="bi bi-clock-history me-1"></i>Ver historial de movimientos
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ITEMS_INFO = {};
+{% for item in form.item.field.queryset %}
+ITEMS_INFO['{{ item.pk }}'] = {nombre: '{{ item.nombre|escapejs }}', unidad: '{{ item.unidad_medida|escapejs }}'};
+{% endfor %}
+
+document.getElementById('id_item').addEventListener('change', function() {
+  const info = ITEMS_INFO[this.value];
+  const hint = document.getElementById('unidad-hint');
+  hint.textContent = info ? 'Unidad: ' + info.unidad : '';
+});
+
+// Trigger on load if value already selected
+const sel = document.getElementById('id_item');
+if (sel.value) sel.dispatchEvent(new Event('change'));
+</script>
+{% endblock %}

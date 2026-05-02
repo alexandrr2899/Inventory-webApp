@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Gestión de Usuarios{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+  <div>
+    <h1 class="mb-0"><i class="bi bi-people-fill me-2"></i>Usuarios</h1>
+    <p class="mb-0 opacity-75 small">{{ data|length }} usuario(s) registrado(s)</p>
+  </div>
+  <a href="{% url 'usuario_crear' %}" class="btn btn-light">
+    <i class="bi bi-person-plus-fill me-1"></i>Nuevo Usuario
+  </a>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Usuario</th>
+          <th>Nombre</th>
+          <th>Rol</th>
+          <th>Estado</th>
+          <th>Tipo</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data %}
+        <tr>
+          <td>
+            <span class="fw-semibold">{{ row.user.username }}</span>
+            {% if row.user == request.user %}
+              <span class="badge bg-secondary ms-1 small">yo</span>
+            {% endif %}
+          </td>
+          <td class="text-muted">
+            {{ row.user.get_full_name|default:"—" }}
+            {% if row.user.email %}
+              <br><small class="text-muted">{{ row.user.email }}</small>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.grupo == 'Administrador' %}
+              <span class="badge bg-danger">Administrador</span>
+            {% elif row.grupo == 'Supervisor' %}
+              <span class="badge bg-warning text-dark">Supervisor</span>
+            {% elif row.grupo == 'Operador' %}
+              <span class="badge bg-info text-dark">Operador</span>
+            {% else %}
+              <span class="badge bg-secondary">Sin rol</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.user.is_active %}
+              <span class="badge bg-success">Activo</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactivo</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.user.is_superuser %}
+              <span class="badge bg-dark"><i class="bi bi-shield-fill-check me-1"></i>Superusuario</span>
+            {% elif row.user.is_staff %}
+              <span class="badge bg-primary">Staff</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{% url 'usuario_editar' row.user.pk %}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-pencil-fill"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No hay usuarios registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

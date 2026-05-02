@@ -4,3 +4,5 @@ python-decouple==3.8
 gunicorn==22.0.0
 whitenoise==6.7.0
 openpyxl==3.1.5
+requests==2.32.3
+Pillow==10.4.0

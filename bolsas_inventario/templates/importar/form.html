@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Importar Ítems desde Excel{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3">
+  <h1><i class="bi bi-file-earmark-excel-fill me-2"></i>Importar Ítems desde Excel</h1>
+  <p class="mb-0 opacity-75 small">Cargá un archivo .xlsx para crear o actualizar ítems masivamente.</p>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-md-6">
+    <div class="card">
+      <div class="card-header bg-primary text-white">
+        <i class="bi bi-upload me-2"></i>Cargar archivo
+      </div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data" novalidate>
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">{{ form.archivo.label }}</label>
+            {{ form.archivo }}
+            <div class="form-text">{{ form.archivo.help_text }}</div>
+            {% if form.archivo.errors %}
+              <div class="text-danger small mt-1">{{ form.archivo.errors.0 }}</div>
+            {% endif %}
+          </div>
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-cloud-upload-fill me-2"></i>Importar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header">
+        <i class="bi bi-download me-2"></i>Plantilla
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Descargá la plantilla con el formato correcto y ejemplos de referencia.
+        </p>
+        <a href="{% url 'descargar_plantilla' %}" class="btn btn-outline-success w-100">
+          <i class="bi bi-file-earmark-arrow-down me-2"></i>Descargar plantilla.xlsx
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6">
+    {% if resultados %}
+      {% if resultados.error %}
+        <div class="alert alert-danger">
+          <i class="bi bi-x-circle-fill me-2"></i>{{ resultados.error }}
+        </div>
+      {% else %}
+        <div class="card border-0 shadow-sm mb-3">
+          <div class="card-body">
+            <h6 class="card-title text-muted text-uppercase small">Resultado de la importación</h6>
+            <div class="row g-2 text-center">
+              <div class="col-4">
+                <div class="display-6 text-success fw-bold">{{ resultados.creados }}</div>
+                <div class="small text-muted">Creados</div>
+              </div>
+              <div class="col-4">
+                <div class="display-6 text-primary fw-bold">{{ resultados.actualizados }}</div>
+                <div class="small text-muted">Actualizados</div>
+              </div>
+              <div class="col-4">
+                <div class="display-6 text-danger fw-bold">{{ resultados.errores|length }}</div>
+                <div class="small text-muted">Errores</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {% if resultados.errores %}
+          <div class="card border-danger">
+            <div class="card-header text-danger bg-transparent">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>Filas con errores
+            </div>
+            <div class="card-body p-2">
+              <ul class="list-unstyled mb-0 small">
+                {% for e in resultados.errores %}
+                  <li class="py-1 border-bottom">
+                    <i class="bi bi-x-circle text-danger me-1"></i>{{ e }}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-success">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            Importación completada sin errores.
+            <a href="{% url 'inventario_lista' %}" class="alert-link">Ver inventario</a>
+          </div>
+        {% endif %}
+      {% endif %}
+    {% else %}
+      <div class="card bg-light border-0">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">Formato esperado del Excel</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered small mb-2">
+              <thead class="table-dark">
+                <tr>
+                  <th>codigo</th><th>nombre</th><th>tipo</th>
+                  <th>unidad_medida</th><th>stock_minimo</th><th>categoria</th><th>descripcion</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>BOLSA-001</td><td>Bolsa 10x15</td><td>producto</td>
+                  <td>unidad</td><td>100</td><td>Bolsas</td><td></td>
+                </tr>
+                <tr>
+                  <td>REP-001</td><td>Rodamiento</td><td>repuesto</td>
+                  <td>pieza</td><td>5</td><td>Repuestos</td><td>Selladora</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ul class="small text-muted mb-0">
+            <li><strong>codigo, nombre, tipo, unidad_medida</strong> son requeridos.</li>
+            <li>Tipos válidos: <code>producto</code>, <code>repuesto</code>, <code>consumible</code>.</li>
+            <li>Si el código ya existe, el ítem se <strong>actualiza</strong>.</li>
+            <li><strong>categoria</strong> se crea automáticamente si no existe.</li>
+          </ul>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

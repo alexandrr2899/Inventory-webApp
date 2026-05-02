@@ -98,28 +98,46 @@
       <i class="bi bi-house-fill"></i> Dashboard
     </a>
 
+    {% if perms.core.ver_inventario %}
     <span class="sidebar-section">Inventario</span>
     <a href="{% url 'inventario_lista' %}" class="nav-link {% if 'inventario' in request.resolver_match.url_name %}active{% endif %}">
       <i class="bi bi-box-fill"></i> Ítems
     </a>
+    {% if perms.core.crear_item %}
     <a href="{% url 'ubicacion_lista' %}" class="nav-link">
       <i class="bi bi-geo-alt-fill"></i> Ubicaciones
     </a>
+    {% endif %}
+    {% endif %}
 
     <span class="sidebar-section">Operaciones</span>
+    {% if perms.core.registrar_produccion %}
+    <a href="{% url 'produccion_nueva' %}" class="nav-link {% if request.resolver_match.url_name == 'produccion_nueva' %}active{% endif %}">
+      <i class="bi bi-plus-circle-fill text-success"></i> Registrar Producción
+    </a>
+    {% endif %}
+    {% if perms.core.registrar_entrada %}
     <a href="{% url 'movimiento_entrada' %}" class="nav-link">
       <i class="bi bi-arrow-down-circle-fill text-success"></i> Nueva Entrada
     </a>
+    {% endif %}
+    {% if perms.core.registrar_salida %}
     <a href="{% url 'movimiento_salida' %}" class="nav-link">
       <i class="bi bi-arrow-up-circle-fill text-danger"></i> Nueva Salida
     </a>
+    {% endif %}
+    {% if perms.core.registrar_entrada %}
     <a href="{% url 'movimiento_transferencia' %}" class="nav-link">
       <i class="bi bi-arrow-left-right text-warning"></i> Transferencia
     </a>
+    {% endif %}
+    {% if perms.core.ver_inventario %}
     <a href="{% url 'movimiento_lista' %}" class="nav-link">
       <i class="bi bi-clock-history"></i> Historial
     </a>
+    {% endif %}
 
+    {% if perms.core.registrar_conteo %}
     <span class="sidebar-section">Conteos</span>
     <a href="{% url 'conteo_nuevo' %}" class="nav-link">
       <i class="bi bi-clipboard-plus-fill"></i> Nuevo Conteo
@@ -127,7 +145,9 @@
     <a href="{% url 'conteo_lista' %}" class="nav-link">
       <i class="bi bi-clipboard-check-fill"></i> Ver Conteos
     </a>
+    {% endif %}
 
+    {% if perms.core.crear_item %}
     <span class="sidebar-section">Catálogos</span>
     <a href="{% url 'maquina_lista' %}" class="nav-link">
       <i class="bi bi-gear-fill"></i> Máquinas
@@ -135,7 +155,9 @@
     <a href="{% url 'cliente_lista' %}" class="nav-link">
       <i class="bi bi-people-fill"></i> Clientes
     </a>
+    {% endif %}
 
+    {% if perms.core.ver_reportes %}
     <span class="sidebar-section">Reportes</span>
     <a href="{% url 'reporte_stock_bajo' %}" class="nav-link">
       <i class="bi bi-exclamation-triangle-fill text-warning"></i> Stock Bajo
@@ -143,6 +165,21 @@
     <a href="{% url 'reporte_produccion' %}" class="nav-link">
       <i class="bi bi-graph-up-arrow"></i> Producción
     </a>
+    {% endif %}
+
+    {% if perms.core.importar_excel or user.is_staff %}
+    <span class="sidebar-section">Administración</span>
+    {% if perms.core.importar_excel %}
+    <a href="{% url 'importar_items' %}" class="nav-link {% if request.resolver_match.url_name == 'importar_items' %}active{% endif %}">
+      <i class="bi bi-file-earmark-excel-fill text-success"></i> Importar Excel
+    </a>
+    {% endif %}
+    {% if user.is_staff %}
+    <a href="{% url 'usuario_lista' %}" class="nav-link {% if 'usuario' in request.resolver_match.url_name %}active{% endif %}">
+      <i class="bi bi-person-gear text-primary"></i> Usuarios
+    </a>
+    {% endif %}
+    {% endif %}
   </nav>
 </aside>
 {% endif %}
@@ -173,18 +210,30 @@
   <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
     <i class="bi bi-house-fill"></i><span>Inicio</span>
   </a>
+  {% if perms.core.ver_inventario %}
   <a href="{% url 'inventario_lista' %}">
     <i class="bi bi-box-fill"></i><span>Inventario</span>
   </a>
+  {% endif %}
+  {% if perms.core.registrar_produccion and not perms.core.registrar_salida %}
+  <a href="{% url 'produccion_nueva' %}" class="{% if request.resolver_match.url_name == 'produccion_nueva' %}active{% endif %}">
+    <i class="bi bi-plus-circle-fill"></i><span>Producción</span>
+  </a>
+  {% elif perms.core.registrar_salida %}
   <a href="{% url 'movimiento_salida' %}">
     <i class="bi bi-arrow-up-circle-fill"></i><span>Salida</span>
   </a>
+  {% endif %}
+  {% if perms.core.registrar_conteo %}
   <a href="{% url 'conteo_nuevo' %}">
     <i class="bi bi-clipboard-plus-fill"></i><span>Conteo</span>
   </a>
+  {% endif %}
+  {% if perms.core.ver_inventario %}
   <a href="{% url 'movimiento_lista' %}">
     <i class="bi bi-clock-history"></i><span>Historial</span>
   </a>
+  {% endif %}
 </nav>
 {% endif %}
 

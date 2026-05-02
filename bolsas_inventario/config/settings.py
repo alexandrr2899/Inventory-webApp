@@ -89,3 +89,6 @@ LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
 
 MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
+
+# Notificaciones n8n (opcional)
+N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')
