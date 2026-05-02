@@ -31,6 +31,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_PORT: 5432
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media

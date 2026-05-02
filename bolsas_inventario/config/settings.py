@@ -7,6 +7,15 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-only-key-change-i
 DEBUG = config('DEBUG', default=True, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
+# Cloudflare Tunnel / reverse proxy: confiar en el header X-Forwarded-Proto
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Dominios que Django acepta como origen válido para CSRF.
+# Incluye el tunnel de Cloudflare y cualquier dominio propio.
+# Formato: https://dominio.com  (con esquema, sin trailing slash)
+_csrf_origins = config('CSRF_TRUSTED_ORIGINS', default='')
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
