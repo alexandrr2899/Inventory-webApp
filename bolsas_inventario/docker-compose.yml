@@ -7,33 +7,33 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: bolsas_inventario
-      POSTGRES_USER: bolsas_user
-      POSTGRES_PASSWORD: bolsas_pass
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${DB_NAME:-bolsas_inventario}
+      POSTGRES_USER: ${DB_USER:-bolsas_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bolsas_user -d bolsas_inventario"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-bolsas_user} -d ${DB_NAME:-bolsas_inventario}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   web:
     build: .
     restart: always
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "${APP_PORT:-8000}:8000"
     environment:
-      - DB_HOST=db
-      - DB_NAME=bolsas_inventario
-      - DB_USER=bolsas_user
-      - DB_PASSWORD=bolsas_pass
-      - DB_PORT=5432
+      DEBUG: ${DEBUG:-False}
+      SECRET_KEY: ${SECRET_KEY}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-bolsas_inventario}
+      DB_USER: ${DB_USER:-bolsas_user}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: 5432
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
     volumes:
-      - .:/app
       - static_files:/app/staticfiles
+      - media_files:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -41,3 +41,4 @@ services:
 volumes:
   postgres_data:
   static_files:
+  media_files:
