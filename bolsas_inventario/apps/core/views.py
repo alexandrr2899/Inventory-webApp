@@ -1,15 +1,24 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib import messages
-from django.db.models import Sum, Q, Count
+from django.db.models import Sum, Q, Count, F, Value, DecimalField
+from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
+from django.core.paginator import Paginator
 from datetime import date, timedelta
 from decimal import Decimal
 import csv
 import io
 import json
+
+# Shared annotation for total stock per item
+_STOCK_ANN = Coalesce(
+    Sum('stock__cantidad_actual'),
+    Value(Decimal('0')),
+    output_field=DecimalField(max_digits=12, decimal_places=2),
+)
 
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
@@ -36,10 +45,15 @@ def _perm(codename):
 def dashboard(request):
     hoy = date.today()
 
-    items_bajo_stock = []
-    for item in Item.objects.filter(activo=True):
-        if item.bajo_stock():
-            items_bajo_stock.append(item)
+    # Single query: annotate stock total, filter bajo_stock in DB (no N+1)
+    items_bajo_stock = list(
+        Item.objects
+        .filter(activo=True)
+        .annotate(stock_calc=_STOCK_ANN)
+        .filter(stock_calc__lte=F('stock_minimo'))
+        .select_related('categoria')
+        .order_by('nombre')[:20]
+    )
 
     ultimos_movimientos = MovimientoInventario.objects.select_related(
         'item', 'usuario', 'ubicacion_origen', 'ubicacion_destino'
@@ -56,6 +70,14 @@ def dashboard(request):
         .order_by('-total')[:5]
     )
 
+    total_bajo_stock = (
+        Item.objects
+        .filter(activo=True)
+        .annotate(stock_calc=_STOCK_ANN)
+        .filter(stock_calc__lte=F('stock_minimo'))
+        .count()
+    )
+
     context = {
         'items_bajo_stock': items_bajo_stock,
         'ultimos_movimientos': ultimos_movimientos,
@@ -63,7 +85,7 @@ def dashboard(request):
         'repuestos_top': repuestos_top,
         'hoy': hoy,
         'total_items': Item.objects.filter(activo=True).count(),
-        'total_bajo_stock': len(items_bajo_stock),
+        'total_bajo_stock': total_bajo_stock,
     }
     return render(request, 'dashboard.html', context)
 
@@ -115,36 +137,37 @@ def _calcular_produccion(fecha):
 def inventario_lista(request):
     q = request.GET.get('q', '').strip()
 
-    qs = Item.objects.select_related('categoria').order_by('nombre')
+    qs = (
+        Item.objects
+        .filter(activo=True)
+        .select_related('categoria')
+        .annotate(stock_calc=_STOCK_ANN)
+        .order_by('nombre')
+    )
     if q:
         qs = qs.filter(Q(nombre__icontains=q) | Q(codigo__icontains=q))
 
+    # Second query: principal location per item (max stock)
     stocks_raw = (
         Stock.objects
         .filter(item__in=qs)
-        .select_related('ubicacion')
         .values('item_id', 'ubicacion__nombre', 'cantidad_actual')
     )
-    stocks_por_item: dict = {}
+    ub_map: dict = {}
     for s in stocks_raw:
         iid = s['item_id']
-        stocks_por_item.setdefault(iid, []).append(s)
+        if iid not in ub_map or s['cantidad_actual'] > ub_map[iid][0]:
+            ub_map[iid] = (s['cantidad_actual'], s['ubicacion__nombre'])
 
-    items_data = []
-    for item in qs:
-        item_stocks = stocks_por_item.get(item.pk, [])
-        stock_total = sum(s['cantidad_actual'] for s in item_stocks) or Decimal('0')
-        bajo = stock_total <= item.stock_minimo
-        ub_principal = (
-            max(item_stocks, key=lambda s: s['cantidad_actual'])['ubicacion__nombre']
-            if item_stocks else '–'
-        )
-        items_data.append({
+    items_data = [
+        {
             'item': item,
-            'stock': stock_total,
-            'bajo': bajo,
-            'ub_principal': ub_principal,
-        })
+            'stock': item.stock_calc,
+            'bajo': item.stock_calc <= item.stock_minimo,
+            'ub_principal': ub_map.get(item.pk, (None, '–'))[1],
+        }
+        for item in qs
+    ]
 
     context = {'items_data': items_data, 'q': q}
     return render(request, 'inventario/lista.html', context)
@@ -270,8 +293,13 @@ def movimiento_lista(request):
     if request.GET.get('export') == 'csv':
         return _exportar_movimientos_csv(movimientos)
 
-    movimientos = movimientos[:200]
-    return render(request, 'movimientos/lista.html', {'movimientos': movimientos, 'form': form})
+    paginator = Paginator(movimientos, 50)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    return render(request, 'movimientos/lista.html', {
+        'movimientos': page_obj,
+        'page_obj': page_obj,
+        'form': form,
+    })
 
 
 def _exportar_movimientos_csv(movimientos):
@@ -562,8 +590,15 @@ def movimiento_transferencia(request):
 @login_required
 @permission_required(_perm('registrar_conteo'), raise_exception=True)
 def conteo_lista(request):
-    conteos = Conteo.objects.select_related('usuario').order_by('-fecha', 'turno')[:60]
-    return render(request, 'conteos/lista.html', {'conteos': conteos})
+    qs = (
+        Conteo.objects
+        .select_related('usuario')
+        .annotate(num_detalles=Count('detalles'))
+        .order_by('-fecha', 'turno')
+    )
+    paginator = Paginator(qs, 30)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    return render(request, 'conteos/lista.html', {'conteos': page_obj, 'page_obj': page_obj})
 
 
 @login_required
@@ -998,11 +1033,17 @@ def cliente_toggle_activo(request, pk):
 @login_required
 @permission_required(_perm('ver_reportes'), raise_exception=True)
 def reporte_stock_bajo(request):
-    items_bajo = []
-    for item in Item.objects.filter(activo=True).select_related('categoria'):
-        stock = item.stock_total()
-        if stock <= item.stock_minimo:
-            items_bajo.append({'item': item, 'stock': stock, 'deficit': item.stock_minimo - stock})
+    items_bajo = [
+        {'item': i, 'stock': i.stock_calc, 'deficit': i.stock_minimo - i.stock_calc}
+        for i in (
+            Item.objects
+            .filter(activo=True)
+            .select_related('categoria')
+            .annotate(stock_calc=_STOCK_ANN)
+            .filter(stock_calc__lte=F('stock_minimo'))
+            .order_by('nombre')
+        )
+    ]
 
     if request.GET.get('export') == 'csv':
         response = HttpResponse(content_type='text/csv; charset=utf-8')

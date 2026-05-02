@@ -42,6 +42,9 @@ class Item(models.Model):
         verbose_name = 'Ítem'
         verbose_name_plural = 'Ítems'
         ordering = ['nombre']
+        indexes = [
+            models.Index(fields=['activo', 'tipo'], name='item_activo_tipo_idx'),
+        ]
         permissions = [
             ('ver_inventario',       'Puede ver el inventario'),
             ('crear_item',           'Puede crear ítems'),
@@ -172,6 +175,11 @@ class MovimientoInventario(models.Model):
         verbose_name = 'Movimiento'
         verbose_name_plural = 'Movimientos'
         ordering = ['-fecha']
+        indexes = [
+            models.Index(fields=['fecha_movimiento'], name='mov_fecha_mov_idx'),
+            models.Index(fields=['item', 'tipo_movimiento'], name='mov_item_tipo_idx'),
+            models.Index(fields=['tipo_movimiento', 'fecha_movimiento'], name='mov_tipo_fecha_idx'),
+        ]
 
     def __str__(self):
         return f'{self.get_tipo_movimiento_display()} - {self.item.nombre} ({self.cantidad})'

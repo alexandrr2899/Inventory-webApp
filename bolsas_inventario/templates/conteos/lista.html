@@ -42,7 +42,7 @@
             </span>
           </td>
           <td class="text-muted small">{{ c.fecha_hora_conteo|date:"H:i" }}</td>
-          <td class="text-muted small">{{ c.detalles.count }} ítem(s)</td>
+          <td class="text-muted small">{{ c.num_detalles }} ítem(s)</td>
           <td>
             {% if c.estado == 'conciliado' %}
               <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Conciliado</span>
@@ -84,7 +84,7 @@
                   style="font-size:.65rem;">{{ c.get_turno_display }}</span>
           </div>
           <div class="text-muted small">
-            {{ c.detalles.count }} ítem(s) · {{ c.fecha_hora_conteo|date:"H:i" }}
+            {{ c.num_detalles }} ítem(s) · {{ c.fecha_hora_conteo|date:"H:i" }}
             · {{ c.usuario.get_full_name|default:c.usuario.username }}
           </div>
         </div>
@@ -112,6 +112,8 @@
   </div>
   {% endfor %}
 </div>
+
+{% include "includes/pagination.html" %}
 
 {% else %}
 <div class="text-center py-5">
