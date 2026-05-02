@@ -1,13 +1,13 @@
 {% load static %}{
-  "name": "Inventario Bolsas",
-  "short_name": "Inventario",
-  "description": "Control de inventario para planta de producción de bolsas",
+  "name": "Transformadora de Empaques",
+  "short_name": "Transformadora",
+  "description": "Control de inventario — Transformadora de Empaques S. de R.L.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#0d6efd",
-  "background_color": "#f4f6f9",
+  "theme_color": "#003087",
+  "background_color": "#ffffff",
   "lang": "es",
   "categories": ["productivity", "business"],
   "icons": [

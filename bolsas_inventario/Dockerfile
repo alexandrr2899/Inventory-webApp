@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Crear directorios de estáticos aunque no vengan con el código
+RUN mkdir -p static/images static/icons staticfiles
+
 RUN chmod +x entrypoint.sh
 
 EXPOSE 8000

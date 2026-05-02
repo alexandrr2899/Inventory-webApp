@@ -4,6 +4,10 @@ from .models import (
     MovimientoInventario, Conteo, ConteoDetalle
 )
 
+admin.site.site_header = "Transformadora de Empaques"
+admin.site.site_title  = "Transformadora"
+admin.site.index_title = "Panel de Administración"
+
 
 @admin.register(Categoria)
 class CategoriaAdmin(admin.ModelAdmin):

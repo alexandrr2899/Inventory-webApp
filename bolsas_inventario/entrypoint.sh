@@ -9,6 +9,13 @@ echo "Base de datos lista."
 
 python manage.py makemigrations --noinput
 python manage.py migrate --noinput
+
+# Generar íconos PWA desde logo-icon.png si existe y los iconos no fueron generados
+if [ -f "static/images/logo-icon.png" ] && [ ! -f "static/icons/icon-192.png" ]; then
+    echo "Generando íconos PWA desde logo-icon.png..."
+    python create_icons.py
+fi
+
 python manage.py collectstatic --noinput
 
 # Crear superusuario si no existe
