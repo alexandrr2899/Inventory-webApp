@@ -11,6 +11,7 @@ urlpatterns = [
     path('inventario/<int:pk>/', views.item_detalle, name='item_detalle'),
     path('inventario/<int:pk>/editar/', views.item_editar, name='item_editar'),
     path('inventario/<int:pk>/toggle/', views.item_toggle_activo, name='item_toggle_activo'),
+    path('inventario/<int:pk>/historial/', views.item_historial, name='item_historial'),
 
     # Inventario - Ubicaciones
     path('ubicaciones/', views.ubicacion_lista, name='ubicacion_lista'),

@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Historial — {{ item.nombre }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Kardex card ────────────────────────────────────────────────────── */
+  .kardex-card {
+    border-left: 4px solid #dee2e6;
+    border-radius: 0 10px 10px 0;
+    padding: .85rem 1rem;
+    margin-bottom: .5rem;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    transition: box-shadow .15s;
+  }
+  .kardex-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.11); }
+  .kardex-card.entrada  { border-left-color: #198754; }
+  .kardex-card.salida   { border-left-color: #dc3545; }
+  .kardex-card.ajuste   { border-left-color: #ffc107; }
+  .kardex-card.transferencia { border-left-color: #0dcaf0; }
+
+  /* ── Stock flow ──────────────────────────────────────────────────────── */
+  .stock-flow {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    font-size: .88rem;
+    font-weight: 600;
+    background: #f8f9fa;
+    border-radius: 20px;
+    padding: .2rem .7rem;
+  }
+  .stock-flow .arrow { color: #adb5bd; font-size: .8rem; }
+  .stock-flow .val-antes { color: #6c757d; }
+  .stock-flow .val-despues.cero   { color: #dc3545; }
+  .stock-flow .val-despues.bajo   { color: #fd7e14; }
+  .stock-flow .val-despues.normal { color: #198754; }
+
+  /* ── Filtro tabs ─────────────────────────────────────────────────────── */
+  .filter-tabs .btn { border-radius: 20px; font-size: .8rem; padding: .25rem .75rem; }
+
+  /* ── Delta badge ─────────────────────────────────────────────────────── */
+  .delta-badge {
+    font-size: .82rem; font-weight: 700;
+    min-width: 64px; text-align: right; display: inline-block;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Encabezado ─────────────────────────────────────────────────────────── -->
+<div class="page-header mb-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <div>
+      <h1 style="font-size:1.2rem;">
+        <i class="bi bi-table me-2"></i>Historial completo
+      </h1>
+      <div class="opacity-75 small">
+        <span class="badge rounded-pill bg-white text-primary me-1">{{ item.codigo }}</span>
+        {{ item.nombre }}
+      </div>
+    </div>
+    <a href="{% url 'item_detalle' item.pk %}" class="btn btn-light btn-sm fw-semibold align-self-start">
+      <i class="bi bi-arrow-left me-1"></i>Detalle
+    </a>
+  </div>
+</div>
+
+<!-- ── Resumen rápido ─────────────────────────────────────────────────────── -->
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-2 px-1">
+      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Movimientos</div>
+      <div class="fw-bold fs-5">{{ total_general }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-2 px-1">
+      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Stock actual</div>
+      <div class="fw-bold fs-5 {% if item.bajo_stock %}text-danger{% else %}text-success{% endif %}">
+        {{ item.stock_total }} <span class="fs-6 fw-normal text-muted">{{ item.unidad_medida }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-2 px-1">
+      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Stock mínimo</div>
+      <div class="fw-bold fs-5">{{ item.stock_minimo }} <span class="fs-6 fw-normal text-muted">{{ item.unidad_medida }}</span></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-2 px-1">
+      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Mostrando</div>
+      <div class="fw-bold fs-5">{{ total }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Filtros de tipo ────────────────────────────────────────────────────── -->
+<div class="filter-tabs d-flex flex-wrap gap-2 mb-3">
+  <a href="?tipo="
+     class="btn btn-sm {% if not tipo_filtro %}btn-dark{% else %}btn-outline-secondary{% endif %}">
+    Todos
+  </a>
+  <a href="?tipo=entrada"
+     class="btn btn-sm {% if tipo_filtro == 'entrada' %}btn-success{% else %}btn-outline-success{% endif %}">
+    <i class="bi bi-arrow-down-circle me-1"></i>Entradas
+  </a>
+  <a href="?tipo=salida"
+     class="btn btn-sm {% if tipo_filtro == 'salida' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+    <i class="bi bi-arrow-up-circle me-1"></i>Salidas
+  </a>
+  <a href="?tipo=ajuste"
+     class="btn btn-sm {% if tipo_filtro == 'ajuste' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+    <i class="bi bi-sliders me-1"></i>Ajustes
+  </a>
+  <a href="?tipo=transferencia"
+     class="btn btn-sm {% if tipo_filtro == 'transferencia' %}btn-info{% else %}btn-outline-info{% endif %}">
+    <i class="bi bi-arrow-left-right me-1"></i>Transferencias
+  </a>
+</div>
+
+<!-- ── Lista Kardex ───────────────────────────────────────────────────────── -->
+{% if page_obj.object_list %}
+
+{% for entrada in page_obj %}
+{% with mov=entrada.mov %}
+<div class="kardex-card {{ mov.tipo_movimiento }}">
+
+  <!-- Fila superior: fecha + tipo + delta -->
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
+
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <!-- Fecha -->
+      <span class="text-muted" style="font-size:.75rem;">
+        <i class="bi bi-calendar3 me-1"></i>{{ mov.fecha_movimiento|date:"d/m/Y H:i" }}
+      </span>
+      <!-- Badge tipo -->
+      <span class="badge rounded-pill
+        {% if mov.tipo_movimiento == 'entrada' %}bg-success
+        {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+        {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
+        {% else %}bg-info text-dark{% endif %}"
+        style="font-size:.72rem;">
+        {% if mov.tipo_movimiento == 'entrada' %}<i class="bi bi-arrow-down-circle-fill me-1"></i>
+        {% elif mov.tipo_movimiento == 'salida' %}<i class="bi bi-arrow-up-circle-fill me-1"></i>
+        {% elif mov.tipo_movimiento == 'ajuste' %}<i class="bi bi-sliders me-1"></i>
+        {% else %}<i class="bi bi-arrow-left-right me-1"></i>{% endif %}
+        {{ mov.get_tipo_movimiento_display }}
+      </span>
+      <!-- Referencia -->
+      {% if mov.cliente %}
+        <span class="text-muted small">→ {{ mov.cliente.nombre }}</span>
+      {% elif mov.maquina %}
+        <span class="text-muted small">→ {{ mov.maquina.nombre }}</span>
+      {% elif mov.tipo_movimiento == 'transferencia' and mov.ubicacion_origen and mov.ubicacion_destino %}
+        <span class="text-muted small">
+          {{ mov.ubicacion_origen.nombre }} → {{ mov.ubicacion_destino.nombre }}
+        </span>
+      {% endif %}
+    </div>
+
+    <!-- Delta de cantidad (siempre con signo) -->
+    <span class="delta-badge
+      {% if entrada.delta > 0 %}text-success
+      {% elif entrada.delta < 0 %}text-danger
+      {% else %}text-muted{% endif %}">
+      {% if entrada.delta > 0 %}+{% endif %}{{ entrada.delta|floatformat:"-2" }} {{ item.unidad_medida }}
+    </span>
+
+  </div>
+
+  <!-- Fila media: stock antes → después -->
+  <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
+    <div class="stock-flow">
+      <span class="val-antes">{{ entrada.stock_antes|floatformat:"-2" }}</span>
+      <span class="arrow"><i class="bi bi-arrow-right"></i></span>
+      <span class="val-despues
+        {% if entrada.stock_despues <= 0 %}cero
+        {% elif item.stock_minimo > 0 and entrada.stock_despues <= item.stock_minimo %}bajo
+        {% else %}normal{% endif %}">
+        {{ entrada.stock_despues|floatformat:"-2" }}
+      </span>
+      <span class="text-muted fw-normal" style="font-size:.75rem;">{{ item.unidad_medida }}</span>
+    </div>
+    {% if entrada.stock_despues <= 0 %}
+      <span class="badge bg-danger" style="font-size:.7rem;">Sin stock</span>
+    {% elif item.stock_minimo > 0 and entrada.stock_despues <= item.stock_minimo %}
+      <span class="badge bg-warning text-dark" style="font-size:.7rem;">Stock bajo</span>
+    {% endif %}
+  </div>
+
+  <!-- Fila inferior: usuario + motivo + ubicación -->
+  <div class="text-muted" style="font-size:.72rem; line-height:1.5;">
+    <i class="bi bi-person-fill me-1"></i>{{ mov.usuario.get_full_name|default:mov.usuario.username }}
+    {% if mov.ubicacion_destino %}
+      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ mov.ubicacion_destino.nombre }}</span>
+    {% elif mov.ubicacion_origen %}
+      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ mov.ubicacion_origen.nombre }}</span>
+    {% endif %}
+    {% if mov.motivo %}
+      <span class="ms-2 fst-italic">{{ mov.motivo|truncatechars:60 }}</span>
+    {% endif %}
+  </div>
+
+</div>
+{% endwith %}
+{% endfor %}
+
+<!-- ── Paginación ─────────────────────────────────────────────────────────── -->
+{% if page_obj.has_other_pages %}
+<nav class="mt-3" aria-label="Paginación historial">
+  <ul class="pagination pagination-sm justify-content-center flex-wrap mb-0">
+
+    {% if page_obj.has_previous %}
+    <li class="page-item">
+      <a class="page-link" href="?tipo={{ tipo_filtro }}&page={{ page_obj.previous_page_number }}">
+        <i class="bi bi-chevron-left"></i>
+      </a>
+    </li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-left"></i></span></li>
+    {% endif %}
+
+    {% for num in page_obj.paginator.page_range %}
+      {% if page_obj.number == num %}
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+      {% elif num == 1 or num == page_obj.paginator.num_pages or num|add:"-1" == page_obj.number or num|add:"1" == page_obj.number %}
+        <li class="page-item"><a class="page-link" href="?tipo={{ tipo_filtro }}&page={{ num }}">{{ num }}</a></li>
+      {% elif num == 2 and page_obj.number > 4 %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% elif num == page_obj.paginator.num_pages|add:"-1" and page_obj.number < page_obj.paginator.num_pages|add:"-3" %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+    <li class="page-item">
+      <a class="page-link" href="?tipo={{ tipo_filtro }}&page={{ page_obj.next_page_number }}">
+        <i class="bi bi-chevron-right"></i>
+      </a>
+    </li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link"><i class="bi bi-chevron-right"></i></span></li>
+    {% endif %}
+
+  </ul>
+  <div class="text-center text-muted mt-1" style="font-size:.75rem;">
+    Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+    · {{ total }} movimiento{{ total|pluralize }}
+  </div>
+</nav>
+{% endif %}
+
+{% else %}
+<!-- Estado vacío -->
+<div class="card">
+  <div class="card-body text-center text-muted py-5">
+    <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+    {% if tipo_filtro %}
+      No hay movimientos de tipo <strong>{{ tipo_filtro }}</strong> para este ítem.
+      <div class="mt-2">
+        <a href="?tipo=" class="btn btn-outline-secondary btn-sm">Ver todos</a>
+      </div>
+    {% else %}
+      Este ítem aún no tiene movimientos registrados.
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Botones inferiores ─────────────────────────────────────────────────── -->
+<div class="d-flex gap-2 mt-3 flex-wrap">
+  <a href="{% url 'item_detalle' item.pk %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Volver al detalle
+  </a>
+  {% if perms.core.registrar_entrada %}
+  <a href="{% url 'movimiento_entrada' %}?item={{ item.pk }}" class="btn btn-success btn-sm">
+    <i class="bi bi-arrow-down-circle-fill me-1"></i>Registrar entrada
+  </a>
+  {% endif %}
+  {% if perms.core.registrar_salida %}
+  <a href="{% url 'movimiento_salida' %}?item={{ item.pk }}" class="btn btn-danger btn-sm">
+    <i class="bi bi-arrow-up-circle-fill me-1"></i>Registrar salida
+  </a>
+  {% endif %}
+</div>
+
+{% endblock %}

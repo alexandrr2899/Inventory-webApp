@@ -199,6 +199,88 @@ def item_detalle(request, pk):
 
 
 @login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
+def item_historial(request, pk):
+    """
+    Historial tipo Kardex de un ítem: muestra stock antes y después de cada movimiento.
+
+    Estrategia de cálculo (sin campo stock_resultante en BD):
+    1. Obtener todos los movimientos ordenados ASC (del más antiguo al más nuevo).
+    2. Calcular stock inicial = stock_actual - suma_de_todos_los_deltas.
+    3. Recorrer ASC acumulando el stock para asignar stock_antes / stock_después.
+    4. Invertir a DESC para mostrar el más reciente primero.
+    5. Aplicar filtro de tipo y paginar.
+    """
+    item = get_object_or_404(Item, pk=pk)
+    tipo_filtro = request.GET.get('tipo', '').strip()
+
+    # ── Todos los movimientos del ítem, del más antiguo al más nuevo ──────────
+    todos = list(
+        MovimientoInventario.objects
+        .filter(item=item)
+        .select_related('ubicacion_origen', 'ubicacion_destino',
+                        'usuario', 'cliente', 'maquina')
+        .order_by('fecha_movimiento', 'fecha', 'pk')
+    )
+
+    # ── Calcular stock inicial para anclar la serie ───────────────────────────
+    # Delta de cada tipo respecto al stock total del ítem.
+    def _delta(mov):
+        if mov.tipo_movimiento == 'entrada':
+            return mov.cantidad
+        if mov.tipo_movimiento == 'salida':
+            return -mov.cantidad
+        if mov.tipo_movimiento == 'ajuste':
+            return mov.cantidad          # puede ser negativo
+        # transferencia: no cambia el total (solo reubica)
+        return Decimal('0')
+
+    suma_deltas = sum((_delta(m) for m in todos), Decimal('0'))
+    stock_actual = item.stock_total()
+    stock_inicial = stock_actual - suma_deltas   # stock antes del primer movimiento
+
+    # ── Construir kardex ASC ──────────────────────────────────────────────────
+    kardex = []
+    acum = stock_inicial
+    for mov in todos:
+        d = _delta(mov)
+        stock_antes   = acum
+        stock_despues = acum + d
+        acum = stock_despues
+        kardex.append({
+            'mov':           mov,
+            'delta':         d,
+            'stock_antes':   stock_antes,
+            'stock_despues': stock_despues,
+        })
+
+    # Más reciente primero
+    kardex.reverse()
+
+    # ── Filtro por tipo ───────────────────────────────────────────────────────
+    tipos_validos = ('entrada', 'salida', 'ajuste', 'transferencia')
+    if tipo_filtro in tipos_validos:
+        kardex_filtrado = [k for k in kardex if k['mov'].tipo_movimiento == tipo_filtro]
+    else:
+        kardex_filtrado = kardex
+        tipo_filtro = ''
+
+    total = len(kardex_filtrado)
+
+    # ── Paginación ────────────────────────────────────────────────────────────
+    paginator  = Paginator(kardex_filtrado, 20)
+    page_obj   = paginator.get_page(request.GET.get('page', 1))
+
+    return render(request, 'inventario/historial.html', {
+        'item':          item,
+        'page_obj':      page_obj,
+        'tipo_filtro':   tipo_filtro,
+        'total':         total,
+        'total_general': len(kardex),
+    })
+
+
+@login_required
 @permission_required(_perm('crear_item'), raise_exception=True)
 def item_crear(request):
     if request.method == 'POST':
