@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'axes',          # brute-force login protection
     'apps.core',
 ]
 
@@ -67,6 +68,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'axes.middleware.AxesMiddleware',              # debe ir DESPUÉS de AuthenticationMiddleware
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -158,3 +160,87 @@ MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
 
 # Webhook de n8n para alertas de stock (dejar vacío para deshabilitar).
 N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')
+
+# ─── BRUTE-FORCE PROTECTION (django-axes) ────────────────────────────────────
+
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+# Bloquear después de 5 intentos fallidos.
+AXES_FAILURE_LIMIT = 5
+
+# Bloquear por 1 hora (en segundos) — timedelta también funciona.
+AXES_COOLOFF_TIME = 1   # horas (django-axes interpreta int como horas)
+
+# Bloquear por combinación IP + nombre de usuario (más estricto que solo IP).
+AXES_LOCKOUT_PARAMETERS = ['ip_address', 'username']
+
+# Mensaje que verá el usuario bloqueado.
+AXES_LOCKOUT_TEMPLATE = 'registration/lockout.html'
+
+# Registrar intentos en DB para que el admin los vea.
+AXES_ENABLE_ACCESS_FAILURE_LOG = True
+
+# No resetear el contador al cambiar de IP (previene evasión).
+AXES_RESET_ON_SUCCESS = True   # sí resetear tras login exitoso
+
+# ─── LOGGING DE SEGURIDAD ─────────────────────────────────────────────────────
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'security': {
+            'format': '[SECURITY] %(asctime)s %(levelname)s %(name)s %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+        'standard': {
+            'format': '%(asctime)s %(levelname)s %(name)s %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+        },
+        'security_console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'security',
+        },
+    },
+    'loggers': {
+        # Intentos fallidos y bloqueos de django-axes
+        'axes': {
+            'handlers': ['security_console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        # Eventos de seguridad propios de la app (vistas, permisos, etc.)
+        'security': {
+            'handlers': ['security_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Errores Django generales (500, excepciones)
+        'django': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        # Requests HTTP — solo WARNING+ para no saturar logs
+        'django.request': {
+            'handlers': ['security_console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        # Seguridad interna de Django (CSRF, headers, etc.)
+        'django.security': {
+            'handlers': ['security_console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}

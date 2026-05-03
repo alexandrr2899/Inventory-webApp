@@ -1,3 +1,5 @@
+import logging
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib import messages
@@ -12,6 +14,8 @@ from decimal import Decimal
 import csv
 import io
 import json
+
+security_log = logging.getLogger('security')
 
 # Shared annotation for total stock per item
 _STOCK_ANN = Coalesce(
@@ -37,6 +41,14 @@ from .services.notifications import notify_stock, send_n8n_event
 def _perm(codename):
     """Shorthand permission string for core app."""
     return f'core.{codename}'
+
+
+def _get_client_ip(request):
+    """Return real client IP, respecting X-Forwarded-For from Cloudflare Tunnel."""
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', 'unknown')
 
 
 # ─── DASHBOARD ────────────────────────────────────────────────────────────────
@@ -234,12 +246,14 @@ def item_toggle_activo(request, pk):
 
 
 @login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
 def ubicacion_lista(request):
     ubicaciones = Ubicacion.objects.all()
     return render(request, 'inventario/ubicaciones.html', {'ubicaciones': ubicaciones})
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def ubicacion_crear(request):
     if request.method == 'POST':
         form = UbicacionForm(request.POST)
@@ -255,6 +269,7 @@ def ubicacion_crear(request):
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def ubicacion_editar(request, pk):
     ubicacion = get_object_or_404(Ubicacion, pk=pk)
     if request.method == 'POST':
@@ -936,12 +951,14 @@ def conteo_marcar_conciliado(request, pk):
 # ─── MÁQUINAS ─────────────────────────────────────────────────────────────────
 
 @login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
 def maquina_lista(request):
     maquinas = Maquina.objects.order_by('nombre')
     return render(request, 'maquinas/lista.html', {'maquinas': maquinas})
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def maquina_crear(request):
     if request.method == 'POST':
         form = MaquinaForm(request.POST)
@@ -955,6 +972,7 @@ def maquina_crear(request):
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def maquina_editar(request, pk):
     maquina = get_object_or_404(Maquina, pk=pk)
     if request.method == 'POST':
@@ -971,6 +989,7 @@ def maquina_editar(request, pk):
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def maquina_toggle_activo(request, pk):
     maquina = get_object_or_404(Maquina, pk=pk)
     maquina.activo = not maquina.activo
@@ -982,6 +1001,7 @@ def maquina_toggle_activo(request, pk):
 # ─── CLIENTES ─────────────────────────────────────────────────────────────────
 
 @login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
 def cliente_lista(request):
     q = request.GET.get('q', '')
     clientes = Cliente.objects.order_by('nombre')
@@ -991,6 +1011,7 @@ def cliente_lista(request):
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def cliente_crear(request):
     if request.method == 'POST':
         form = ClienteForm(request.POST)
@@ -1004,6 +1025,7 @@ def cliente_crear(request):
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def cliente_editar(request, pk):
     cliente = get_object_or_404(Cliente, pk=pk)
     if request.method == 'POST':
@@ -1020,6 +1042,7 @@ def cliente_editar(request, pk):
 
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
 def cliente_toggle_activo(request, pk):
     cliente = get_object_or_404(Cliente, pk=pk)
     cliente.activo = not cliente.activo
@@ -1358,7 +1381,7 @@ def descargar_plantilla(request):
 # ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
 def _staff_required(view_func):
-    """Restrict view to staff/superusers only."""
+    """Restrict view to staff/superusers only; log denied attempts."""
     from functools import wraps
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
@@ -1366,6 +1389,12 @@ def _staff_required(view_func):
             from django.contrib.auth.views import redirect_to_login
             return redirect_to_login(request.get_full_path())
         if not (request.user.is_staff or request.user.is_superuser):
+            security_log.warning(
+                'Acceso denegado a %s — usuario=%s ip=%s',
+                request.path,
+                request.user.username,
+                _get_client_ip(request),
+            )
             from django.core.exceptions import PermissionDenied
             raise PermissionDenied
         return view_func(request, *args, **kwargs)
