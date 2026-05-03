@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Historial de Movimientos{% endblock %}
 
+{% block extra_head %}
+<style>
+  .mov-anulado  { opacity:.55; text-decoration:line-through; }
+  .mov-eliminado{ opacity:.35; }
+  .badge-anulado   { background:#6c757d; }
+  .badge-eliminado { background:#343a40; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
   <div>
@@ -48,13 +57,27 @@
   </div>
 </div>
 
-<!-- Mobile: cards -->
+<!-- Leyenda de permisos -->
+{% if perms.core.editar_movimiento or perms.core.anular_movimiento or perms.core.eliminar_movimiento %}
+<div class="alert alert-light border d-flex align-items-center gap-2 py-2 mb-3" style="font-size:.8rem;">
+  <i class="bi bi-shield-check text-success"></i>
+  <span>Tienes acceso de administración sobre movimientos: puedes
+    {% if perms.core.editar_movimiento %}<strong>editar</strong>{% endif %}
+    {% if perms.core.anular_movimiento %}· <strong>anular</strong>{% endif %}
+    {% if perms.core.eliminar_movimiento %}· <strong>eliminar</strong>{% endif %}
+    movimientos activos.
+  </span>
+</div>
+{% endif %}
+
+<!-- ══ MOBILE: cards ══════════════════════════════════════════════════════════ -->
 <div class="d-md-none">
   {% for mov in movimientos %}
-  <div class="card mb-2">
+  <div class="card mb-2 {% if mov.eliminado %}mov-eliminado{% elif mov.anulado %}mov-anulado{% endif %}">
     <div class="card-body py-2 px-3">
       <div class="d-flex justify-content-between align-items-start">
         <div>
+          <!-- Tipo + badges de estado -->
           <span class="badge rounded-pill
             {% if mov.tipo_movimiento == 'entrada' %}bg-success
             {% elif mov.tipo_movimiento == 'salida' %}bg-danger
@@ -62,7 +85,10 @@
             {% else %}bg-info text-dark{% endif %} me-1">
             {{ mov.get_tipo_movimiento_display }}
           </span>
-          <span class="fw-semibold">{{ mov.item.nombre }}</span>
+          {% if mov.anulado %}   <span class="badge badge-anulado">Anulado</span>{% endif %}
+          {% if mov.eliminado %} <span class="badge badge-eliminado">Eliminado</span>{% endif %}
+          {% if mov.editado %}   <span class="badge bg-warning text-dark" style="font-size:.65rem;">Editado</span>{% endif %}
+          <span class="fw-semibold ms-1">{{ mov.item.nombre }}</span>
           <div class="text-muted small">{{ mov.item.codigo }}</div>
         </div>
         <div class="text-end">
@@ -70,15 +96,54 @@
           <div class="text-muted small">{{ mov.item.unidad_medida }}</div>
         </div>
       </div>
+
       <div class="mt-1 text-muted" style="font-size:.72rem">
-        {{ mov.fecha|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
+        {{ mov.fecha_movimiento|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
         {% if mov.cliente %} · <i class="bi bi-person-fill"></i> {{ mov.cliente.nombre }}{% endif %}
         {% if mov.maquina %} · <i class="bi bi-gear-fill"></i> {{ mov.maquina.nombre }}{% endif %}
         {% if mov.ubicacion_origen %} · De: {{ mov.ubicacion_origen.nombre }}{% endif %}
         {% if mov.ubicacion_destino %} · A: {{ mov.ubicacion_destino.nombre }}{% endif %}
       </div>
       {% if mov.motivo %}
-      <div class="text-muted small mt-1 fst-italic">{{ mov.motivo|truncatechars:60 }}</div>
+        <div class="text-muted small mt-1 fst-italic">{{ mov.motivo|truncatechars:60 }}</div>
+      {% endif %}
+
+      <!-- Auditoría compact -->
+      {% if mov.editado %}
+      <div class="text-muted mt-1" style="font-size:.68rem;">
+        <i class="bi bi-pencil me-1"></i>Editado por {{ mov.usuario_edicion.username }} el {{ mov.fecha_edicion|date:"d/m/Y H:i" }}: <em>{{ mov.motivo_edicion|truncatechars:40 }}</em>
+      </div>
+      {% endif %}
+      {% if mov.anulado %}
+      <div class="text-danger mt-1" style="font-size:.68rem;">
+        <i class="bi bi-slash-circle me-1"></i>Anulado por {{ mov.usuario_anulacion.username }} el {{ mov.fecha_anulacion|date:"d/m/Y H:i" }}: <em>{{ mov.motivo_anulacion|truncatechars:40 }}</em>
+      </div>
+      {% endif %}
+      {% if mov.eliminado %}
+      <div class="text-muted mt-1" style="font-size:.68rem;">
+        <i class="bi bi-trash me-1"></i>Eliminado por {{ mov.usuario_eliminacion.username }} el {{ mov.fecha_eliminacion|date:"d/m/Y H:i" }}
+      </div>
+      {% endif %}
+
+      <!-- Botones de acción (solo si tiene permisos y movimiento activo) -->
+      {% if not mov.eliminado %}
+      <div class="d-flex gap-1 mt-2 flex-wrap">
+        {% if perms.core.editar_movimiento and not mov.anulado %}
+        <a href="{% url 'movimiento_editar' mov.pk %}" class="btn btn-outline-warning btn-sm" style="font-size:.72rem;">
+          <i class="bi bi-pencil-fill"></i> Editar
+        </a>
+        {% endif %}
+        {% if perms.core.anular_movimiento and not mov.anulado %}
+        <a href="{% url 'movimiento_anular' mov.pk %}" class="btn btn-outline-secondary btn-sm" style="font-size:.72rem;">
+          <i class="bi bi-slash-circle"></i> Anular
+        </a>
+        {% endif %}
+        {% if perms.core.eliminar_movimiento %}
+        <a href="{% url 'movimiento_eliminar' mov.pk %}" class="btn btn-outline-dark btn-sm" style="font-size:.72rem;">
+          <i class="bi bi-trash3"></i> Eliminar
+        </a>
+        {% endif %}
+      </div>
       {% endif %}
     </div>
   </div>
@@ -89,22 +154,26 @@
   {% endfor %}
 </div>
 
-<!-- Desktop: tabla -->
+<!-- ══ DESKTOP: tabla ═════════════════════════════════════════════════════════ -->
 <div class="d-none d-md-block">
   <div class="card">
     <div class="table-responsive">
       <table class="table table-hover mb-0 table-sm">
         <thead>
           <tr>
-            <th>Fecha</th><th>Tipo</th><th>Ítem</th>
+            <th>#</th><th>Fecha</th><th>Tipo</th><th>Ítem</th>
             <th class="text-end">Cantidad</th><th>Origen</th><th>Destino</th>
-            <th>Cliente / Máquina</th><th>Motivo</th><th>Usuario</th>
+            <th>Ref.</th><th>Motivo</th><th>Usuario</th>
+            {% if perms.core.editar_movimiento or perms.core.anular_movimiento or perms.core.eliminar_movimiento %}
+            <th>Acciones</th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
           {% for mov in movimientos %}
-          <tr>
-            <td class="text-nowrap small">{{ mov.fecha|date:"d/m/Y H:i" }}</td>
+          <tr class="{% if mov.eliminado %}mov-eliminado{% elif mov.anulado %}mov-anulado{% endif %}">
+            <td class="text-muted small">{{ mov.pk }}</td>
+            <td class="text-nowrap small">{{ mov.fecha_movimiento|date:"d/m/Y H:i" }}</td>
             <td>
               <span class="badge rounded-pill
                 {% if mov.tipo_movimiento == 'entrada' %}bg-success
@@ -113,12 +182,26 @@
                 {% else %}bg-info text-dark{% endif %}">
                 {{ mov.get_tipo_movimiento_display }}
               </span>
+              {% if mov.anulado %}   <span class="badge badge-anulado">Anulado</span>{% endif %}
+              {% if mov.eliminado %} <span class="badge badge-eliminado">Eliminado</span>{% endif %}
+              {% if mov.editado %}   <span class="badge bg-warning text-dark" style="font-size:.65rem;">Editado</span>{% endif %}
             </td>
             <td>
               <a href="{% url 'item_detalle' mov.item.pk %}" class="text-decoration-none fw-semibold">
                 {{ mov.item.nombre }}
               </a>
               <div class="text-muted" style="font-size:.72rem">{{ mov.item.codigo }}</div>
+              <!-- Auditoría inline -->
+              {% if mov.editado %}
+              <div class="text-muted" style="font-size:.65rem;">
+                <i class="bi bi-pencil"></i> {{ mov.usuario_edicion.username }} {{ mov.fecha_edicion|date:"d/m/Y" }}: <em>{{ mov.motivo_edicion|truncatechars:25 }}</em>
+              </div>
+              {% endif %}
+              {% if mov.anulado %}
+              <div class="text-danger" style="font-size:.65rem;">
+                <i class="bi bi-slash-circle"></i> {{ mov.usuario_anulacion.username }} {{ mov.fecha_anulacion|date:"d/m/Y" }}
+              </div>
+              {% endif %}
             </td>
             <td class="text-end fw-bold">{{ mov.cantidad }} {{ mov.item.unidad_medida }}</td>
             <td class="text-muted small">{{ mov.ubicacion_origen.nombre|default:"–" }}</td>
@@ -130,9 +213,34 @@
             </td>
             <td class="text-muted small">{{ mov.motivo|truncatechars:30|default:"–" }}</td>
             <td class="text-muted small">{{ mov.usuario.username }}</td>
+            {% if perms.core.editar_movimiento or perms.core.anular_movimiento or perms.core.eliminar_movimiento %}
+            <td class="text-nowrap">
+              {% if not mov.eliminado %}
+                {% if perms.core.editar_movimiento and not mov.anulado %}
+                <a href="{% url 'movimiento_editar' mov.pk %}" class="btn btn-outline-warning btn-sm py-0" title="Editar">
+                  <i class="bi bi-pencil-fill" style="font-size:.75rem;"></i>
+                </a>
+                {% endif %}
+                {% if perms.core.anular_movimiento and not mov.anulado %}
+                <a href="{% url 'movimiento_anular' mov.pk %}" class="btn btn-outline-secondary btn-sm py-0" title="Anular">
+                  <i class="bi bi-slash-circle" style="font-size:.75rem;"></i>
+                </a>
+                {% endif %}
+                {% if perms.core.eliminar_movimiento %}
+                <a href="{% url 'movimiento_eliminar' mov.pk %}" class="btn btn-outline-dark btn-sm py-0" title="Eliminar">
+                  <i class="bi bi-trash3" style="font-size:.75rem;"></i>
+                </a>
+                {% endif %}
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+            {% endif %}
           </tr>
           {% empty %}
-          <tr><td colspan="9" class="text-center text-muted py-4">Sin movimientos.</td></tr>
+          <tr>
+            <td colspan="12" class="text-center text-muted py-4">Sin movimientos.</td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>

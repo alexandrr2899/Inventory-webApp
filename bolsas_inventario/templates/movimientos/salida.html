@@ -247,7 +247,19 @@ document.getElementById('form-salida').addEventListener('submit', function(e) {
   }
 });
 
+// Ítem preseleccionado desde el detalle del ítem
+const itemIdInicial = '{{ item_id_inicial }}';
+
 // Primera fila al cargar
 agregarFila();
+
+// Si hay ítem preseleccionado, seleccionarlo y disparar cambio de tipo
+if (itemIdInicial) {
+  const primerSelect = contenedor.querySelector('select[name="item[]"]');
+  if (primerSelect) {
+    primerSelect.value = itemIdInicial;
+    primerSelect.dispatchEvent(new Event('change'));
+  }
+}
 </script>
 {% endblock %}

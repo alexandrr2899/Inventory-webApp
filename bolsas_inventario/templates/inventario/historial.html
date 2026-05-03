@@ -126,7 +126,8 @@
 
 {% for entrada in page_obj %}
 {% with mov=entrada.mov %}
-<div class="kardex-card {{ mov.tipo_movimiento }}">
+<div class="kardex-card {{ mov.tipo_movimiento }} {% if mov.eliminado %}opacity-25{% elif mov.anulado %}opacity-50{% endif %}"
+     style="{% if mov.anulado %}border-left-color:#6c757d;{% endif %}{% if mov.eliminado %}border-left-color:#343a40;{% endif %}">
 
   <!-- Fila superior: fecha + tipo + delta -->
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
@@ -203,6 +204,47 @@
       <span class="ms-2 fst-italic">{{ mov.motivo|truncatechars:60 }}</span>
     {% endif %}
   </div>
+
+  <!-- Badges y auditoría -->
+  {% if mov.anulado or mov.eliminado or mov.editado %}
+  <div class="d-flex flex-wrap gap-1 mt-1" style="font-size:.68rem;">
+    {% if mov.anulado %}
+      <span class="badge bg-secondary">Anulado</span>
+      <span class="text-muted">por {{ mov.usuario_anulacion.username }} el {{ mov.fecha_anulacion|date:"d/m/Y" }} — <em>{{ mov.motivo_anulacion|truncatechars:40 }}</em></span>
+    {% endif %}
+    {% if mov.eliminado %}
+      <span class="badge bg-dark">Eliminado</span>
+      <span class="text-muted">por {{ mov.usuario_eliminacion.username }} el {{ mov.fecha_eliminacion|date:"d/m/Y" }}</span>
+    {% endif %}
+    {% if mov.editado and not mov.anulado %}
+      <span class="badge bg-warning text-dark">Editado</span>
+      <span class="text-muted">por {{ mov.usuario_edicion.username }} el {{ mov.fecha_edicion|date:"d/m/Y" }} — <em>{{ mov.motivo_edicion|truncatechars:35 }}</em></span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Botones de acción (solo admin, solo movimientos activos) -->
+  {% if not mov.eliminado %}
+  {% if perms.core.editar_movimiento or perms.core.anular_movimiento or perms.core.eliminar_movimiento %}
+  <div class="d-flex gap-1 mt-2">
+    {% if perms.core.editar_movimiento and not mov.anulado %}
+    <a href="{% url 'movimiento_editar' mov.pk %}" class="btn btn-outline-warning btn-sm py-0" style="font-size:.72rem;">
+      <i class="bi bi-pencil-fill"></i> Editar
+    </a>
+    {% endif %}
+    {% if perms.core.anular_movimiento and not mov.anulado %}
+    <a href="{% url 'movimiento_anular' mov.pk %}" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.72rem;">
+      <i class="bi bi-slash-circle"></i> Anular
+    </a>
+    {% endif %}
+    {% if perms.core.eliminar_movimiento %}
+    <a href="{% url 'movimiento_eliminar' mov.pk %}" class="btn btn-outline-dark btn-sm py-0" style="font-size:.72rem;">
+      <i class="bi bi-trash3"></i>
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
 
 </div>
 {% endwith %}

@@ -171,6 +171,33 @@ class MovimientoInventario(models.Model):
     motivo = models.TextField(blank=True)
     usuario = models.ForeignKey(User, on_delete=models.PROTECT)
 
+    # ── Auditoría de edición ──────────────────────────────────────────────────
+    editado = models.BooleanField(default=False)
+    fecha_edicion = models.DateTimeField(null=True, blank=True)
+    usuario_edicion = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='movimientos_editados',
+    )
+    motivo_edicion = models.TextField(blank=True)
+
+    # ── Auditoría de anulación ────────────────────────────────────────────────
+    anulado = models.BooleanField(default=False)
+    fecha_anulacion = models.DateTimeField(null=True, blank=True)
+    usuario_anulacion = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='movimientos_anulados',
+    )
+    motivo_anulacion = models.TextField(blank=True)
+
+    # ── Eliminación lógica ────────────────────────────────────────────────────
+    eliminado = models.BooleanField(default=False)
+    fecha_eliminacion = models.DateTimeField(null=True, blank=True)
+    usuario_eliminacion = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='movimientos_eliminados',
+    )
+    motivo_eliminacion = models.TextField(blank=True)
+
     class Meta:
         verbose_name = 'Movimiento'
         verbose_name_plural = 'Movimientos'
@@ -179,6 +206,12 @@ class MovimientoInventario(models.Model):
             models.Index(fields=['fecha_movimiento'], name='mov_fecha_mov_idx'),
             models.Index(fields=['item', 'tipo_movimiento'], name='mov_item_tipo_idx'),
             models.Index(fields=['tipo_movimiento', 'fecha_movimiento'], name='mov_tipo_fecha_idx'),
+            models.Index(fields=['anulado', 'eliminado'], name='mov_estado_idx'),
+        ]
+        permissions = [
+            ('editar_movimiento',   'Puede editar movimientos'),
+            ('anular_movimiento',   'Puede anular movimientos'),
+            ('eliminar_movimiento', 'Puede eliminar movimientos (lógico)'),
         ]
 
     def __str__(self):

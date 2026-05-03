@@ -159,7 +159,20 @@ function agregarFila() {
 
 document.getElementById('btn-agregar').addEventListener('click', agregarFila);
 
+// Ítem preseleccionado desde el detalle del ítem (?item=<pk>)
+const itemIdInicial = '{{ item_id_inicial }}';
+
 // Arrancar con una fila
 agregarFila();
+
+// Si hay ítem preseleccionado, seleccionarlo en la primera fila y disparar cambio
+if (itemIdInicial) {
+  const primerSelect = tbody.querySelector('.select-item');
+  if (primerSelect) {
+    primerSelect.value = itemIdInicial;
+    primerSelect.dispatchEvent(new Event('change'));
+    primerSelect.focus();
+  }
+}
 </script>
 {% endblock %}

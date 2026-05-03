@@ -23,6 +23,9 @@ urlpatterns = [
     path('movimientos/entrada/', views.movimiento_entrada, name='movimiento_entrada'),
     path('movimientos/salida/', views.movimiento_salida, name='movimiento_salida'),
     path('movimientos/transferencia/', views.movimiento_transferencia, name='movimiento_transferencia'),
+    path('movimientos/<int:pk>/editar/', views.movimiento_editar, name='movimiento_editar'),
+    path('movimientos/<int:pk>/anular/', views.movimiento_anular, name='movimiento_anular'),
+    path('movimientos/<int:pk>/eliminar/', views.movimiento_eliminar, name='movimiento_eliminar'),
 
     # Conteos
     path('conteos/', views.conteo_lista, name='conteo_lista'),

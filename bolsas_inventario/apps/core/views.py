@@ -51,6 +51,103 @@ def _get_client_ip(request):
     return request.META.get('REMOTE_ADDR', 'unknown')
 
 
+# ─── HELPERS DE STOCK PARA MOVIMIENTOS ────────────────────────────────────────
+
+def _revertir_efecto_stock(mov):
+    """
+    Deshace el efecto que un movimiento tuvo sobre el stock.
+    Inverso exacto de MovimientoInventario._actualizar_stock().
+    Debe llamarse dentro de transaction.atomic().
+    """
+    if mov.tipo_movimiento == 'entrada':
+        if mov.ubicacion_destino:
+            s = Stock.objects.filter(item=mov.item, ubicacion=mov.ubicacion_destino).first()
+            if s:
+                s.cantidad_actual -= mov.cantidad
+                s.save()
+
+    elif mov.tipo_movimiento == 'salida':
+        if mov.ubicacion_origen:
+            s, _ = Stock.objects.get_or_create(
+                item=mov.item, ubicacion=mov.ubicacion_origen,
+                defaults={'cantidad_actual': Decimal('0')}
+            )
+            s.cantidad_actual += mov.cantidad
+            s.save()
+
+    elif mov.tipo_movimiento == 'ajuste':
+        if mov.ubicacion_destino:
+            s = Stock.objects.filter(item=mov.item, ubicacion=mov.ubicacion_destino).first()
+            if s:
+                s.cantidad_actual -= mov.cantidad   # cantidad puede ser negativa
+                s.save()
+
+    elif mov.tipo_movimiento == 'transferencia':
+        if mov.ubicacion_origen:
+            s, _ = Stock.objects.get_or_create(
+                item=mov.item, ubicacion=mov.ubicacion_origen,
+                defaults={'cantidad_actual': Decimal('0')}
+            )
+            s.cantidad_actual += mov.cantidad
+            s.save()
+        if mov.ubicacion_destino:
+            s = Stock.objects.filter(item=mov.item, ubicacion=mov.ubicacion_destino).first()
+            if s:
+                s.cantidad_actual -= mov.cantidad
+                s.save()
+
+
+def _aplicar_efecto_stock(tipo, cantidad, item, ub_origen=None, ub_destino=None):
+    """
+    Aplica el efecto de un movimiento sobre el stock sin crear un MovimientoInventario.
+    Útil tras editar un movimiento (revertir antiguo → aplicar nuevo).
+    Debe llamarse dentro de transaction.atomic().
+    """
+    if tipo == 'entrada':
+        if ub_destino:
+            s, _ = Stock.objects.get_or_create(
+                item=item, ubicacion=ub_destino,
+                defaults={'cantidad_actual': Decimal('0')}
+            )
+            s.cantidad_actual += cantidad
+            s.save()
+
+    elif tipo == 'salida':
+        if ub_origen:
+            s = Stock.objects.filter(item=item, ubicacion=ub_origen).first()
+            if s:
+                s.cantidad_actual -= cantidad
+                s.save()
+
+    elif tipo == 'ajuste':
+        if ub_destino:
+            s, _ = Stock.objects.get_or_create(
+                item=item, ubicacion=ub_destino,
+                defaults={'cantidad_actual': Decimal('0')}
+            )
+            s.cantidad_actual += cantidad
+            s.save()
+
+    elif tipo == 'transferencia':
+        if ub_origen:
+            s = Stock.objects.filter(item=item, ubicacion=ub_origen).first()
+            if s:
+                s.cantidad_actual -= cantidad
+                s.save()
+        if ub_destino:
+            s, _ = Stock.objects.get_or_create(
+                item=item, ubicacion=ub_destino,
+                defaults={'cantidad_actual': Decimal('0')}
+            )
+            s.cantidad_actual += cantidad
+            s.save()
+
+
+def _movimiento_editable(mov):
+    """Retorna True si el movimiento puede ser editado/anulado."""
+    return not mov.anulado and not mov.eliminado
+
+
 # ─── DASHBOARD ────────────────────────────────────────────────────────────────
 
 @login_required
@@ -509,7 +606,10 @@ def movimiento_entrada(request):
             messages.success(request, f'{len(filas_validas)} entrada(s) registrada(s) exitosamente.')
             return redirect('movimiento_lista')
 
-    context = {'items': items, 'ubicaciones': ubicaciones}
+    # Ítem preseleccionado desde ?item=<pk> (ej: desde detalle del ítem)
+    item_id_inicial = request.GET.get('item', '')
+
+    context = {'items': items, 'ubicaciones': ubicaciones, 'item_id_inicial': item_id_inicial}
     return render(request, 'movimientos/entrada.html', context)
 
 
@@ -648,12 +748,16 @@ def movimiento_salida(request):
             messages.success(request, f'{len(filas_validas)} salida(s) registrada(s) exitosamente.')
             return redirect('movimiento_lista')
 
+    # Ítem preseleccionado desde ?item=<pk>
+    item_id_inicial = request.GET.get('item', '')
+
     context = {
         'items': items,
         'ubicaciones': ubicaciones,
         'clientes': clientes,
         'maquinas': maquinas,
         'items_tipos_json': json.dumps(items_tipos),
+        'item_id_inicial': item_id_inicial,
     }
     return render(request, 'movimientos/salida.html', context)
 
@@ -680,6 +784,213 @@ def movimiento_transferencia(request):
         form = MovimientoTransferenciaForm()
 
     return render(request, 'movimientos/transferencia.html', {'form': form})
+
+
+# ─── GESTIÓN DE MOVIMIENTOS (editar / anular / eliminar) ─────────────────────
+
+@login_required
+@permission_required(_perm('editar_movimiento'), raise_exception=True)
+def movimiento_editar(request, pk):
+    """
+    Edita un movimiento existente.
+    Flujo: revertir efecto original → guardar nuevos datos → aplicar nuevo efecto.
+    Solo accesible con permiso core.editar_movimiento (Administrador / superuser).
+    """
+    mov = get_object_or_404(
+        MovimientoInventario.objects.select_related(
+            'item', 'ubicacion_origen', 'ubicacion_destino', 'usuario', 'cliente', 'maquina'
+        ),
+        pk=pk,
+    )
+
+    if not _movimiento_editable(mov):
+        messages.error(request, 'Este movimiento está anulado o eliminado y no puede editarse.')
+        return redirect('movimiento_lista')
+
+    items      = Item.objects.filter(activo=True).order_by('nombre')
+    ubicaciones = Ubicacion.objects.all()
+    clientes   = Cliente.objects.filter(activo=True).order_by('nombre')
+    maquinas   = Maquina.objects.filter(activo=True).order_by('nombre')
+
+    if request.method == 'POST':
+        motivo_edicion = request.POST.get('motivo_edicion', '').strip()
+        if not motivo_edicion:
+            messages.error(request, 'El motivo de edición es obligatorio.')
+        else:
+            try:
+                nueva_cantidad   = Decimal(request.POST.get('cantidad', '0'))
+                if nueva_cantidad <= 0:
+                    raise ValueError
+            except (ValueError, Exception):
+                messages.error(request, 'Cantidad inválida.')
+                nueva_cantidad = None
+
+            if nueva_cantidad:
+                nuevo_tipo       = request.POST.get('tipo_movimiento', mov.tipo_movimiento)
+                nuevo_motivo     = request.POST.get('motivo', mov.motivo)
+                nueva_fecha_str  = request.POST.get('fecha_movimiento', '').strip()
+                ub_origen_id     = request.POST.get('ubicacion_origen') or None
+                ub_destino_id    = request.POST.get('ubicacion_destino') or None
+                cliente_id       = request.POST.get('cliente') or None
+                maquina_id       = request.POST.get('maquina') or None
+
+                nueva_ub_origen  = Ubicacion.objects.filter(pk=ub_origen_id).first()  if ub_origen_id  else None
+                nueva_ub_destino = Ubicacion.objects.filter(pk=ub_destino_id).first() if ub_destino_id else None
+                nuevo_cliente    = Cliente.objects.filter(pk=cliente_id).first()   if cliente_id   else None
+                nuevo_maquina    = Maquina.objects.filter(pk=maquina_id).first()   if maquina_id   else None
+
+                nueva_fecha = mov.fecha_movimiento
+                if nueva_fecha_str:
+                    from django.utils.dateparse import parse_datetime
+                    parsed = parse_datetime(nueva_fecha_str)
+                    if parsed:
+                        nueva_fecha = timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
+
+                with transaction.atomic():
+                    # 1. Revertir efecto original
+                    _revertir_efecto_stock(mov)
+                    # 2. Guardar nuevos valores (sin disparar _actualizar_stock)
+                    mov.tipo_movimiento    = nuevo_tipo
+                    mov.cantidad           = nueva_cantidad
+                    mov.ubicacion_origen   = nueva_ub_origen
+                    mov.ubicacion_destino  = nueva_ub_destino
+                    mov.cliente            = nuevo_cliente
+                    mov.maquina            = nuevo_maquina
+                    mov.motivo             = nuevo_motivo
+                    mov.fecha_movimiento   = nueva_fecha
+                    mov.editado            = True
+                    mov.fecha_edicion      = timezone.now()
+                    mov.usuario_edicion    = request.user
+                    mov.motivo_edicion     = motivo_edicion
+                    mov.save(update_fields=[
+                        'tipo_movimiento', 'cantidad', 'ubicacion_origen', 'ubicacion_destino',
+                        'cliente', 'maquina', 'motivo', 'fecha_movimiento',
+                        'editado', 'fecha_edicion', 'usuario_edicion', 'motivo_edicion',
+                    ])
+                    # 3. Aplicar nuevo efecto
+                    _aplicar_efecto_stock(
+                        nuevo_tipo, nueva_cantidad, mov.item,
+                        ub_origen=nueva_ub_origen, ub_destino=nueva_ub_destino,
+                    )
+                    # 4. Notificar stock
+                    notify_stock(mov.item, movimiento='edicion', usuario=request.user.username)
+
+                security_log.info(
+                    'Movimiento #%s editado por %s — %s',
+                    mov.pk, request.user.username, motivo_edicion,
+                )
+                messages.success(request, f'Movimiento #{mov.pk} editado correctamente.')
+                return redirect('movimiento_lista')
+
+    context = {
+        'mov': mov,
+        'items': items,
+        'ubicaciones': ubicaciones,
+        'clientes': clientes,
+        'maquinas': maquinas,
+    }
+    return render(request, 'movimientos/editar.html', context)
+
+
+@login_required
+@permission_required(_perm('anular_movimiento'), raise_exception=True)
+def movimiento_anular(request, pk):
+    """
+    Anula un movimiento: revierte su efecto en stock y lo marca como anulado.
+    No lo elimina — queda visible con badge "Anulado".
+    """
+    mov = get_object_or_404(
+        MovimientoInventario.objects.select_related('item', 'usuario'),
+        pk=pk,
+    )
+
+    if mov.anulado:
+        messages.warning(request, 'Este movimiento ya estaba anulado.')
+        return redirect('movimiento_lista')
+    if mov.eliminado:
+        messages.error(request, 'No se puede anular un movimiento eliminado.')
+        return redirect('movimiento_lista')
+
+    if request.method == 'POST':
+        motivo = request.POST.get('motivo_anulacion', '').strip()
+        if not motivo:
+            messages.error(request, 'El motivo de anulación es obligatorio.')
+        else:
+            with transaction.atomic():
+                _revertir_efecto_stock(mov)
+                mov.anulado           = True
+                mov.fecha_anulacion   = timezone.now()
+                mov.usuario_anulacion = request.user
+                mov.motivo_anulacion  = motivo
+                mov.save(update_fields=[
+                    'anulado', 'fecha_anulacion', 'usuario_anulacion', 'motivo_anulacion'
+                ])
+                notify_stock(mov.item, movimiento='anulacion', usuario=request.user.username)
+
+            security_log.info(
+                'Movimiento #%s ANULADO por %s — %s',
+                mov.pk, request.user.username, motivo,
+            )
+            messages.success(request, f'Movimiento #{mov.pk} anulado. Stock revertido.')
+            return redirect('movimiento_lista')
+
+    return render(request, 'movimientos/anular.html', {'mov': mov})
+
+
+@login_required
+@permission_required(_perm('eliminar_movimiento'), raise_exception=True)
+def movimiento_eliminar(request, pk):
+    """
+    Eliminación lógica de un movimiento.
+    Requiere doble confirmación y motivo. Solo superuser puede eliminar
+    un movimiento ya anulado.
+    Revierte el efecto en stock si no estaba anulado previamente.
+    """
+    mov = get_object_or_404(
+        MovimientoInventario.objects.select_related('item', 'usuario'),
+        pk=pk,
+    )
+
+    if mov.eliminado:
+        messages.warning(request, 'Este movimiento ya estaba eliminado.')
+        return redirect('movimiento_lista')
+
+    # Solo superuser puede eliminar movimientos ya anulados
+    if mov.anulado and not request.user.is_superuser:
+        messages.error(request, 'Solo un superusuario puede eliminar un movimiento ya anulado.')
+        return redirect('movimiento_lista')
+
+    if request.method == 'POST':
+        confirmacion = request.POST.get('confirmacion', '').strip()
+        motivo = request.POST.get('motivo_eliminacion', '').strip()
+
+        if confirmacion != 'ELIMINAR':
+            messages.error(request, 'Escribe ELIMINAR en el campo de confirmación.')
+        elif not motivo:
+            messages.error(request, 'El motivo de eliminación es obligatorio.')
+        else:
+            with transaction.atomic():
+                # Solo revertir stock si no estaba ya anulado (el anulado ya lo revirtió)
+                if not mov.anulado:
+                    _revertir_efecto_stock(mov)
+                mov.eliminado            = True
+                mov.fecha_eliminacion    = timezone.now()
+                mov.usuario_eliminacion  = request.user
+                mov.motivo_eliminacion   = motivo
+                mov.save(update_fields=[
+                    'eliminado', 'fecha_eliminacion', 'usuario_eliminacion', 'motivo_eliminacion'
+                ])
+                if not mov.anulado:
+                    notify_stock(mov.item, movimiento='eliminacion', usuario=request.user.username)
+
+            security_log.warning(
+                'Movimiento #%s ELIMINADO por %s — %s',
+                mov.pk, request.user.username, motivo,
+            )
+            messages.success(request, f'Movimiento #{mov.pk} eliminado lógicamente.')
+            return redirect('movimiento_lista')
+
+    return render(request, 'movimientos/eliminar.html', {'mov': mov})
 
 
 # ─── CONTEOS ──────────────────────────────────────────────────────────────────
