@@ -171,11 +171,15 @@ AUTHENTICATION_BACKENDS = [
 # Bloquear después de 5 intentos fallidos.
 AXES_FAILURE_LIMIT = 5
 
-# Bloquear por 1 hora (en segundos) — timedelta también funciona.
+# Bloquear por 1 hora.
 AXES_COOLOFF_TIME = 1   # horas (django-axes interpreta int como horas)
 
-# Bloquear por combinación IP + nombre de usuario (más estricto que solo IP).
-AXES_LOCKOUT_PARAMETERS = ['ip_address', 'username']
+# Bloquear SOLO por IP — no por username ni combinación.
+# Con 'username' o ['ip_address', 'username'] axes cuenta intentos
+# por usuario: si alguien prueba un username inexistente N veces esa
+# clave queda "caliente" y bloquea a cualquiera que lo intente después,
+# aunque sea desde otra IP → efecto de bloqueo "global".
+AXES_LOCKOUT_PARAMETERS = ['ip_address']
 
 # Mensaje que verá el usuario bloqueado.
 AXES_LOCKOUT_TEMPLATE = 'registration/lockout.html'
@@ -183,8 +187,8 @@ AXES_LOCKOUT_TEMPLATE = 'registration/lockout.html'
 # Registrar intentos en DB para que el admin los vea.
 AXES_ENABLE_ACCESS_FAILURE_LOG = True
 
-# No resetear el contador al cambiar de IP (previene evasión).
-AXES_RESET_ON_SUCCESS = True   # sí resetear tras login exitoso
+# Limpiar contador de esa IP cuando el login es exitoso.
+AXES_RESET_ON_SUCCESS = True
 
 # ─── LOGGING DE SEGURIDAD ─────────────────────────────────────────────────────
 
