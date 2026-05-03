@@ -200,6 +200,10 @@ LOGGING = {
             'format': '[SECURITY] %(asctime)s %(levelname)s %(name)s %(message)s',
             'datefmt': '%Y-%m-%d %H:%M:%S',
         },
+        'events': {
+            'format': '[EVENT] %(asctime)s %(levelname)s %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
         'standard': {
             'format': '%(asctime)s %(levelname)s %(name)s %(message)s',
             'datefmt': '%Y-%m-%d %H:%M:%S',
@@ -214,8 +218,18 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'security',
         },
+        'events_console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'events',
+        },
     },
     'loggers': {
+        # Eventos de negocio: stock bajo, pigmentos, movimientos
+        'events': {
+            'handlers': ['events_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
         # Intentos fallidos y bloqueos de django-axes
         'axes': {
             'handlers': ['security_console'],

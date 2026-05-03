@@ -35,7 +35,7 @@ from .forms import (
     ConteoForm, FiltroMovimientosForm, ProduccionForm, ImportarItemsForm,
     UsuarioCrearForm, UsuarioEditarForm,
 )
-from .services.notifications import notify_stock, send_n8n_event
+from .services.notifications import notify_stock, send_event, send_security_event
 
 
 def _perm(codename):
@@ -418,12 +418,12 @@ def movimiento_entrada(request):
                         fecha_movimiento=fecha_movimiento,
                         usuario=request.user,
                     )
-                    send_n8n_event('movement_created', {
+                    send_event('movement_created', {
                         'tipo': 'entrada', 'item': item.nombre, 'codigo': item.codigo,
                         'cantidad': str(cantidad), 'ubicacion': ubicacion_destino.nombre,
                         'usuario': request.user.username,
                     })
-                    notify_stock(item)
+                    notify_stock(item, movimiento='entrada', usuario=request.user.username)
             messages.success(request, f'{len(filas_validas)} entrada(s) registrada(s) exitosamente.')
             return redirect('movimiento_lista')
 
@@ -556,13 +556,13 @@ def movimiento_salida(request):
                         fecha_movimiento=fecha_movimiento,
                         usuario=request.user,
                     )
-                    send_n8n_event('movement_created', {
+                    send_event('movement_created', {
                         'tipo': 'salida', 'item': item.nombre, 'codigo': item.codigo,
                         'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
                         'cliente': cliente.nombre if cliente else None,
                         'usuario': request.user.username,
                     })
-                    notify_stock(item)
+                    notify_stock(item, movimiento='salida', usuario=request.user.username)
             messages.success(request, f'{len(filas_validas)} salida(s) registrada(s) exitosamente.')
             return redirect('movimiento_lista')
 
@@ -865,12 +865,12 @@ def conteo_ajustar_detalle(request, pk, det_pk):
         conteo.refresh_from_db()
         conteo.actualizar_estado()
 
-    send_n8n_event('count_difference', {
+    send_event('count_difference', {
         'conteo_id': conteo.pk, 'item': detalle.item.nombre, 'codigo': detalle.item.codigo,
         'diferencia': str(detalle.diferencia_final), 'ubicacion': detalle.ubicacion.nombre,
         'usuario': request.user.username,
     })
-    notify_stock(detalle.item)
+    notify_stock(detalle.item, movimiento='ajuste', usuario=request.user.username)
     messages.success(request, f'Ajuste aplicado: {detalle.item.nombre} ({detalle.diferencia_final:+g} {detalle.item.unidad_medida}).')
     return redirect('conteo_conciliar', pk=pk)
 
@@ -910,7 +910,7 @@ def conteo_ajustar_todos(request, pk):
         conteo.refresh_from_db()
         conteo.actualizar_estado()
 
-    send_n8n_event('count_difference', {
+    send_event('count_difference', {
         'conteo_id': conteo.pk, 'ajustes_aplicados': count,
         'usuario': request.user.username,
     })
@@ -1193,13 +1193,13 @@ def produccion_nueva(request):
                     usuario=request.user,
                 )
 
-            send_n8n_event('production_created', {
+            send_event('production_created', {
                 'item': item.nombre, 'codigo': item.codigo,
                 'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
                 'usuario': request.user.username,
                 'fecha_movimiento': fecha_movimiento.isoformat(),
             })
-            notify_stock(item)
+            notify_stock(item, movimiento='produccion', usuario=request.user.username)
 
             messages.success(request, f'Producción registrada: {cantidad} {item.unidad_medida} de {item.nombre}.')
             return redirect('produccion_nueva')
@@ -1389,11 +1389,15 @@ def _staff_required(view_func):
             from django.contrib.auth.views import redirect_to_login
             return redirect_to_login(request.get_full_path())
         if not (request.user.is_staff or request.user.is_superuser):
-            security_log.warning(
-                'Acceso denegado a %s — usuario=%s ip=%s',
-                request.path,
-                request.user.username,
-                _get_client_ip(request),
+            ip = _get_client_ip(request)
+            send_security_event(
+                'forbidden_403',
+                title    = '🚫 Acceso denegado a ruta administrativa',
+                user     = request.user.username,
+                ip       = ip,
+                path     = request.path,
+                user_agent = request.META.get('HTTP_USER_AGENT', '')[:200],
+                message  = f'Usuario "{request.user.username}" sin permisos de staff intentó acceder a {request.path}',
             )
             from django.core.exceptions import PermissionDenied
             raise PermissionDenied
