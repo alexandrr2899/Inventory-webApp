@@ -1,0 +1,28 @@
+# ── Entorno / Secretos ────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Django ────────────────────────────────────────────────────────────────────
+db.sqlite3
+media/
+staticfiles/
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Los volúmenes se gestionan en el contenedor; no persistir localmente.
+postgres_data/
+
+# ── Editores / OS ─────────────────────────────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db

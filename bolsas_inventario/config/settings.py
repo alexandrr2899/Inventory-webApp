@@ -1,20 +1,52 @@
+"""
+Django settings — Transformadora de Empaques Inventory
+Todas las variables sensibles se leen del entorno (Portainer / .env).
+"""
+
 from pathlib import Path
-from decouple import config
+from decouple import config, UndefinedValueError
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-only-key-change-in-production')
-DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+# ─── SEGURIDAD BÁSICA ─────────────────────────────────────────────────────────
 
-# Cloudflare Tunnel / reverse proxy: confiar en el header X-Forwarded-Proto
+# SECRET_KEY es obligatorio — sin fallback para evitar claves inseguras en prod.
+SECRET_KEY = config('SECRET_KEY')
+
+# DEBUG=False en producción. Portainer envía la variable; local puede usar .env.
+DEBUG = config('DEBUG', default=False, cast=bool)
+
+# Hosts permitidos separados por coma: 127.0.0.1,inventario.tempaques.com
+ALLOWED_HOSTS = [h.strip() for h in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',') if h.strip()]
+
+# ─── CLOUDFLARE TUNNEL / PROXY ────────────────────────────────────────────────
+
+# Cloudflare Tunnel entrega las peticiones por HTTP al contenedor pero
+# el cliente ve HTTPS. Le decimos a Django que confíe en el header del proxy.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Dominios que Django acepta como origen válido para CSRF.
-# Incluye el tunnel de Cloudflare y cualquier dominio propio.
-# Formato: https://dominio.com  (con esquema, sin trailing slash)
-_csrf_origins = config('CSRF_TRUSTED_ORIGINS', default='')
-CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
+# Necesario para que request.get_host() devuelva el dominio real del tunnel.
+USE_X_FORWARDED_HOST = True
+
+# Orígenes CSRF permitidos (con esquema completo): https://inventario.tempaques.com
+_csrf_raw = config('CSRF_TRUSTED_ORIGINS', default='')
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_raw.split(',') if o.strip()]
+
+# ─── SEGURIDAD HTTPS / COOKIES ────────────────────────────────────────────────
+
+# Cloudflare ya maneja el redirect HTTP→HTTPS externo, así que no forzamos
+# redirect interno (evita loops de redirección con el tunnel).
+SECURE_SSL_REDIRECT = False
+
+# Activar cookies seguras solo en producción (cuando DEBUG=False).
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE    = not DEBUG
+
+# Cabeceras de seguridad adicionales.
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+
+# ─── APLICACIONES ─────────────────────────────────────────────────────────────
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -26,9 +58,11 @@ INSTALLED_APPS = [
     'apps.core',
 ]
 
+# ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',   # sirve estáticos en prod
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -37,7 +71,12 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'config.urls'
+# ─── URLS / WSGI ──────────────────────────────────────────────────────────────
+
+ROOT_URLCONF   = 'config.urls'
+WSGI_APPLICATION = 'config.wsgi.application'
+
+# ─── TEMPLATES ────────────────────────────────────────────────────────────────
 
 TEMPLATES = [
     {
@@ -55,18 +94,24 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
+# ─── BASE DE DATOS ────────────────────────────────────────────────────────────
 
+# DB_PASSWORD es obligatorio — sin fallback.
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'HOST': config('DB_HOST', default='localhost'),
-        'NAME': config('DB_NAME', default='bolsas_inventario'),
-        'USER': config('DB_USER', default='bolsas_user'),
-        'PASSWORD': config('DB_PASSWORD', default='bolsas_pass'),
-        'PORT': config('DB_PORT', default='5432'),
+        'ENGINE':   'django.db.backends.postgresql',
+        'HOST':     config('DB_HOST', default='db'),
+        'NAME':     config('DB_NAME', default='bolsas_inventario'),
+        'USER':     config('DB_USER', default='bolsas_user'),
+        'PASSWORD': config('DB_PASSWORD'),           # requerido, sin default
+        'PORT':     config('DB_PORT', default='5432'),
+        'OPTIONS': {
+            'connect_timeout': 10,
+        },
     }
 }
+
+# ─── VALIDADORES DE CONTRASEÑA ────────────────────────────────────────────────
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -75,29 +120,41 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-LANGUAGE_CODE = 'es'
-TIME_ZONE = 'America/Tegucigalpa'
-USE_I18N = True
-USE_TZ = True
+# ─── INTERNACIONALIZACIÓN ─────────────────────────────────────────────────────
 
-STATIC_URL = '/static/'
+LANGUAGE_CODE = 'es'
+TIME_ZONE     = 'America/Tegucigalpa'
+USE_I18N      = True
+USE_TZ        = True
+
+# ─── ARCHIVOS ESTÁTICOS ───────────────────────────────────────────────────────
+
+STATIC_URL  = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-# Solo incluir si el directorio existe (evita W004 cuando está vacío en Docker)
+
+# Solo incluir la carpeta fuente si existe (evita W004 en Docker cuando está vacía).
 _static_src = BASE_DIR / 'static'
 STATICFILES_DIRS = [_static_src] if _static_src.exists() else []
-# Sin manifest: más tolerante a archivos opcionales (logos, iconos)
+
+# Sin manifest: más tolerante a archivos opcionales como logos e íconos PWA.
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
-MEDIA_URL = '/media/'
+# ─── ARCHIVOS DE MEDIA ────────────────────────────────────────────────────────
+
+MEDIA_URL  = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# ─── MISC ─────────────────────────────────────────────────────────────────────
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-LOGIN_URL = '/login/'
-LOGIN_REDIRECT_URL = '/'
+LOGIN_URL           = '/login/'
+LOGIN_REDIRECT_URL  = '/'
 LOGOUT_REDIRECT_URL = '/login/'
 
 MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
 
-# Notificaciones n8n (opcional)
+# ─── INTEGRACIONES OPCIONALES ─────────────────────────────────────────────────
+
+# Webhook de n8n para alertas de stock (dejar vacío para deshabilitar).
 N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')
