@@ -5,147 +5,108 @@
 <div class="page-header" style="background:linear-gradient(135deg,#fd7e14,#6f3800);">
   <div class="d-flex justify-content-between align-items-start">
     <div>
-      <h1 style="font-size:1.2rem;"><i class="bi bi-pencil-square me-2"></i>Editar movimiento #{{ mov.pk }}</h1>
-      <small class="opacity-75">{{ mov.item.nombre }} · {{ mov.get_tipo_movimiento_display }}</small>
+      <h1 style="font-size:1.2rem;">
+        <i class="bi bi-pencil-square me-2"></i>Editar movimiento #{{ mov.pk }}
+      </h1>
+      <small class="opacity-75">
+        {{ mov.get_tipo_movimiento_display }} · {{ mov.detalles.count }} ítem(s)
+      </small>
     </div>
-    <a href="{% url 'movimiento_lista' %}" class="btn btn-light btn-sm">Cancelar</a>
+    <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-light btn-sm">Cancelar</a>
   </div>
 </div>
 
-<!-- Datos actuales (solo lectura) -->
-<div class="card mb-3">
-  <div class="card-header bg-white fw-bold"><i class="bi bi-info-circle me-2"></i>Datos actuales</div>
-  <div class="card-body">
-    <div class="row g-2">
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Ítem</div>
-        <div class="fw-semibold">{{ mov.item.nombre }}</div>
-        <div class="text-muted small">{{ mov.item.codigo }}</div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Tipo actual</div>
-        <span class="badge rounded-pill
-          {% if mov.tipo_movimiento == 'entrada' %}bg-success
-          {% elif mov.tipo_movimiento == 'salida' %}bg-danger
-          {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
-          {% else %}bg-info text-dark{% endif %}">
-          {{ mov.get_tipo_movimiento_display }}
-        </span>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Cantidad actual</div>
-        <div class="fw-semibold">{{ mov.cantidad }} {{ mov.item.unidad_medida }}</div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Fecha mov.</div>
-        <div class="fw-semibold">{{ mov.fecha_movimiento|date:"d/m/Y H:i" }}</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Advertencia -->
 <div class="alert alert-warning d-flex align-items-start gap-2 mb-3">
   <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
   <div>
-    <strong>Atención:</strong> Editar este movimiento revertirá el efecto original en el stock y aplicará el nuevo. Esta acción queda registrada con auditoría.
+    <strong>Atención:</strong> Al guardar se revertirán todos los efectos originales en stock
+    y se aplicarán los nuevos valores. Todos los cambios quedan en auditoría.
   </div>
 </div>
 
-<!-- Formulario de edición -->
 <form method="post" novalidate>
   {% csrf_token %}
 
+  <!-- Cabecera editable -->
   <div class="card mb-3">
-    <div class="card-header bg-white fw-bold">Nuevos valores</div>
+    <div class="card-header bg-white fw-bold">Datos generales</div>
     <div class="card-body">
       <div class="row g-3">
-
-        <div class="col-12 col-md-6">
-          <label class="form-label">Tipo de movimiento *</label>
-          <select name="tipo_movimiento" class="form-select" required>
-            <option value="entrada"      {% if mov.tipo_movimiento == 'entrada' %}selected{% endif %}>Entrada</option>
-            <option value="salida"       {% if mov.tipo_movimiento == 'salida' %}selected{% endif %}>Salida</option>
-            <option value="ajuste"       {% if mov.tipo_movimiento == 'ajuste' %}selected{% endif %}>Ajuste</option>
-            <option value="transferencia"{% if mov.tipo_movimiento == 'transferencia' %}selected{% endif %}>Transferencia</option>
-          </select>
-        </div>
-
-        <div class="col-12 col-md-6">
-          <label class="form-label">Cantidad *</label>
-          <div class="input-group">
-            <input type="number" name="cantidad" class="form-control"
-                   value="{{ mov.cantidad }}" step="0.01" min="0.01" required>
-            <span class="input-group-text text-muted small">{{ mov.item.unidad_medida }}</span>
-          </div>
-          <div class="form-text">Para ajustes negativos usa valor positivo en "Ajuste" — la lógica lo maneja.</div>
-        </div>
-
-        <div class="col-12 col-md-6">
-          <label class="form-label">Ubicación origen</label>
-          <select name="ubicacion_origen" class="form-select">
-            <option value="">-- Ninguna --</option>
-            {% for ub in ubicaciones %}
-            <option value="{{ ub.pk }}" {% if mov.ubicacion_origen and mov.ubicacion_origen.pk == ub.pk %}selected{% endif %}>
-              {{ ub.nombre }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="col-12 col-md-6">
-          <label class="form-label">Ubicación destino</label>
-          <select name="ubicacion_destino" class="form-select">
-            <option value="">-- Ninguna --</option>
-            {% for ub in ubicaciones %}
-            <option value="{{ ub.pk }}" {% if mov.ubicacion_destino and mov.ubicacion_destino.pk == ub.pk %}selected{% endif %}>
-              {{ ub.nombre }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="col-12 col-md-6">
-          <label class="form-label">Cliente</label>
-          <select name="cliente" class="form-select">
-            <option value="">-- Ninguno --</option>
-            {% for c in clientes %}
-            <option value="{{ c.pk }}" {% if mov.cliente and mov.cliente.pk == c.pk %}selected{% endif %}>
-              {{ c.nombre }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="col-12 col-md-6">
-          <label class="form-label">Máquina</label>
-          <select name="maquina" class="form-select">
-            <option value="">-- Ninguna --</option>
-            {% for m in maquinas %}
-            <option value="{{ m.pk }}" {% if mov.maquina and mov.maquina.pk == m.pk %}selected{% endif %}>
-              {{ m.nombre }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
         <div class="col-12 col-md-6">
           <label class="form-label">Fecha del movimiento</label>
           <input type="datetime-local" name="fecha_movimiento" class="form-control"
                  value="{{ mov.fecha_movimiento|date:'Y-m-d\TH:i' }}">
         </div>
-
-        <div class="col-12">
+        <div class="col-12 col-md-6">
           <label class="form-label">Motivo / Descripción</label>
           <input type="text" name="motivo" class="form-control"
                  value="{{ mov.motivo }}" placeholder="Motivo del movimiento">
         </div>
-
       </div>
     </div>
   </div>
 
-  <!-- Auditoría -->
+  <!-- Líneas editables -->
+  <div class="card mb-3">
+    <div class="card-header bg-white fw-bold">
+      <i class="bi bi-table me-2"></i>Líneas del movimiento
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Ítem</th>
+            <th style="min-width:140px;">Cantidad *</th>
+            <th style="min-width:180px;">Ubicación origen</th>
+            <th style="min-width:180px;">Ubicación destino</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for det in mov.detalles.all %}
+          <input type="hidden" name="det_id[]" value="{{ det.pk }}">
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ det.item.nombre }}</div>
+              <div class="text-muted small">{{ det.item.codigo }}</div>
+            </td>
+            <td>
+              <div class="input-group input-group-sm">
+                <input type="number" name="det_cantidad[]"
+                       class="form-control" value="{{ det.cantidad }}"
+                       step="0.01" min="0.01" required>
+                <span class="input-group-text text-muted small">{{ det.item.unidad_medida }}</span>
+              </div>
+            </td>
+            <td>
+              <select name="det_ub_origen[]" class="form-select form-select-sm">
+                <option value="">– Ninguna –</option>
+                {% for ub in ubicaciones %}
+                <option value="{{ ub.pk }}"
+                  {% if det.ubicacion_origen and det.ubicacion_origen.pk == ub.pk %}selected{% endif %}>
+                  {{ ub.nombre }}
+                </option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <select name="det_ub_destino[]" class="form-select form-select-sm">
+                <option value="">– Ninguna –</option>
+                {% for ub in ubicaciones %}
+                <option value="{{ ub.pk }}"
+                  {% if det.ubicacion_destino and det.ubicacion_destino.pk == ub.pk %}selected{% endif %}>
+                  {{ ub.nombre }}
+                </option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Auditoría de edición -->
   <div class="card mb-3 border-warning">
     <div class="card-header bg-warning bg-opacity-10 fw-bold">
       <i class="bi bi-shield-check me-2"></i>Auditoría de edición
@@ -155,7 +116,7 @@
       <textarea name="motivo_edicion" class="form-control" rows="2" required
                 placeholder="Explica por qué se edita este movimiento (quedará registrado)"></textarea>
       <div class="form-text text-warning">
-        <i class="bi bi-eye-fill me-1"></i>Este campo es obligatorio y queda en el historial de auditoría.
+        <i class="bi bi-eye-fill me-1"></i>Obligatorio. Queda en el historial de auditoría.
       </div>
     </div>
   </div>
@@ -164,7 +125,7 @@
     <button type="submit" class="btn btn-warning btn-lg">
       <i class="bi bi-check-lg me-1"></i>Guardar cambios
     </button>
-    <a href="{% url 'movimiento_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+    <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
   </div>
 </form>
 {% endblock %}

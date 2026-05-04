@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Categoria, Item, Ubicacion, Stock, Maquina, Cliente,
-    MovimientoInventario, Conteo, ConteoDetalle
+    MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle
 )
 
 admin.site.site_header = "Transformadora de Empaques"
@@ -68,11 +68,26 @@ class ConteoAdmin(admin.ModelAdmin):
     inlines = [ConteoDetalleInline]
 
 
+class DetalleMovimientoInline(admin.TabularInline):
+    model = DetalleMovimiento
+    extra = 0
+    readonly_fields = ['item', 'cantidad', 'ubicacion_origen', 'ubicacion_destino',
+                       'cliente', 'maquina']
+    can_delete = False
+
+
 @admin.register(MovimientoInventario)
 class MovimientoInventarioAdmin(admin.ModelAdmin):
-    list_display = ['fecha_movimiento', 'fecha', 'tipo_movimiento', 'item', 'cantidad',
-                    'ubicacion_origen', 'ubicacion_destino', 'usuario']
-    list_filter = ['tipo_movimiento', 'fecha_movimiento']
-    search_fields = ['item__nombre', 'item__codigo', 'motivo']
+    list_display  = ['pk', 'fecha_movimiento', 'tipo_movimiento', 'num_items',
+                     'usuario', 'anulado', 'eliminado']
+    list_filter   = ['tipo_movimiento', 'anulado', 'eliminado', 'fecha_movimiento']
+    search_fields = ['motivo', 'usuario__username']
     date_hierarchy = 'fecha_movimiento'
-    raw_id_fields = ['item']
+    readonly_fields = ['fecha', 'usuario', 'editado', 'fecha_edicion', 'usuario_edicion',
+                       'anulado', 'fecha_anulacion', 'usuario_anulacion',
+                       'eliminado', 'fecha_eliminacion', 'usuario_eliminacion']
+    inlines = [DetalleMovimientoInline]
+
+    @admin.display(description='Ítems')
+    def num_items(self, obj):
+        return obj.detalles.count()

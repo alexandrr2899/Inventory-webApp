@@ -150,24 +150,7 @@ class MovimientoInventario(models.Model):
         default=timezone.now,
         verbose_name='Fecha del movimiento',
     )
-    item = models.ForeignKey(Item, on_delete=models.PROTECT)
     tipo_movimiento = models.CharField(max_length=20, choices=TIPO_CHOICES, verbose_name='Tipo')
-    cantidad = models.DecimalField(max_digits=12, decimal_places=2)
-    ubicacion_origen = models.ForeignKey(
-        Ubicacion, on_delete=models.PROTECT, null=True, blank=True,
-        related_name='movimientos_origen', verbose_name='Ubicación origen'
-    )
-    ubicacion_destino = models.ForeignKey(
-        Ubicacion, on_delete=models.PROTECT, null=True, blank=True,
-        related_name='movimientos_destino', verbose_name='Ubicación destino'
-    )
-    cliente = models.ForeignKey(
-        Cliente, on_delete=models.SET_NULL, null=True, blank=True
-    )
-    maquina = models.ForeignKey(
-        Maquina, on_delete=models.SET_NULL, null=True, blank=True,
-        verbose_name='Máquina'
-    )
     motivo = models.TextField(blank=True)
     usuario = models.ForeignKey(User, on_delete=models.PROTECT)
 
@@ -203,10 +186,9 @@ class MovimientoInventario(models.Model):
         verbose_name_plural = 'Movimientos'
         ordering = ['-fecha']
         indexes = [
-            models.Index(fields=['fecha_movimiento'], name='mov_fecha_mov_idx'),
-            models.Index(fields=['item', 'tipo_movimiento'], name='mov_item_tipo_idx'),
+            models.Index(fields=['fecha_movimiento'],           name='mov_fecha_mov_idx'),
             models.Index(fields=['tipo_movimiento', 'fecha_movimiento'], name='mov_tipo_fecha_idx'),
-            models.Index(fields=['anulado', 'eliminado'], name='mov_estado_idx'),
+            models.Index(fields=['anulado', 'eliminado'],       name='mov_estado_idx'),
         ]
         permissions = [
             ('editar_movimiento',   'Puede editar movimientos'),
@@ -215,56 +197,44 @@ class MovimientoInventario(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.get_tipo_movimiento_display()} - {self.item.nombre} ({self.cantidad})'
+        n = self.detalles.count() if self.pk else 0
+        return f'{self.get_tipo_movimiento_display()} #{self.pk} ({n} ítem(s)) · {self.fecha_movimiento.strftime("%d/%m/%Y")}'
 
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        super().save(*args, **kwargs)
-        if is_new:
-            self._actualizar_stock()
 
-    def _actualizar_stock(self):
-        if self.tipo_movimiento == 'entrada':
-            stock, _ = Stock.objects.get_or_create(
-                item=self.item,
-                ubicacion=self.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')}
-            )
-            stock.cantidad_actual += self.cantidad
-            stock.save()
+class DetalleMovimiento(models.Model):
+    """
+    Línea de ítem dentro de un MovimientoInventario.
+    Un movimiento cabecera puede tener N detalles (uno por ítem).
+    """
+    movimiento = models.ForeignKey(
+        MovimientoInventario, on_delete=models.CASCADE,
+        related_name='detalles', verbose_name='Movimiento',
+    )
+    item = models.ForeignKey(Item, on_delete=models.PROTECT)
+    cantidad = models.DecimalField(max_digits=12, decimal_places=2)
+    ubicacion_origen = models.ForeignKey(
+        Ubicacion, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='detalles_origen', verbose_name='Ubicación origen',
+    )
+    ubicacion_destino = models.ForeignKey(
+        Ubicacion, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='detalles_destino', verbose_name='Ubicación destino',
+    )
+    cliente = models.ForeignKey(
+        Cliente, on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    maquina = models.ForeignKey(
+        Maquina, on_delete=models.SET_NULL, null=True, blank=True,
+        verbose_name='Máquina',
+    )
 
-        elif self.tipo_movimiento == 'salida':
-            try:
-                stock = Stock.objects.get(item=self.item, ubicacion=self.ubicacion_origen)
-                stock.cantidad_actual -= self.cantidad
-                stock.save()
-            except Stock.DoesNotExist:
-                pass
+    class Meta:
+        verbose_name = 'Línea de movimiento'
+        verbose_name_plural = 'Líneas de movimiento'
+        ordering = ['id']
 
-        elif self.tipo_movimiento == 'transferencia':
-            try:
-                stock_origen = Stock.objects.get(item=self.item, ubicacion=self.ubicacion_origen)
-                stock_origen.cantidad_actual -= self.cantidad
-                stock_origen.save()
-            except Stock.DoesNotExist:
-                pass
-            stock_destino, _ = Stock.objects.get_or_create(
-                item=self.item,
-                ubicacion=self.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')}
-            )
-            stock_destino.cantidad_actual += self.cantidad
-            stock_destino.save()
-
-        elif self.tipo_movimiento == 'ajuste':
-            # cantidad puede ser positiva (sobrante) o negativa (faltante)
-            stock, _ = Stock.objects.get_or_create(
-                item=self.item,
-                ubicacion=self.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')}
-            )
-            stock.cantidad_actual += self.cantidad
-            stock.save()
+    def __str__(self):
+        return f'{self.item.nombre} × {self.cantidad}'
 
 
 class Conteo(models.Model):

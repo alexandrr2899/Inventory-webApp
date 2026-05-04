@@ -1,12 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Historial de Movimientos{% endblock %}
+{% block title %}Movimientos{% endblock %}
 
 {% block extra_head %}
 <style>
-  .mov-anulado  { opacity:.55; text-decoration:line-through; }
-  .mov-eliminado{ opacity:.35; }
+  .mov-anulado   { opacity:.55; }
+  .mov-eliminado { opacity:.35; }
   .badge-anulado   { background:#6c757d; }
   .badge-eliminado { background:#343a40; }
+  .items-pill { font-size:.7rem; background:#f0f4ff; color:#4263eb;
+                border:1px solid #c5d1f5; border-radius:20px;
+                padding:.1rem .55rem; white-space:nowrap; }
 </style>
 {% endblock %}
 
@@ -14,7 +17,7 @@
 <div class="page-header d-flex justify-content-between align-items-center">
   <div>
     <h1><i class="bi bi-clock-history me-2"></i>Movimientos</h1>
-    <small class="opacity-75">Historial completo</small>
+    <small class="opacity-75">Cada fila es una operación completa</small>
   </div>
   <div class="d-flex gap-2">
     <a href="{% url 'movimiento_entrada' %}" class="btn btn-light btn-sm">
@@ -61,11 +64,11 @@
 {% if perms.core.editar_movimiento or perms.core.anular_movimiento or perms.core.eliminar_movimiento %}
 <div class="alert alert-light border d-flex align-items-center gap-2 py-2 mb-3" style="font-size:.8rem;">
   <i class="bi bi-shield-check text-success"></i>
-  <span>Tienes acceso de administración sobre movimientos: puedes
+  <span>Tienes acceso de administración: puedes
     {% if perms.core.editar_movimiento %}<strong>editar</strong>{% endif %}
     {% if perms.core.anular_movimiento %}· <strong>anular</strong>{% endif %}
     {% if perms.core.eliminar_movimiento %}· <strong>eliminar</strong>{% endif %}
-    movimientos activos.
+    operaciones completas.
   </span>
 </div>
 {% endif %}
@@ -73,11 +76,11 @@
 <!-- ══ MOBILE: cards ══════════════════════════════════════════════════════════ -->
 <div class="d-md-none">
   {% for mov in movimientos %}
+  {% with detalles=mov.detalles.all %}
   <div class="card mb-2 {% if mov.eliminado %}mov-eliminado{% elif mov.anulado %}mov-anulado{% endif %}">
     <div class="card-body py-2 px-3">
       <div class="d-flex justify-content-between align-items-start">
         <div>
-          <!-- Tipo + badges de estado -->
           <span class="badge rounded-pill
             {% if mov.tipo_movimiento == 'entrada' %}bg-success
             {% elif mov.tipo_movimiento == 'salida' %}bg-danger
@@ -88,65 +91,60 @@
           {% if mov.anulado %}   <span class="badge badge-anulado">Anulado</span>{% endif %}
           {% if mov.eliminado %} <span class="badge badge-eliminado">Eliminado</span>{% endif %}
           {% if mov.editado %}   <span class="badge bg-warning text-dark" style="font-size:.65rem;">Editado</span>{% endif %}
-          <span class="fw-semibold ms-1">{{ mov.item.nombre }}</span>
-          <div class="text-muted small">{{ mov.item.codigo }}</div>
+          <span class="items-pill ms-1">{{ mov.num_detalles }} ítem(s)</span>
         </div>
-        <div class="text-end">
-          <div class="fw-bold fs-5">{{ mov.cantidad }}</div>
-          <div class="text-muted small">{{ mov.item.unidad_medida }}</div>
+        <span class="text-muted small">#{{ mov.pk }}</span>
+      </div>
+
+      <!-- Resumen de ítems -->
+      <div class="mt-1">
+        {% for det in detalles|slice:":3" %}
+        <div class="fw-semibold" style="font-size:.85rem;">
+          {{ det.item.nombre }}
+          <span class="text-muted small">× {{ det.cantidad }} {{ det.item.unidad_medida }}</span>
         </div>
+        {% endfor %}
+        {% if mov.num_detalles > 3 %}
+        <div class="text-muted small">… y {{ mov.num_detalles|add:"-3" }} más</div>
+        {% endif %}
       </div>
 
       <div class="mt-1 text-muted" style="font-size:.72rem">
         {{ mov.fecha_movimiento|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
-        {% if mov.cliente %} · <i class="bi bi-person-fill"></i> {{ mov.cliente.nombre }}{% endif %}
-        {% if mov.maquina %} · <i class="bi bi-gear-fill"></i> {{ mov.maquina.nombre }}{% endif %}
-        {% if mov.ubicacion_origen %} · De: {{ mov.ubicacion_origen.nombre }}{% endif %}
-        {% if mov.ubicacion_destino %} · A: {{ mov.ubicacion_destino.nombre }}{% endif %}
+        {% if mov.motivo %} · {{ mov.motivo|truncatechars:40 }}{% endif %}
       </div>
-      {% if mov.motivo %}
-        <div class="text-muted small mt-1 fst-italic">{{ mov.motivo|truncatechars:60 }}</div>
-      {% endif %}
 
-      <!-- Auditoría compact -->
-      {% if mov.editado %}
-      <div class="text-muted mt-1" style="font-size:.68rem;">
-        <i class="bi bi-pencil me-1"></i>Editado por {{ mov.usuario_edicion.username }} el {{ mov.fecha_edicion|date:"d/m/Y H:i" }}: <em>{{ mov.motivo_edicion|truncatechars:40 }}</em>
-      </div>
-      {% endif %}
       {% if mov.anulado %}
       <div class="text-danger mt-1" style="font-size:.68rem;">
-        <i class="bi bi-slash-circle me-1"></i>Anulado por {{ mov.usuario_anulacion.username }} el {{ mov.fecha_anulacion|date:"d/m/Y H:i" }}: <em>{{ mov.motivo_anulacion|truncatechars:40 }}</em>
-      </div>
-      {% endif %}
-      {% if mov.eliminado %}
-      <div class="text-muted mt-1" style="font-size:.68rem;">
-        <i class="bi bi-trash me-1"></i>Eliminado por {{ mov.usuario_eliminacion.username }} el {{ mov.fecha_eliminacion|date:"d/m/Y H:i" }}
+        <i class="bi bi-slash-circle me-1"></i>{{ mov.motivo_anulacion|truncatechars:50 }}
       </div>
       {% endif %}
 
-      <!-- Botones de acción (solo si tiene permisos y movimiento activo) -->
-      {% if not mov.eliminado %}
       <div class="d-flex gap-1 mt-2 flex-wrap">
-        {% if perms.core.editar_movimiento and not mov.anulado %}
-        <a href="{% url 'movimiento_editar' mov.pk %}" class="btn btn-outline-warning btn-sm" style="font-size:.72rem;">
-          <i class="bi bi-pencil-fill"></i> Editar
+        <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-outline-primary btn-sm" style="font-size:.72rem;">
+          <i class="bi bi-eye-fill"></i> Ver
         </a>
-        {% endif %}
-        {% if perms.core.anular_movimiento and not mov.anulado %}
-        <a href="{% url 'movimiento_anular' mov.pk %}" class="btn btn-outline-secondary btn-sm" style="font-size:.72rem;">
-          <i class="bi bi-slash-circle"></i> Anular
-        </a>
-        {% endif %}
-        {% if perms.core.eliminar_movimiento %}
-        <a href="{% url 'movimiento_eliminar' mov.pk %}" class="btn btn-outline-dark btn-sm" style="font-size:.72rem;">
-          <i class="bi bi-trash3"></i> Eliminar
-        </a>
+        {% if not mov.eliminado %}
+          {% if perms.core.editar_movimiento and not mov.anulado %}
+          <a href="{% url 'movimiento_editar' mov.pk %}" class="btn btn-outline-warning btn-sm" style="font-size:.72rem;">
+            <i class="bi bi-pencil-fill"></i>
+          </a>
+          {% endif %}
+          {% if perms.core.anular_movimiento and not mov.anulado %}
+          <a href="{% url 'movimiento_anular' mov.pk %}" class="btn btn-outline-secondary btn-sm" style="font-size:.72rem;">
+            <i class="bi bi-slash-circle"></i>
+          </a>
+          {% endif %}
+          {% if perms.core.eliminar_movimiento %}
+          <a href="{% url 'movimiento_eliminar' mov.pk %}" class="btn btn-outline-dark btn-sm" style="font-size:.72rem;">
+            <i class="bi bi-trash3"></i>
+          </a>
+          {% endif %}
         {% endif %}
       </div>
-      {% endif %}
     </div>
   </div>
+  {% endwith %}
   {% empty %}
   <div class="text-center text-muted py-5">
     <i class="bi bi-inbox fs-1 d-block mb-2"></i>No hay movimientos con esos filtros.
@@ -158,21 +156,27 @@
 <div class="d-none d-md-block">
   <div class="card">
     <div class="table-responsive">
-      <table class="table table-hover mb-0 table-sm">
-        <thead>
+      <table class="table table-hover mb-0 table-sm align-middle">
+        <thead class="table-light">
           <tr>
-            <th>#</th><th>Fecha</th><th>Tipo</th><th>Ítem</th>
-            <th class="text-end">Cantidad</th><th>Origen</th><th>Destino</th>
-            <th>Ref.</th><th>Motivo</th><th>Usuario</th>
-            {% if perms.core.editar_movimiento or perms.core.anular_movimiento or perms.core.eliminar_movimiento %}
+            <th>#</th>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Ítems</th>
+            <th>Motivo</th>
+            <th>Usuario</th>
             <th>Acciones</th>
-            {% endif %}
           </tr>
         </thead>
         <tbody>
           {% for mov in movimientos %}
+          {% with detalles=mov.detalles.all %}
           <tr class="{% if mov.eliminado %}mov-eliminado{% elif mov.anulado %}mov-anulado{% endif %}">
-            <td class="text-muted small">{{ mov.pk }}</td>
+            <td class="text-muted small">
+              <a href="{% url 'movimiento_detalle' mov.pk %}" class="text-decoration-none text-muted">
+                #{{ mov.pk }}
+              </a>
+            </td>
             <td class="text-nowrap small">{{ mov.fecha_movimiento|date:"d/m/Y H:i" }}</td>
             <td>
               <span class="badge rounded-pill
@@ -185,36 +189,41 @@
               {% if mov.anulado %}   <span class="badge badge-anulado">Anulado</span>{% endif %}
               {% if mov.eliminado %} <span class="badge badge-eliminado">Eliminado</span>{% endif %}
               {% if mov.editado %}   <span class="badge bg-warning text-dark" style="font-size:.65rem;">Editado</span>{% endif %}
-            </td>
-            <td>
-              <a href="{% url 'item_detalle' mov.item.pk %}" class="text-decoration-none fw-semibold">
-                {{ mov.item.nombre }}
-              </a>
-              <div class="text-muted" style="font-size:.72rem">{{ mov.item.codigo }}</div>
-              <!-- Auditoría inline -->
-              {% if mov.editado %}
-              <div class="text-muted" style="font-size:.65rem;">
-                <i class="bi bi-pencil"></i> {{ mov.usuario_edicion.username }} {{ mov.fecha_edicion|date:"d/m/Y" }}: <em>{{ mov.motivo_edicion|truncatechars:25 }}</em>
-              </div>
-              {% endif %}
+              <!-- Audit inline -->
               {% if mov.anulado %}
               <div class="text-danger" style="font-size:.65rem;">
-                <i class="bi bi-slash-circle"></i> {{ mov.usuario_anulacion.username }} {{ mov.fecha_anulacion|date:"d/m/Y" }}
+                <i class="bi bi-slash-circle"></i> {{ mov.usuario_anulacion.username }} {{ mov.fecha_anulacion|date:"d/m" }}
+              </div>
+              {% endif %}
+              {% if mov.editado and not mov.anulado %}
+              <div class="text-muted" style="font-size:.65rem;">
+                <i class="bi bi-pencil"></i> {{ mov.usuario_edicion.username }} {{ mov.fecha_edicion|date:"d/m" }}
               </div>
               {% endif %}
             </td>
-            <td class="text-end fw-bold">{{ mov.cantidad }} {{ mov.item.unidad_medida }}</td>
-            <td class="text-muted small">{{ mov.ubicacion_origen.nombre|default:"–" }}</td>
-            <td class="text-muted small">{{ mov.ubicacion_destino.nombre|default:"–" }}</td>
-            <td class="small">
-              {% if mov.cliente %}<i class="bi bi-person-fill"></i> {{ mov.cliente.nombre }}{% endif %}
-              {% if mov.maquina %}<i class="bi bi-gear-fill"></i> {{ mov.maquina.nombre }}{% endif %}
-              {% if not mov.cliente and not mov.maquina %}–{% endif %}
+            <td>
+              {% for det in detalles|slice:":3" %}
+              <div style="font-size:.82rem;">
+                <a href="{% url 'item_detalle' det.item.pk %}" class="text-decoration-none fw-semibold">
+                  {{ det.item.nombre }}
+                </a>
+                <span class="text-muted small">× {{ det.cantidad }}</span>
+              </div>
+              {% endfor %}
+              {% if mov.num_detalles > 3 %}
+              <div class="text-muted small">
+                <a href="{% url 'movimiento_detalle' mov.pk %}">
+                  + {{ mov.num_detalles|add:"-3" }} más…
+                </a>
+              </div>
+              {% endif %}
             </td>
-            <td class="text-muted small">{{ mov.motivo|truncatechars:30|default:"–" }}</td>
+            <td class="text-muted small">{{ mov.motivo|truncatechars:35|default:"–" }}</td>
             <td class="text-muted small">{{ mov.usuario.username }}</td>
-            {% if perms.core.editar_movimiento or perms.core.anular_movimiento or perms.core.eliminar_movimiento %}
             <td class="text-nowrap">
+              <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-outline-primary btn-sm py-0" title="Ver detalle">
+                <i class="bi bi-eye-fill" style="font-size:.75rem;"></i>
+              </a>
               {% if not mov.eliminado %}
                 {% if perms.core.editar_movimiento and not mov.anulado %}
                 <a href="{% url 'movimiento_editar' mov.pk %}" class="btn btn-outline-warning btn-sm py-0" title="Editar">
@@ -235,11 +244,11 @@
                 <span class="text-muted small">—</span>
               {% endif %}
             </td>
-            {% endif %}
           </tr>
+          {% endwith %}
           {% empty %}
           <tr>
-            <td colspan="12" class="text-center text-muted py-4">Sin movimientos.</td>
+            <td colspan="7" class="text-center text-muted py-4">Sin movimientos.</td>
           </tr>
           {% endfor %}
         </tbody>

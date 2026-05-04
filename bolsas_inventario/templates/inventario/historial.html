@@ -156,7 +156,7 @@
 {% if page_obj.object_list %}
 
 {% for entrada in page_obj %}
-{% with mov=entrada.mov %}
+{% with mov=entrada.mov det=entrada.det %}
 <div class="kardex-card {{ mov.tipo_movimiento }} {% if mov.eliminado %}opacity-25{% elif mov.anulado %}opacity-50{% endif %}"
      style="{% if mov.anulado %}border-left-color:#6c757d;{% endif %}{% if mov.eliminado %}border-left-color:#343a40;{% endif %}">
 
@@ -181,16 +181,22 @@
         {% else %}<i class="bi bi-arrow-left-right me-1"></i>{% endif %}
         {{ mov.get_tipo_movimiento_display }}
       </span>
-      <!-- Referencia -->
-      {% if mov.cliente %}
-        <span class="text-muted small">→ {{ mov.cliente.nombre }}</span>
-      {% elif mov.maquina %}
-        <span class="text-muted small">→ {{ mov.maquina.nombre }}</span>
-      {% elif mov.tipo_movimiento == 'transferencia' and mov.ubicacion_origen and mov.ubicacion_destino %}
+      <!-- Referencia (datos del detalle: cliente, máquina, ubicaciones) -->
+      {% if det.cliente %}
+        <span class="text-muted small">→ {{ det.cliente.nombre }}</span>
+      {% elif det.maquina %}
+        <span class="text-muted small">→ {{ det.maquina.nombre }}</span>
+      {% elif mov.tipo_movimiento == 'transferencia' and det.ubicacion_origen and det.ubicacion_destino %}
         <span class="text-muted small">
-          {{ mov.ubicacion_origen.nombre }} → {{ mov.ubicacion_destino.nombre }}
+          {{ det.ubicacion_origen.nombre }} → {{ det.ubicacion_destino.nombre }}
         </span>
       {% endif %}
+      <!-- Enlace al movimiento completo -->
+      <a href="{% url 'movimiento_detalle' mov.pk %}"
+         class="badge bg-light text-secondary border ms-1" style="font-size:.65rem; text-decoration:none;"
+         title="Ver operación completa">
+        <i class="bi bi-link-45deg"></i> Op. #{{ mov.pk }}
+      </a>
     </div>
 
     <!-- Delta de cantidad -->
@@ -246,10 +252,10 @@
   <!-- Fila inferior: usuario + motivo + ubicación -->
   <div class="text-muted" style="font-size:.72rem; line-height:1.5;">
     <i class="bi bi-person-fill me-1"></i>{{ mov.usuario.get_full_name|default:mov.usuario.username }}
-    {% if mov.ubicacion_destino %}
-      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ mov.ubicacion_destino.nombre }}</span>
-    {% elif mov.ubicacion_origen %}
-      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ mov.ubicacion_origen.nombre }}</span>
+    {% if det.ubicacion_destino %}
+      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ det.ubicacion_destino.nombre }}</span>
+    {% elif det.ubicacion_origen %}
+      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ det.ubicacion_origen.nombre }}</span>
     {% endif %}
     {% if mov.motivo %}
       <span class="ms-2 fst-italic">{{ mov.motivo|truncatechars:60 }}</span>

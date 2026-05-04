@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Movimiento #{{ mov.pk }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mov-anulado   { opacity:.55; }
+  .mov-eliminado { opacity:.35; }
+  .badge-anulado   { background:#6c757d; }
+  .badge-eliminado { background:#343a40; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center
+  {% if mov.eliminado %}mov-eliminado{% elif mov.anulado %}mov-anulado{% endif %}"
+  style="background:linear-gradient(135deg,
+    {% if mov.tipo_movimiento == 'entrada' %}#198754,#0f5132
+    {% elif mov.tipo_movimiento == 'salida' %}#dc3545,#842029
+    {% elif mov.tipo_movimiento == 'ajuste' %}#ffc107,#664d03
+    {% else %}#0dcaf0,#055160{% endif %});">
+  <div>
+    <h1 style="font-size:1.2rem;">
+      <i class="bi bi-{% if mov.tipo_movimiento == 'entrada' %}arrow-down-circle-fill
+        {% elif mov.tipo_movimiento == 'salida' %}arrow-up-circle-fill
+        {% else %}arrows-angle-contract{% endif %} me-2"></i>
+      Movimiento #{{ mov.pk }}
+    </h1>
+    <small class="opacity-75">
+      {{ mov.get_tipo_movimiento_display }}
+      &middot; {{ mov.detalles.count }} ítem(s)
+      &middot; {{ mov.fecha_movimiento|date:"d/m/Y H:i" }}
+    </small>
+  </div>
+  <a href="{% url 'movimiento_lista' %}" class="btn btn-light btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Lista
+  </a>
+</div>
+
+<!-- ── Cabecera ─────────────────────────────────────────────────────────────── -->
+<div class="card mb-3">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-info-circle me-2"></i>Datos de la operación
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Tipo</div>
+        <span class="badge rounded-pill
+          {% if mov.tipo_movimiento == 'entrada' %}bg-success
+          {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+          {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
+          {% else %}bg-info text-dark{% endif %}">
+          {{ mov.get_tipo_movimiento_display }}
+        </span>
+        {% if mov.anulado %}
+          <span class="badge badge-anulado ms-1">Anulado</span>
+        {% endif %}
+        {% if mov.eliminado %}
+          <span class="badge badge-eliminado ms-1">Eliminado</span>
+        {% endif %}
+        {% if mov.editado %}
+          <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">Editado</span>
+        {% endif %}
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Fecha movimiento</div>
+        <div class="fw-semibold">{{ mov.fecha_movimiento|date:"d/m/Y H:i" }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Fecha registro</div>
+        <div class="small">{{ mov.fecha|date:"d/m/Y H:i" }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted small">Usuario</div>
+        <div class="fw-semibold">{{ mov.usuario.get_full_name|default:mov.usuario.username }}</div>
+      </div>
+      {% if mov.motivo %}
+      <div class="col-12">
+        <div class="text-muted small">Motivo</div>
+        <div class="fst-italic">{{ mov.motivo }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Líneas ────────────────────────────────────────────────────────────────── -->
+<div class="card mb-3">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-table me-2"></i>Ítems ({{ mov.detalles.count }})
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Ítem</th>
+          <th class="text-end">Cantidad</th>
+          <th>Origen</th>
+          <th>Destino</th>
+          <th>Ref.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for det in mov.detalles.all %}
+        <tr>
+          <td>
+            <a href="{% url 'item_detalle' det.item.pk %}" class="text-decoration-none fw-semibold">
+              {{ det.item.nombre }}
+            </a>
+            <div class="text-muted small">{{ det.item.codigo }}</div>
+          </td>
+          <td class="text-end fw-bold">
+            {{ det.cantidad }} <span class="text-muted small">{{ det.item.unidad_medida }}</span>
+          </td>
+          <td class="text-muted small">{{ det.ubicacion_origen.nombre|default:"–" }}</td>
+          <td class="text-muted small">{{ det.ubicacion_destino.nombre|default:"–" }}</td>
+          <td class="small">
+            {% if det.cliente %}<i class="bi bi-person-fill text-primary"></i> {{ det.cliente.nombre }}<br>{% endif %}
+            {% if det.maquina %}<i class="bi bi-gear-fill text-warning"></i> {{ det.maquina.nombre }}{% endif %}
+            {% if not det.cliente and not det.maquina %}–{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Auditoría ─────────────────────────────────────────────────────────────── -->
+{% if mov.editado or mov.anulado or mov.eliminado %}
+<div class="card mb-3 border-secondary">
+  <div class="card-header bg-white fw-bold text-muted">
+    <i class="bi bi-shield-check me-2"></i>Auditoría
+  </div>
+  <div class="card-body small">
+    {% if mov.editado %}
+    <div class="mb-2">
+      <i class="bi bi-pencil text-warning me-1"></i>
+      <strong>Editado</strong> por {{ mov.usuario_edicion.get_full_name|default:mov.usuario_edicion.username }}
+      el {{ mov.fecha_edicion|date:"d/m/Y H:i" }}.<br>
+      <span class="text-muted fst-italic ms-3">{{ mov.motivo_edicion }}</span>
+    </div>
+    {% endif %}
+    {% if mov.anulado %}
+    <div class="mb-2 text-danger">
+      <i class="bi bi-slash-circle me-1"></i>
+      <strong>Anulado</strong> por {{ mov.usuario_anulacion.get_full_name|default:mov.usuario_anulacion.username }}
+      el {{ mov.fecha_anulacion|date:"d/m/Y H:i" }}.<br>
+      <span class="fst-italic ms-3">{{ mov.motivo_anulacion }}</span>
+    </div>
+    {% endif %}
+    {% if mov.eliminado %}
+    <div class="text-muted">
+      <i class="bi bi-trash me-1"></i>
+      <strong>Eliminado</strong> por {{ mov.usuario_eliminacion.get_full_name|default:mov.usuario_eliminacion.username }}
+      el {{ mov.fecha_eliminacion|date:"d/m/Y H:i" }}.<br>
+      <span class="fst-italic ms-3">{{ mov.motivo_eliminacion }}</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Acciones admin ─────────────────────────────────────────────────────────── -->
+{% if not mov.eliminado %}
+<div class="d-flex gap-2 flex-wrap">
+  {% if perms.core.editar_movimiento and not mov.anulado %}
+  <a href="{% url 'movimiento_editar' mov.pk %}" class="btn btn-outline-warning">
+    <i class="bi bi-pencil-fill me-1"></i>Editar
+  </a>
+  {% endif %}
+  {% if perms.core.anular_movimiento and not mov.anulado %}
+  <a href="{% url 'movimiento_anular' mov.pk %}" class="btn btn-outline-secondary">
+    <i class="bi bi-slash-circle me-1"></i>Anular movimiento
+  </a>
+  {% endif %}
+  {% if perms.core.eliminar_movimiento %}
+  <a href="{% url 'movimiento_eliminar' mov.pk %}" class="btn btn-outline-dark">
+    <i class="bi bi-trash3 me-1"></i>Eliminar
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

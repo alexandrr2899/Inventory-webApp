@@ -5,74 +5,74 @@
 <div class="page-header" style="background:linear-gradient(135deg,#6c757d,#343a40);">
   <div class="d-flex justify-content-between align-items-start">
     <div>
-      <h1 style="font-size:1.2rem;"><i class="bi bi-slash-circle-fill me-2"></i>Anular movimiento #{{ mov.pk }}</h1>
-      <small class="opacity-75">{{ mov.item.nombre }} · {{ mov.get_tipo_movimiento_display }}</small>
+      <h1 style="font-size:1.2rem;">
+        <i class="bi bi-slash-circle-fill me-2"></i>Anular movimiento #{{ mov.pk }}
+      </h1>
+      <small class="opacity-75">
+        {{ mov.get_tipo_movimiento_display }} · {{ mov.detalles.count }} ítem(s)
+        · {{ mov.fecha_movimiento|date:"d/m/Y H:i" }}
+      </small>
     </div>
-    <a href="{% url 'movimiento_lista' %}" class="btn btn-light btn-sm">Cancelar</a>
+    <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-light btn-sm">Cancelar</a>
   </div>
 </div>
 
-<!-- Resumen del movimiento -->
+<!-- Resumen de ítems -->
 <div class="card mb-3">
-  <div class="card-header bg-white fw-bold"><i class="bi bi-info-circle me-2"></i>Movimiento a anular</div>
-  <div class="card-body">
-    <div class="row g-2">
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Ítem</div>
-        <div class="fw-semibold">{{ mov.item.nombre }}</div>
-        <div class="text-muted small">{{ mov.item.codigo }}</div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Tipo</div>
-        <span class="badge rounded-pill
-          {% if mov.tipo_movimiento == 'entrada' %}bg-success
-          {% elif mov.tipo_movimiento == 'salida' %}bg-danger
-          {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
-          {% else %}bg-info text-dark{% endif %}">
-          {{ mov.get_tipo_movimiento_display }}
-        </span>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Cantidad</div>
-        <div class="fw-semibold">{{ mov.cantidad }} {{ mov.item.unidad_medida }}</div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Fecha</div>
-        <div class="fw-semibold">{{ mov.fecha_movimiento|date:"d/m/Y H:i" }}</div>
-      </div>
-      <div class="col-12 col-md-6">
-        <div class="text-muted small">Usuario</div>
-        <div class="fw-semibold">{{ mov.usuario.get_full_name|default:mov.usuario.username }}</div>
-      </div>
-      {% if mov.motivo %}
-      <div class="col-12">
-        <div class="text-muted small">Motivo original</div>
-        <div class="fst-italic">{{ mov.motivo }}</div>
-      </div>
-      {% endif %}
-    </div>
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-table me-2"></i>Ítems que serán afectados
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Ítem</th>
+          <th class="text-end">Cantidad</th>
+          <th>Ubicación</th>
+          <th>Efecto al anular</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for det in mov.detalles.all %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ det.item.nombre }}</div>
+            <div class="text-muted small">{{ det.item.codigo }}</div>
+          </td>
+          <td class="text-end fw-bold">{{ det.cantidad }} {{ det.item.unidad_medida }}</td>
+          <td class="text-muted small">
+            {% if mov.tipo_movimiento == 'entrada' %}{{ det.ubicacion_destino.nombre|default:"–" }}
+            {% else %}{{ det.ubicacion_origen.nombre|default:"–" }}
+            {% endif %}
+          </td>
+          <td>
+            {% if mov.tipo_movimiento == 'entrada' %}
+              <span class="badge bg-danger">–{{ det.cantidad }} {{ det.item.unidad_medida }}</span>
+            {% elif mov.tipo_movimiento == 'salida' %}
+              <span class="badge bg-success">+{{ det.cantidad }} {{ det.item.unidad_medida }}</span>
+            {% else %}
+              <span class="badge bg-secondary">Revertir</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
-<!-- Impacto en stock -->
+<!-- Alerta de impacto -->
 <div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
   <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
   <div>
-    <strong>Impacto en stock:</strong><br>
-    {% if mov.tipo_movimiento == 'entrada' %}
-      Se <strong>descontarán {{ mov.cantidad }} {{ mov.item.unidad_medida }}</strong> del stock de <em>{{ mov.item.nombre }}</em>.
-    {% elif mov.tipo_movimiento == 'salida' %}
-      Se <strong>devolverán {{ mov.cantidad }} {{ mov.item.unidad_medida }}</strong> al stock de <em>{{ mov.item.nombre }}</em>.
-    {% elif mov.tipo_movimiento == 'ajuste' %}
-      Se <strong>revertirá el ajuste de {{ mov.cantidad }} {{ mov.item.unidad_medida }}</strong> en <em>{{ mov.item.nombre }}</em>.
-    {% else %}
-      Se <strong>revertirá la transferencia</strong> de <em>{{ mov.item.nombre }}</em>.
-    {% endif %}
-    El movimiento quedará visible en el historial con badge "Anulado".
+    <strong>Impacto en stock:</strong> Se revertirán los efectos de
+    <strong>{{ mov.detalles.count }} línea(s)</strong> de este movimiento.
+    El movimiento quedará visible en el historial con badge <span class="badge bg-secondary">Anulado</span>.
+    <br><strong>Esta acción no se puede deshacer.</strong>
   </div>
 </div>
 
-<!-- Formulario de anulación -->
+<!-- Formulario -->
 <form method="post" novalidate>
   {% csrf_token %}
   <div class="card mb-3 border-danger">
@@ -82,9 +82,9 @@
     <div class="card-body">
       <label class="form-label">Motivo de anulación <span class="text-danger">*</span></label>
       <textarea name="motivo_anulacion" class="form-control" rows="3" required
-                placeholder="Explica por qué se anula este movimiento..."></textarea>
+                placeholder="Explica por qué se anula este movimiento…"></textarea>
       <div class="form-text text-danger">
-        <i class="bi bi-eye-fill me-1"></i>Este campo es obligatorio y queda permanentemente registrado.
+        <i class="bi bi-eye-fill me-1"></i>Campo obligatorio. Queda permanentemente registrado.
       </div>
     </div>
   </div>
@@ -93,7 +93,7 @@
     <button type="submit" class="btn btn-danger btn-lg">
       <i class="bi bi-slash-circle-fill me-1"></i>Confirmar anulación
     </button>
-    <a href="{% url 'movimiento_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+    <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
   </div>
 </form>
 {% endblock %}

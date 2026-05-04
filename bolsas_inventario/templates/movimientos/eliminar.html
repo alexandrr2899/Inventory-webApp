@@ -5,23 +5,22 @@
 <div class="page-header" style="background:linear-gradient(135deg,#6c757d,#212529);">
   <div class="d-flex justify-content-between align-items-start">
     <div>
-      <h1 style="font-size:1.2rem;"><i class="bi bi-trash3-fill me-2"></i>Eliminar movimiento #{{ mov.pk }}</h1>
-      <small class="opacity-75">Acción irreversible — solo eliminación lógica</small>
+      <h1 style="font-size:1.2rem;">
+        <i class="bi bi-trash3-fill me-2"></i>Eliminar movimiento #{{ mov.pk }}
+      </h1>
+      <small class="opacity-75">Eliminación lógica — queda en auditoría</small>
     </div>
-    <a href="{% url 'movimiento_lista' %}" class="btn btn-light btn-sm">Cancelar</a>
+    <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-light btn-sm">Cancelar</a>
   </div>
 </div>
 
-<!-- Resumen del movimiento -->
+<!-- Resumen de ítems -->
 <div class="card mb-3">
-  <div class="card-header bg-white fw-bold"><i class="bi bi-info-circle me-2"></i>Movimiento a eliminar</div>
-  <div class="card-body">
-    <div class="row g-2">
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Ítem</div>
-        <div class="fw-semibold">{{ mov.item.nombre }}</div>
-        <div class="text-muted small">{{ mov.item.codigo }}</div>
-      </div>
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-table me-2"></i>Movimiento a eliminar ({{ mov.detalles.count }} ítem(s))
+  </div>
+  <div class="card-body pb-0">
+    <div class="row g-2 mb-2">
       <div class="col-6 col-md-3">
         <div class="text-muted small">Tipo</div>
         <span class="badge rounded-pill
@@ -31,64 +30,82 @@
           {% else %}bg-info text-dark{% endif %}">
           {{ mov.get_tipo_movimiento_display }}
         </span>
-        {% if mov.anulado %}
-          <span class="badge bg-secondary ms-1">Anulado</span>
-        {% endif %}
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="text-muted small">Cantidad</div>
-        <div class="fw-semibold">{{ mov.cantidad }} {{ mov.item.unidad_medida }}</div>
+        {% if mov.anulado %}<span class="badge bg-secondary ms-1">Anulado</span>{% endif %}
       </div>
       <div class="col-6 col-md-3">
         <div class="text-muted small">Fecha</div>
         <div class="fw-semibold">{{ mov.fecha_movimiento|date:"d/m/Y H:i" }}</div>
       </div>
+      <div class="col-12 col-md-6">
+        <div class="text-muted small">Usuario</div>
+        <div>{{ mov.usuario.get_full_name|default:mov.usuario.username }}</div>
+      </div>
     </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr><th>Ítem</th><th class="text-end">Cantidad</th><th>Ubicación</th></tr>
+      </thead>
+      <tbody>
+        {% for det in mov.detalles.all %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ det.item.nombre }}</div>
+            <div class="text-muted small">{{ det.item.codigo }}</div>
+          </td>
+          <td class="text-end fw-bold">{{ det.cantidad }} {{ det.item.unidad_medida }}</td>
+          <td class="text-muted small">
+            {{ det.ubicacion_origen.nombre|default:det.ubicacion_destino.nombre|default:"–" }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
 {% if not mov.anulado %}
-<!-- Impacto en stock solo si no estaba anulado -->
 <div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
   <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
   <div>
-    <strong>Impacto en stock:</strong> El movimiento aún no estaba anulado.<br>
-    Al eliminar, el efecto en stock también será revertido automáticamente.
+    <strong>Impacto en stock:</strong> Este movimiento aún no fue anulado.<br>
+    Al eliminar, el efecto en stock de <strong>{{ mov.detalles.count }} ítem(s)</strong> será revertido automáticamente.
   </div>
 </div>
 {% else %}
 <div class="alert alert-info d-flex align-items-start gap-2 mb-3">
   <i class="bi bi-info-circle-fill flex-shrink-0 mt-1"></i>
   <div>
-    Este movimiento ya fue anulado (el stock ya fue revertido). Solo se marcará como eliminado en el historial.
+    Este movimiento ya fue anulado — el stock ya fue revertido.
+    Solo se marcará como eliminado en el historial.
   </div>
 </div>
 {% endif %}
 
-<!-- Advertencia extrema -->
 <div class="alert alert-dark d-flex align-items-start gap-2 mb-3">
   <i class="bi bi-shield-lock-fill flex-shrink-0 mt-1 text-warning"></i>
   <div>
     <strong>Esta es una acción extrema.</strong><br>
-    El movimiento quedará marcado como eliminado pero <strong>no se borrará de la base de datos</strong>.
-    Quedará visible solo para superusuarios y en registros de auditoría. Escribe <code>ELIMINAR</code> para confirmar.
+    El movimiento NO se borrará de la base de datos — quedará marcado como eliminado
+    y visible solo en auditoría. Escribe <code>ELIMINAR</code> para confirmar.
   </div>
 </div>
 
-<!-- Formulario de eliminación -->
+<!-- Formulario -->
 <form method="post" novalidate>
   {% csrf_token %}
   <div class="card mb-3 border-dark">
     <div class="card-header bg-dark text-white fw-bold">
-      <i class="bi bi-shield-exclamation me-2"></i>Confirmación de eliminación
+      <i class="bi bi-shield-exclamation me-2"></i>Confirmación
     </div>
     <div class="card-body">
       <div class="mb-3">
         <label class="form-label">Motivo de eliminación <span class="text-danger">*</span></label>
         <textarea name="motivo_eliminacion" class="form-control" rows="3" required
-                  placeholder="Explica detalladamente por qué se elimina este movimiento..."></textarea>
+                  placeholder="Explica detalladamente por qué se elimina este movimiento…"></textarea>
       </div>
-      <div class="mb-3">
+      <div>
         <label class="form-label">
           Confirmación <span class="text-danger">*</span>
           <span class="text-muted fw-normal">— Escribe exactamente: <code>ELIMINAR</code></span>
@@ -103,7 +120,7 @@
     <button type="submit" class="btn btn-dark btn-lg">
       <i class="bi bi-trash3-fill me-1"></i>Eliminar definitivamente
     </button>
-    <a href="{% url 'movimiento_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+    <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
   </div>
 </form>
 {% endblock %}
