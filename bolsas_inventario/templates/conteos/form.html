@@ -3,15 +3,20 @@
 
 {% block extra_head %}
 <style>
-  .tab-tipo .nav-link          { border-radius: 20px; font-weight: 600; padding: .35rem 1.1rem; }
-  .tab-tipo .nav-link.active   { background: #6610f2; color: #fff; border-color: #6610f2; }
-  .tab-tipo .nav-link:not(.active) { background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
-  .conteo-table th             { font-size: .75rem; text-transform: uppercase; color: #6c757d; }
-  .conteo-table td             { vertical-align: middle; }
-  .item-nombre                 { font-weight: 600; font-size: .9rem; }
-  .item-codigo                 { font-size: .75rem; color: #6c757d; }
-  .stock-sistema               { font-size: .8rem; color: #6c757d; }
-  .ts-wrapper.form-select-sm   { padding: 0 !important; }
+  .tab-tipo .nav-link            { border-radius: 20px; font-weight: 600; padding: .35rem 1.1rem; }
+  .tab-tipo .nav-link.active     { background: #6610f2; color: #fff; border-color: #6610f2; }
+  .tab-tipo .nav-link:not(.active){ background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
+  .conteo-table th               { font-size: .75rem; text-transform: uppercase; color: #6c757d; }
+  .conteo-table td               { vertical-align: middle; }
+  .item-nombre                   { font-weight: 600; font-size: .9rem; }
+  .item-codigo                   { font-size: .75rem; color: #6c757d; }
+  .stock-sistema                 { font-size: .8rem; color: #6c757d; white-space: nowrap; }
+  /* Tom Select: nunca clipeado por tabla */
+  .ts-dropdown { z-index: 9999 !important; }
+  /* Quitar padding extra en celdas pequeñas */
+  .conteo-table .ts-wrapper      { min-width: 0; }
+  /* Tom Select en modo form-select-sm */
+  .ts-control { padding: .25rem .5rem; font-size: .875rem; }
 </style>
 {% endblock %}
 
@@ -54,7 +59,7 @@
     </div>
   </div>
 
-  <!-- Selector de tipo -->
+  <!-- Selector de tipo + panes -->
   <div class="card mb-3">
     <div class="card-body pb-2">
       <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
@@ -83,17 +88,17 @@
         </ul>
       </div>
 
-      <!-- Panes por tipo -->
-      {% for tipo in tipos_conteo %}
+      <!-- Panes fijos: camiseta, pigmentos, lisa -->
+      {% for tipo in tipos_conteo_fijos %}
       <div id="pane-{{ tipo }}" class="conteo-pane d-none">
-        <div class="table-responsive">
+        <div class="table-responsive" style="overflow:visible;">
           <table class="table conteo-table mb-0 align-middle">
             <thead class="table-light">
               <tr>
                 <th style="min-width:220px;">Ítem</th>
-                <th style="min-width:200px;">Ubicación *</th>
-                <th style="min-width:110px;" class="text-muted">Sistema</th>
-                <th style="min-width:160px;">Cant. contada</th>
+                <th style="min-width:190px;">Ubicación *</th>
+                <th style="min-width:100px;" class="text-muted">Sistema</th>
+                <th style="min-width:150px;">Cant. contada</th>
               </tr>
             </thead>
             <tbody id="tbody-{{ tipo }}"></tbody>
@@ -105,6 +110,34 @@
         </div>
       </div>
       {% endfor %}
+
+      <!-- Pane libre: Otros (filas dinámicas) -->
+      <div id="pane-otros" class="conteo-pane d-none">
+        <div class="d-flex justify-content-end mb-2">
+          <button type="button" id="btn-agregar-otros" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>Agregar ítem
+          </button>
+        </div>
+        <div class="table-responsive" style="overflow:visible;">
+          <table class="table conteo-table mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="min-width:280px;">Ítem *</th>
+                <th style="min-width:190px;">Ubicación *</th>
+                <th style="min-width:100px;" class="text-muted">Sistema</th>
+                <th style="min-width:150px;">Cant. contada</th>
+                <th style="width:44px;"></th>
+              </tr>
+            </thead>
+            <tbody id="tbody-otros"></tbody>
+          </table>
+        </div>
+        <div class="text-center py-4 text-muted" id="empty-otros">
+          <i class="bi bi-clipboard-plus fs-3 d-block mb-2 opacity-50"></i>
+          Presioná <strong>Agregar ítem</strong> para comenzar el conteo libre
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -119,41 +152,71 @@
 
 {% block extra_js %}
 <script>
-const ITEMS_POR_TIPO  = {{ items_por_tipo_json|safe }};
-const UBICACIONES     = {{ ubicaciones_json|safe }};
-const FILAS_PREVIAS   = {{ filas_previas_json|safe }};
-const TIPO_INICIAL    = '{{ tipo_conteo_inicial|default:"camiseta" }}';
+// ── Datos del servidor ─────────────────────────────────────────────────────────
+const ITEMS_POR_TIPO = {{ items_por_tipo_json|safe }};
+const ALL_ITEMS      = {{ all_items_json|safe }};
+const UBICACIONES    = {{ ubicaciones_json|safe }};
+// Lista: [{item_id, ub_id, cant}] — solo ítems con cantidad ingresada
+const FILAS_PREVIAS  = {{ filas_previas_json|safe }};
+const TIPO_INICIAL   = '{{ tipo_conteo_inicial|default:"camiseta" }}';
 
-const tipoInput  = document.getElementById('id_tipo_conteo');
-const lblCount   = document.getElementById('lbl-count');
+const tipoInput = document.getElementById('id_tipo_conteo');
+const lblCount  = document.getElementById('lbl-count');
+const TIPOS_FIJOS = ['camiseta', 'pigmentos', 'lisa'];
 
-// Tom Select instances per row keyed by item pk
-const tsInstances = {};
+// Mapa de previas por item_id para tabs fijos
+const previaMap = {};
+FILAS_PREVIAS.forEach(f => { previaMap[String(f.item_id)] = f; });
 
-// ── Render tabla ──────────────────────────────────────────────────────────────
-function renderTabla(tipo) {
-  const items  = ITEMS_POR_TIPO[tipo] || [];
-  const tbody  = document.getElementById(`tbody-${tipo}`);
-  const empty  = document.getElementById(`empty-${tipo}`);
-
-  // Clean up old Tom Select instances for this tipo
-  items.forEach(item => {
-    const key = `${tipo}-${item.pk}`;
-    if (tsInstances[key]) {
-      tsInstances[key].destroy();
-      delete tsInstances[key];
-    }
+// ── Destruir todas las TS instances en un tbody ────────────────────────────────
+function destruirTSEnTbody(tbody) {
+  tbody.querySelectorAll('select').forEach(sel => {
+    if (sel._ts) { try { sel._ts.destroy(); } catch(e) {} sel._ts = null; }
   });
+}
+
+// ── Inicializar Tom Select en select de ubicación ─────────────────────────────
+function initUbicacionTS(selUb, itemData, ubIdDefault) {
+  if (ubIdDefault) selUb.value = String(ubIdDefault);
+  const ts = new TomSelect(selUb, {
+    maxOptions: 300,
+    dropdownParent: 'body',
+    plugins: [],
+  });
+  selUb._ts = ts;
+  return ts;
+}
+
+// ── Actualizar stock según ubicación seleccionada ─────────────────────────────
+function updateStockSpan(stockSpan, itemData, ubId) {
+  if (!itemData || !ubId) { stockSpan.textContent = '–'; return; }
+  const qty = itemData.stocks_by_ub[String(ubId)];
+  stockSpan.textContent = qty !== undefined
+    ? `${parseFloat(qty).toLocaleString('es')} ${itemData.unidad}`
+    : `0 ${itemData.unidad}`;
+}
+
+// ── Renderizar tabla de tab fijo (camiseta / pigmentos / lisa) ────────────────
+function renderTablaFija(tipo) {
+  const items = ITEMS_POR_TIPO[tipo] || [];
+  const tbody = document.getElementById(`tbody-${tipo}`);
+  const empty = document.getElementById(`empty-${tipo}`);
+
+  destruirTSEnTbody(tbody);
   tbody.innerHTML = '';
 
   if (items.length === 0) {
-    empty.classList.remove('d-none');
+    empty && empty.classList.remove('d-none');
+    actualizarCount();
     return;
   }
-  empty.classList.add('d-none');
+  empty && empty.classList.add('d-none');
+
+  // Solo restaurar previas si el tipo inicial fue este mismo
+  const usarPrevias = TIPO_INICIAL === tipo;
 
   items.forEach(item => {
-    const previa = FILAS_PREVIAS[String(item.pk)] || {};
+    const previa = usarPrevias ? (previaMap[String(item.pk)] || {}) : {};
     const tr = document.createElement('tr');
 
     // ── Ítem (display + hidden input) ─────────────────────────────────────────
@@ -167,41 +230,39 @@ function renderTabla(tipo) {
     tdItem.appendChild(hiddenItem);
     tr.appendChild(tdItem);
 
-    // ── Ubicación select ───────────────────────────────────────────────────────
-    const tdUb = document.createElement('td');
+    // ── Ubicación ─────────────────────────────────────────────────────────────
+    const tdUb  = document.createElement('td');
     const selUb = document.createElement('select');
-    selUb.name = 'ubicacion[]';
+    selUb.name  = 'ubicacion[]';
     selUb.className = 'form-select form-select-sm';
     UBICACIONES.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.pk;
-      opt.textContent = `${u.nombre}`;
+      opt.textContent = u.nombre;
       selUb.appendChild(opt);
     });
-    const ubToSet = previa.ub_id || item.default_ub;
-    if (ubToSet) selUb.value = String(ubToSet);
     tdUb.appendChild(selUb);
     tr.appendChild(tdUb);
 
-    // ── Stock sistema ──────────────────────────────────────────────────────────
-    const tdStock = document.createElement('td');
+    // ── Stock sistema ─────────────────────────────────────────────────────────
+    const tdStock  = document.createElement('td');
     const stockSpan = document.createElement('span');
     stockSpan.className = 'stock-sistema';
     stockSpan.textContent = '–';
     tdStock.appendChild(stockSpan);
     tr.appendChild(tdStock);
 
-    // ── Cantidad contada ───────────────────────────────────────────────────────
-    const tdCant = document.createElement('td');
-    const ig = document.createElement('div');
-    ig.className = 'input-group input-group-sm';
+    // ── Cantidad contada ──────────────────────────────────────────────────────
+    const tdCant  = document.createElement('td');
+    const ig      = document.createElement('div');
+    ig.className  = 'input-group input-group-sm';
     const inputCant = document.createElement('input');
     inputCant.type = 'number';
     inputCant.name = 'cantidad_contada[]';
     inputCant.className = 'form-control';
     inputCant.placeholder = '–';
     inputCant.step = '0.01';
-    inputCant.min = '0';
+    inputCant.min  = '0';
     if (previa.cant) inputCant.value = previa.cant;
     const unidadSpan = document.createElement('span');
     unidadSpan.className = 'input-group-text text-muted small';
@@ -212,32 +273,173 @@ function renderTabla(tipo) {
 
     tbody.appendChild(tr);
 
-    // ── Tom Select en ubicación ────────────────────────────────────────────────
-    const ts = new TomSelect(selUb, {
-      maxOptions: 200,
-      dropdownParent: document.body,
-      render: { option: (data, escape) => `<div>${escape(data.text)}</div>` },
-    });
-    tsInstances[`${tipo}-${item.pk}`] = ts;
+    // ── Tom Select en ubicación (después de estar en el DOM) ──────────────────
+    const ubDefault = previa.ub_id || item.default_ub;
+    const ts = initUbicacionTS(selUb, item, ubDefault);
 
-    // ── Stock por ubicación ────────────────────────────────────────────────────
-    function updateStock() {
-      const ubId = selUb.value;
-      const qty  = item.stocks_by_ub[String(ubId)];
-      stockSpan.textContent = qty !== undefined
-        ? `${parseFloat(qty).toLocaleString('es')} ${item.unidad}`
-        : `0 ${item.unidad}`;
+    function doUpdateStock() {
+      updateStockSpan(stockSpan, item, selUb.value);
     }
-    ts.on('change', updateStock);
-    updateStock();
+    ts.on('change', doUpdateStock);
+    doUpdateStock();
   });
 
   actualizarCount();
 }
 
-// ── Contar ítems con cantidad ingresada ───────────────────────────────────────
+// ── Render tab "Otros" (filas dinámicas) ──────────────────────────────────────
+function renderOtros() {
+  const tbody = document.getElementById('tbody-otros');
+  const empty = document.getElementById('empty-otros');
+  destruirTSEnTbody(tbody);
+  tbody.innerHTML = '';
+
+  // Restaurar previas solo si el tipo inicial fue 'otros'
+  if (TIPO_INICIAL === 'otros' && FILAS_PREVIAS.length > 0) {
+    FILAS_PREVIAS.forEach(f => agregarFilaOtros(f));
+  }
+
+  const n = tbody.querySelectorAll('tr.fila-otros').length;
+  empty.classList.toggle('d-none', n > 0);
+  actualizarCount();
+}
+
+// ── Agregar fila libre en "Otros" ──────────────────────────────────────────────
+function agregarFilaOtros(pre = {}) {
+  const tbody = document.getElementById('tbody-otros');
+  const empty = document.getElementById('empty-otros');
+  const tr    = document.createElement('tr');
+  tr.className = 'fila-otros';
+
+  // ── Ítem (Tom Select sobre select vacío) ──────────────────────────────────
+  const tdItem = document.createElement('td');
+  const selItem = document.createElement('select');
+  selItem.name  = 'item[]';
+  // Sin <option>: Tom Select las maneja con el array options
+  tdItem.appendChild(selItem);
+  tr.appendChild(tdItem);
+
+  // ── Ubicación ─────────────────────────────────────────────────────────────
+  const tdUb  = document.createElement('td');
+  const selUb = document.createElement('select');
+  selUb.name  = 'ubicacion[]';
+  selUb.className = 'form-select form-select-sm';
+  UBICACIONES.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.pk;
+    opt.textContent = u.nombre;
+    selUb.appendChild(opt);
+  });
+  tdUb.appendChild(selUb);
+  tr.appendChild(tdUb);
+
+  // ── Stock sistema ─────────────────────────────────────────────────────────
+  const tdStock   = document.createElement('td');
+  const stockSpan = document.createElement('span');
+  stockSpan.className = 'stock-sistema';
+  stockSpan.textContent = '–';
+  tdStock.appendChild(stockSpan);
+  tr.appendChild(tdStock);
+
+  // ── Cantidad contada ──────────────────────────────────────────────────────
+  const tdCant   = document.createElement('td');
+  const ig       = document.createElement('div');
+  ig.className   = 'input-group input-group-sm';
+  const inputCant = document.createElement('input');
+  inputCant.type = 'number';
+  inputCant.name = 'cantidad_contada[]';
+  inputCant.className = 'form-control';
+  inputCant.placeholder = '0';
+  inputCant.step = '0.01';
+  inputCant.min  = '0';
+  if (pre.cant) inputCant.value = pre.cant;
+  const unidadSpan = document.createElement('span');
+  unidadSpan.className = 'input-group-text text-muted small';
+  unidadSpan.textContent = 'ud';
+  ig.append(inputCant, unidadSpan);
+  tdCant.appendChild(ig);
+  tr.appendChild(tdCant);
+
+  // ── Eliminar fila ─────────────────────────────────────────────────────────
+  const tdDel  = document.createElement('td');
+  const btnDel = document.createElement('button');
+  btnDel.type = 'button';
+  btnDel.className = 'btn btn-outline-danger btn-sm';
+  btnDel.innerHTML = '<i class="bi bi-trash-fill"></i>';
+  btnDel.addEventListener('click', () => {
+    if (selItem._ts) { try { selItem._ts.destroy(); } catch(e){} selItem._ts = null; }
+    if (selUb._ts)   { try { selUb._ts.destroy();   } catch(e){} selUb._ts = null;   }
+    tr.remove();
+    const n = tbody.querySelectorAll('tr.fila-otros').length;
+    empty.classList.toggle('d-none', n > 0);
+    actualizarCount();
+  });
+  tdDel.appendChild(btnDel);
+  tr.appendChild(tdDel);
+
+  tbody.appendChild(tr);
+  empty.classList.add('d-none');
+
+  // ── Tom Select de ítem (buscador con código + nombre + categoría) ──────────
+  const tsItem = new TomSelect(selItem, {
+    valueField:   'value',
+    labelField:   'text',
+    searchField:  ['text', 'cat'],
+    maxOptions:   500,
+    dropdownParent: 'body',
+    placeholder:  'Buscar por código, nombre o categoría…',
+    options: ALL_ITEMS.map(it => ({
+      value: String(it.pk),
+      text:  `[${it.codigo}] ${it.nombre}`,
+      cat:   it.categoria || '',
+    })),
+    render: {
+      option: (data, escape) =>
+        `<div>
+           <span class="fw-semibold">${escape(data.text)}</span>
+           ${data.cat ? `<small class="text-muted ms-2">— ${escape(data.cat)}</small>` : ''}
+         </div>`,
+      item: (data, escape) => `<div>${escape(data.text)}</div>`,
+    },
+  });
+  selItem._ts = tsItem;
+
+  // ── Tom Select de ubicación ────────────────────────────────────────────────
+  const tsUb = initUbicacionTS(selUb, null, pre.ub_id || null);
+
+  // ── Lógica de cambio de ítem ──────────────────────────────────────────────
+  function onItemChange(val) {
+    const it = ALL_ITEMS.find(x => String(x.pk) === String(val));
+    if (!it) { unidadSpan.textContent = 'ud'; stockSpan.textContent = '–'; return; }
+    unidadSpan.textContent = it.unidad || 'ud';
+    // Pre-seleccionar la ubicación con más stock si no hay una ya elegida
+    if (!tsUb.getValue() && it.default_ub) {
+      tsUb.setValue(String(it.default_ub), true);
+    }
+    updateStockSpan(stockSpan, it, selUb.value);
+  }
+
+  tsItem.on('change', onItemChange);
+  tsUb.on('change', () => {
+    const val = tsItem.getValue();
+    const it  = ALL_ITEMS.find(x => String(x.pk) === String(val));
+    if (it) updateStockSpan(stockSpan, it, selUb.value);
+  });
+
+  // ── Pre-fill si viene con datos (error de validación) ─────────────────────
+  if (pre.item_id) {
+    tsItem.setValue(String(pre.item_id), true);
+    onItemChange(pre.item_id);
+  } else {
+    tsItem.focus();
+  }
+
+  actualizarCount();
+}
+
+// ── Contar ítems con cantidad ingresada en el tab activo ───────────────────────
 function actualizarCount() {
-  const tipo = tipoInput.value;
+  const tipo  = tipoInput.value || TIPO_INICIAL;
   const tbody = document.getElementById(`tbody-${tipo}`);
   if (!tbody) { lblCount.textContent = '0'; return; }
   const n = Array.from(tbody.querySelectorAll('input[name="cantidad_contada[]"]'))
@@ -245,22 +447,38 @@ function actualizarCount() {
   lblCount.textContent = n;
 }
 
-// ── Cambiar de tab ────────────────────────────────────────────────────────────
+// ── Cambiar de tab (limpia los demás para no contaminar el submit) ────────────
 function activarTab(tipo) {
+  // Vaciar tbodies inactivos para no mezclar inputs en el POST
+  const todos = [...TIPOS_FIJOS, 'otros'];
+  todos.forEach(t => {
+    if (t === tipo) return;
+    const tb = document.getElementById(`tbody-${t}`);
+    if (!tb) return;
+    destruirTSEnTbody(tb);
+    tb.innerHTML = '';
+    const empty = document.getElementById(`empty-${t}`);
+    if (empty && !TIPOS_FIJOS.includes(t)) empty.classList.remove('d-none');
+  });
+
   document.querySelectorAll('.conteo-pane').forEach(p => p.classList.add('d-none'));
   document.getElementById(`pane-${tipo}`).classList.remove('d-none');
   document.querySelectorAll('#tabs-tipo .nav-link').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tipo === tipo);
   });
   tipoInput.value = tipo;
-  renderTabla(tipo);
+
+  if (tipo === 'otros') {
+    renderOtros();
+  } else {
+    renderTablaFija(tipo);
+  }
 }
 
-document.querySelectorAll('#tabs-tipo .nav-link').forEach(btn => {
-  btn.addEventListener('click', () => activarTab(btn.dataset.tipo));
-});
+// ── Botón "Agregar ítem" en Otros ─────────────────────────────────────────────
+document.getElementById('btn-agregar-otros').addEventListener('click', () => agregarFilaOtros());
 
-// ── Validar al enviar ─────────────────────────────────────────────────────────
+// ── Validar antes de enviar ────────────────────────────────────────────────────
 document.getElementById('form-conteo').addEventListener('submit', function(e) {
   const tipo  = tipoInput.value;
   const tbody = document.getElementById(`tbody-${tipo}`);
@@ -272,12 +490,12 @@ document.getElementById('form-conteo').addEventListener('submit', function(e) {
   }
 });
 
-// ── Actualizar count en tiempo real ───────────────────────────────────────────
-document.addEventListener('input', function(e) {
+// ── Actualizar count en tiempo real ────────────────────────────────────────────
+document.addEventListener('input', e => {
   if (e.target.name === 'cantidad_contada[]') actualizarCount();
 });
 
-// ── Inicializar ───────────────────────────────────────────────────────────────
+// ── Inicializar ────────────────────────────────────────────────────────────────
 activarTab(TIPO_INICIAL);
 </script>
 {% endblock %}

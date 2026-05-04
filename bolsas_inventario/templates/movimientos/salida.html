@@ -218,10 +218,10 @@ function agregarFila(pre = {}) {
   actualizarContador();
 
   // ── Tom Select (después de agregar al DOM) ───────────────────────────────────
-  const tsItem = new TomSelect(selItem, { maxOptions: 500, placeholder: '-- Seleccionar ítem --' });
-  const tsUb   = new TomSelect(selUb,   { maxOptions: 200, dropdownParent: document.body });
-  const tsCli  = new TomSelect(selCli,  { maxOptions: 200, dropdownParent: document.body });
-  const tsMaq  = new TomSelect(selMaq,  { maxOptions: 200, dropdownParent: document.body });
+  const tsItem = new TomSelect(selItem, { maxOptions: 500, dropdownParent: 'body', placeholder: '-- Seleccionar ítem --' });
+  const tsUb   = new TomSelect(selUb,   { maxOptions: 200, dropdownParent: 'body' });
+  const tsCli  = new TomSelect(selCli,  { maxOptions: 200, dropdownParent: 'body' });
+  const tsMaq  = new TomSelect(selMaq,  { maxOptions: 200, dropdownParent: 'body' });
 
   // ── Cambio de ítem ────────────────────────────────────────────────────────────
   function onItemChange(val) {

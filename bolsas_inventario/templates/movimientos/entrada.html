@@ -89,6 +89,7 @@ const contLbl    = document.getElementById('contador-label');
 // ── Tom Select en ubicación de destino ────────────────────────────────────────
 const tsUbDest = new TomSelect('#sel-ub-destino', {
   maxOptions: 200,
+  dropdownParent: 'body',
   placeholder: '-- Seleccionar ubicación --',
   options: UBICACIONES_DATA.map(u => ({ value: String(u.pk), text: `${u.nombre} (${u.tipo})` })),
   items: UB_DESTINO_PREVIO ? [UB_DESTINO_PREVIO] : [],
@@ -163,6 +164,7 @@ function agregarFila(preItemId = '', preCant = '') {
   // ── Tom Select en ítem ─────────────────────────────────────────────────────
   const ts = new TomSelect(selItem, {
     maxOptions: 500,
+    dropdownParent: 'body',
     placeholder: '-- Seleccionar ítem --',
   });
 
@@ -184,8 +186,8 @@ function agregarFila(preItemId = '', preCant = '') {
   });
 
   if (preItemId) {
-    ts.setValue(String(preItemId), true);
-    ts.trigger('change', String(preItemId));
+    // setValue sin silent=true dispara el evento 'change' → actualiza unidad y stock
+    ts.setValue(String(preItemId));
   } else {
     ts.focus();
   }

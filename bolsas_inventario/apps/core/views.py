@@ -1104,6 +1104,7 @@ def conteo_nuevo(request):
             'pk': item.pk,
             'nombre': item.nombre,
             'codigo': item.codigo,
+            'categoria': item.categoria.nombre if item.categoria else '',
             'unidad': item.unidad_medida,
             'stock_total': str(stocks_totales.get(item.pk, Decimal('0'))),
             'default_ub': int(best_ub) if best_ub else (ubicaciones[0].pk if ubicaciones else None),
@@ -1115,6 +1116,7 @@ def conteo_nuevo(request):
         items_por_tipo[_clasificar(item)].append(_build_item_dict(item))
 
     items_por_tipo_json = json.dumps(items_por_tipo)
+    all_items_json = json.dumps([_build_item_dict(item) for item in all_items])
     ubicaciones_json = json.dumps([
         {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
         for u in ubicaciones
@@ -1127,11 +1129,12 @@ def conteo_nuevo(request):
         ubicacion_ids = request.POST.getlist('ubicacion[]')
         cantidades = request.POST.getlist('cantidad_contada[]')
 
-        filas_previas = {
-            iid: {'cant': cant, 'ub_id': uid}
+        # Lista ordenada: [{item_id, ub_id, cant}] para todos los ítems con cantidad
+        filas_previas = [
+            {'item_id': iid, 'ub_id': uid, 'cant': cant}
             for iid, uid, cant in zip(item_ids, ubicacion_ids, cantidades)
             if cant.strip()
-        }
+        ]
         filas_previas_json = json.dumps(filas_previas)
         tipo_conteo_previo = request.POST.get('tipo_conteo', 'camiseta')
 
@@ -1139,11 +1142,12 @@ def conteo_nuevo(request):
             return render(request, 'conteos/form.html', {
                 'form': f,
                 'items_por_tipo_json': items_por_tipo_json,
+                'all_items_json': all_items_json,
                 'ubicaciones_json': ubicaciones_json,
                 'hoy': hoy,
                 'filas_previas_json': filas_previas_json,
                 'tipo_conteo_inicial': tipo_conteo_previo,
-                'tipos_conteo': ['camiseta', 'pigmentos', 'lisa', 'otros'],
+                'tipos_conteo_fijos': ['camiseta', 'pigmentos', 'lisa'],
             })
 
         if not form.is_valid():
@@ -1237,11 +1241,12 @@ def conteo_nuevo(request):
     return render(request, 'conteos/form.html', {
         'form': form,
         'items_por_tipo_json': items_por_tipo_json,
+        'all_items_json': all_items_json,
         'ubicaciones_json': ubicaciones_json,
         'hoy': hoy,
-        'filas_previas_json': '{}',
+        'filas_previas_json': '[]',
         'tipo_conteo_inicial': 'camiseta',
-        'tipos_conteo': ['camiseta', 'pigmentos', 'lisa', 'otros'],
+        'tipos_conteo_fijos': ['camiseta', 'pigmentos', 'lisa'],
     })
 
 
