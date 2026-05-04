@@ -277,10 +277,19 @@ class Conteo(models.Model):
         ('parcial', 'Parcial'),
         ('conciliado', 'Conciliado'),
     ]
+    TIPO_CONTEO_CHOICES = [
+        ('camiseta', 'Camiseta'),
+        ('pigmentos', 'Pigmentos'),
+        ('lisa', 'Lisa'),
+        ('otros', 'Otros'),
+    ]
 
     fecha = models.DateField()
     turno = models.CharField(max_length=10, choices=TURNO_CHOICES)
-    # Cuándo ocurrió físicamente el conteo (puede diferir de creado_en)
+    tipo_conteo = models.CharField(
+        max_length=20, choices=TIPO_CONTEO_CHOICES, default='otros',
+        verbose_name='Tipo de conteo',
+    )
     fecha_hora_conteo = models.DateTimeField(
         default=timezone.now,
         verbose_name='Fecha y hora del conteo',
@@ -294,10 +303,10 @@ class Conteo(models.Model):
         verbose_name = 'Conteo'
         verbose_name_plural = 'Conteos'
         ordering = ['-fecha', 'turno']
-        unique_together = ['fecha', 'turno']
+        unique_together = ['fecha', 'turno', 'tipo_conteo']
 
     def __str__(self):
-        return f'Conteo {self.get_turno_display()} - {self.fecha}'
+        return f'Conteo {self.get_tipo_conteo_display()} - {self.get_turno_display()} - {self.fecha}'
 
     def actualizar_estado(self):
         detalles = self.detalles.all()

@@ -2,7 +2,7 @@
 {% block title %}Nueva Salida{% endblock %}
 
 {% block content %}
-<div class="page-header" style="background: linear-gradient(135deg,#dc3545,#842029);">
+<div class="page-header" style="background:linear-gradient(135deg,#dc3545,#842029);">
   <h1><i class="bi bi-arrow-up-circle-fill me-2"></i>Nueva Salida</h1>
   <small class="opacity-75">Podés registrar varios ítems de una sola vez</small>
 </div>
@@ -10,7 +10,7 @@
 <form method="post" novalidate id="form-salida">
   {% csrf_token %}
 
-  <!-- Encabezado común -->
+  <!-- Datos generales -->
   <div class="card mb-3">
     <div class="card-header bg-white fw-bold">Datos generales</div>
     <div class="card-body">
@@ -18,19 +18,20 @@
         <div class="col-12 col-md-6">
           <label class="form-label">Motivo / Descripción</label>
           <input type="text" name="motivo" class="form-control form-control-lg"
-                 placeholder="Ej: Despacho cliente, mantenimiento...">
+                 placeholder="Ej: Despacho cliente, mantenimiento..."
+                 value="{{ motivo_previo|default:'' }}">
         </div>
         <div class="col-12 col-md-6">
           <label class="form-label">Fecha del movimiento</label>
           <input type="datetime-local" name="fecha_movimiento" class="form-control form-control-lg"
-                 id="id_fecha_movimiento_salida">
+                 value="{{ fecha_mov_previo|default:'' }}">
           <div class="form-text">Si el movimiento ocurrió antes de hoy, indicalo aquí.</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Lista de ítems (una card por ítem, funciona en mobile y desktop) -->
+  <!-- Lista de ítems -->
   <div class="card mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
       <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems a retirar</span>
@@ -53,45 +54,17 @@
     <a href="{% url 'movimiento_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
   </div>
 </form>
-
-<!-- Datos para JS -->
-<script>
-const ITEMS_OPTS = [{ value: '', label: '-- Seleccionar ítem --', tipo: '', unidad: '' },
-  {% for item in items %}
-  { value: '{{ item.pk }}', label: '{{ item.nombre|escapejs }} ({{ item.codigo|escapejs }})', tipo: '{{ item.tipo }}', unidad: '{{ item.unidad_medida|escapejs }}' },
-  {% endfor %}
-];
-
-const UBICACIONES_OPTS = [{ value: '', label: '-- Ubicación --' },
-  {% for ub in ubicaciones %}{ value: '{{ ub.pk }}', label: '{{ ub.nombre|escapejs }}' },{% endfor %}
-];
-
-const CLIENTES_OPTS = [{ value: '', label: '-- Cliente --' },
-  {% for c in clientes %}{ value: '{{ c.pk }}', label: '{{ c.nombre|escapejs }}' },{% endfor %}
-];
-
-const MAQUINAS_OPTS = [{ value: '', label: '-- Máquina --' },
-  {% for m in maquinas %}{ value: '{{ m.pk }}', label: '{{ m.nombre|escapejs }}' },{% endfor %}
-];
-
-function buildSelect(name, opts, required = false) {
-  const sel = document.createElement('select');
-  sel.name = name;
-  sel.className = 'form-select';
-  if (required) sel.required = true;
-  opts.forEach(o => {
-    const opt = document.createElement('option');
-    opt.value = o.value;
-    opt.textContent = o.label;
-    sel.appendChild(opt);
-  });
-  return sel;
-}
-</script>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+const ITEMS_DATA     = {{ items_json|safe }};
+const UBICACIONES_DATA = {{ ubicaciones_json|safe }};
+const CLIENTES_DATA  = {{ clientes_json|safe }};
+const MAQUINAS_DATA  = {{ maquinas_json|safe }};
+const FILAS_PREVIAS  = {{ filas_previas_json|safe }};
+const ITEM_ID_INICIAL = '{{ item_id_inicial }}';
+
 const contenedor  = document.getElementById('contenedor-filas');
 const hintEmpty   = document.getElementById('hint-empty');
 const contadorLbl = document.getElementById('contador-label');
@@ -103,14 +76,24 @@ function actualizarContador() {
   contadorLbl.textContent = n <= 1 ? 'salida' : `${n} salidas`;
 }
 
-function agregarFila() {
+function buildTomSelect(el, options, placeholder, preValue) {
+  const ts = new TomSelect(el, {
+    maxOptions: 500,
+    placeholder: placeholder || '-- Seleccionar --',
+    options: options.map(o => ({ value: String(o.pk), text: o.nombre || o.text || '' })),
+    items: preValue ? [String(preValue)] : [],
+  });
+  return ts;
+}
+
+function agregarFila(pre = {}) {
   filaCount++;
   const idx = filaCount;
 
   const wrap = document.createElement('div');
   wrap.className = 'fila-salida border rounded-3 p-3 mb-3 position-relative';
 
-  // Cabecera de la fila
+  // Cabecera
   const header = document.createElement('div');
   header.className = 'd-flex justify-content-between align-items-center mb-3';
   header.innerHTML = `<span class="fw-semibold text-muted small">Ítem #${idx}</span>`;
@@ -122,25 +105,34 @@ function agregarFila() {
   header.appendChild(btnDel);
   wrap.appendChild(header);
 
-  // Grid de campos
   const grid = document.createElement('div');
   grid.className = 'row g-3';
   wrap.appendChild(grid);
 
-  // ── Ítem ──────────────────────────────────────────────────────
+  // ── Ítem ────────────────────────────────────────────────────────────────────
   const colItem = document.createElement('div');
   colItem.className = 'col-12 col-md-4';
   const lblItem = document.createElement('label');
   lblItem.className = 'form-label';
   lblItem.textContent = 'Ítem *';
-  const selItem = buildSelect('item[]', ITEMS_OPTS, true);
+  const selItem = document.createElement('select');
+  selItem.name = 'item[]';
+  selItem.className = 'form-select';
+  selItem.required = true;
+  selItem.innerHTML = '<option value="">-- Seleccionar ítem --</option>';
+  ITEMS_DATA.forEach(it => {
+    const opt = document.createElement('option');
+    opt.value = it.pk;
+    opt.textContent = `${it.nombre} (${it.codigo})`;
+    selItem.appendChild(opt);
+  });
   const stockDiv = document.createElement('div');
   stockDiv.className = 'text-muted small mt-1 d-none';
   stockDiv.innerHTML = '<i class="bi bi-box-fill me-1"></i>Stock: <span class="stock-val">–</span>';
   colItem.append(lblItem, selItem, stockDiv);
   grid.appendChild(colItem);
 
-  // ── Cantidad ──────────────────────────────────────────────────
+  // ── Cantidad ─────────────────────────────────────────────────────────────────
   const colCant = document.createElement('div');
   colCant.className = 'col-6 col-md-2';
   const lblCant = document.createElement('label');
@@ -156,6 +148,7 @@ function agregarFila() {
   inputCant.step = '0.01';
   inputCant.min = '0.01';
   inputCant.required = true;
+  if (pre.cantidad) inputCant.value = pre.cantidad;
   const unidadSpan = document.createElement('span');
   unidadSpan.className = 'input-group-text small text-muted unidad-lbl';
   unidadSpan.textContent = 'ud';
@@ -163,40 +156,77 @@ function agregarFila() {
   colCant.append(lblCant, inputGroup);
   grid.appendChild(colCant);
 
-  // ── Ubicación origen ──────────────────────────────────────────
+  // ── Ubicación origen ─────────────────────────────────────────────────────────
   const colUb = document.createElement('div');
   colUb.className = 'col-6 col-md-3';
   const lblUb = document.createElement('label');
   lblUb.className = 'form-label';
   lblUb.textContent = 'Ubicación origen *';
-  const selUb = buildSelect('ubicacion_origen[]', UBICACIONES_OPTS, true);
+  const selUb = document.createElement('select');
+  selUb.name = 'ubicacion_origen[]';
+  selUb.className = 'form-select';
+  selUb.required = true;
+  selUb.innerHTML = '<option value="">-- Ubicación --</option>';
+  UBICACIONES_DATA.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.pk;
+    opt.textContent = u.nombre;
+    selUb.appendChild(opt);
+  });
   colUb.append(lblUb, selUb);
   grid.appendChild(colUb);
 
-  // ── Cliente (condicional) ──────────────────────────────────────
+  // ── Cliente (condicional) ────────────────────────────────────────────────────
   const colCli = document.createElement('div');
   colCli.className = 'col-12 col-md-3 d-none';
   const lblCli = document.createElement('label');
   lblCli.className = 'form-label';
   lblCli.innerHTML = '<i class="bi bi-person-fill text-primary me-1"></i>Cliente *';
-  const selCli = buildSelect('cliente[]', CLIENTES_OPTS);
+  const selCli = document.createElement('select');
+  selCli.name = 'cliente[]';
+  selCli.className = 'form-select';
+  selCli.innerHTML = '<option value="">-- Cliente --</option>';
+  CLIENTES_DATA.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.pk;
+    opt.textContent = c.nombre;
+    selCli.appendChild(opt);
+  });
   colCli.append(lblCli, selCli);
   grid.appendChild(colCli);
 
-  // ── Máquina (condicional) ──────────────────────────────────────
+  // ── Máquina (condicional) ────────────────────────────────────────────────────
   const colMaq = document.createElement('div');
   colMaq.className = 'col-12 col-md-3 d-none';
   const lblMaq = document.createElement('label');
   lblMaq.className = 'form-label';
   lblMaq.innerHTML = '<i class="bi bi-gear-fill text-warning me-1"></i>Máquina';
-  const selMaq = buildSelect('maquina[]', MAQUINAS_OPTS);
+  const selMaq = document.createElement('select');
+  selMaq.name = 'maquina[]';
+  selMaq.className = 'form-select';
+  selMaq.innerHTML = '<option value="">-- Máquina --</option>';
+  MAQUINAS_DATA.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.pk;
+    opt.textContent = m.nombre;
+    selMaq.appendChild(opt);
+  });
   colMaq.append(lblMaq, selMaq);
   grid.appendChild(colMaq);
 
-  // ── Lógica: cambio de ítem ────────────────────────────────────
-  selItem.addEventListener('change', function() {
-    const opt = ITEMS_OPTS.find(o => o.value === this.value);
-    if (!opt || !opt.value) {
+  contenedor.insertBefore(wrap, hintEmpty);
+  actualizarContador();
+
+  // ── Tom Select (después de agregar al DOM) ───────────────────────────────────
+  const tsItem = new TomSelect(selItem, { maxOptions: 500, placeholder: '-- Seleccionar ítem --' });
+  const tsUb   = new TomSelect(selUb,   { maxOptions: 200, dropdownParent: document.body });
+  const tsCli  = new TomSelect(selCli,  { maxOptions: 200, dropdownParent: document.body });
+  const tsMaq  = new TomSelect(selMaq,  { maxOptions: 200, dropdownParent: document.body });
+
+  // ── Cambio de ítem ────────────────────────────────────────────────────────────
+  function onItemChange(val) {
+    const it = ITEMS_DATA.find(x => String(x.pk) === String(val));
+    if (!it) {
       colCli.classList.add('d-none');
       colMaq.classList.add('d-none');
       selCli.required = false;
@@ -205,41 +235,44 @@ function agregarFila() {
       unidadSpan.textContent = 'ud';
       return;
     }
+    unidadSpan.textContent = it.unidad || 'ud';
 
-    unidadSpan.textContent = opt.unidad || 'ud';
-
-    // Mostrar/ocultar campos condicionales
-    const esProducto   = opt.tipo === 'producto';
-    const esRepuesto   = opt.tipo === 'repuesto';
-    const esConsumible = opt.tipo === 'consumible';
+    const esProducto  = it.tipo === 'producto';
+    const esRepuesto  = it.tipo === 'repuesto';
 
     colCli.classList.toggle('d-none', !esProducto);
     colMaq.classList.toggle('d-none', esProducto);
     selCli.required = esProducto;
     selMaq.required = esRepuesto;
-
-    // Relabel según tipo
     lblMaq.innerHTML = esRepuesto
       ? '<i class="bi bi-gear-fill text-warning me-1"></i>Máquina *'
       : '<i class="bi bi-gear-fill text-warning me-1"></i>Máquina <span class="text-muted fw-normal">(opcional)</span>';
 
-    // Obtener y mostrar stock
-    fetch(`/api/item/${opt.value}/info/`)
+    fetch(`/api/item/${it.pk}/info/`)
       .then(r => r.json())
       .then(data => {
-        stockDiv.querySelector('.stock-val').textContent = `${data.stock_total} ${opt.unidad}`;
+        stockDiv.querySelector('.stock-val').textContent = `${data.stock_total} ${it.unidad}`;
         stockDiv.classList.remove('d-none');
-      });
-  });
+      })
+      .catch(() => {});
+  }
 
-  contenedor.insertBefore(wrap, hintEmpty);
-  actualizarContador();
-  selItem.focus();
+  tsItem.on('change', onItemChange);
+
+  // ── Pre-fill si viene con datos ───────────────────────────────────────────────
+  if (pre.item_id) {
+    tsItem.setValue(String(pre.item_id), true);
+    onItemChange(pre.item_id);
+  }
+  if (pre.ub_id)  tsUb.setValue(String(pre.ub_id),  true);
+  if (pre.cli_id) tsCli.setValue(String(pre.cli_id), true);
+  if (pre.maq_id) tsMaq.setValue(String(pre.maq_id), true);
+
+  if (!pre.item_id) tsItem.focus();
 }
 
-document.getElementById('btn-agregar').addEventListener('click', agregarFila);
+document.getElementById('btn-agregar').addEventListener('click', () => agregarFila());
 
-// Validar antes de enviar
 document.getElementById('form-salida').addEventListener('submit', function(e) {
   if (contenedor.querySelectorAll('.fila-salida').length === 0) {
     e.preventDefault();
@@ -247,19 +280,13 @@ document.getElementById('form-salida').addEventListener('submit', function(e) {
   }
 });
 
-// Ítem preseleccionado desde el detalle del ítem
-const itemIdInicial = '{{ item_id_inicial }}';
-
-// Primera fila al cargar
-agregarFila();
-
-// Si hay ítem preseleccionado, seleccionarlo y disparar cambio de tipo
-if (itemIdInicial) {
-  const primerSelect = contenedor.querySelector('select[name="item[]"]');
-  if (primerSelect) {
-    primerSelect.value = itemIdInicial;
-    primerSelect.dispatchEvent(new Event('change'));
-  }
+// ── Inicializar ───────────────────────────────────────────────────────────────
+if (FILAS_PREVIAS.length > 0) {
+  FILAS_PREVIAS.forEach(f => agregarFila(f));
+} else if (ITEM_ID_INICIAL) {
+  agregarFila({ item_id: ITEM_ID_INICIAL });
+} else {
+  agregarFila();
 }
 </script>
 {% endblock %}

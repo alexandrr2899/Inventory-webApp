@@ -23,6 +23,7 @@
           <th>#</th>
           <th>Fecha</th>
           <th>Turno</th>
+          <th>Tipo</th>
           <th>Hora conteo</th>
           <th>Ítems</th>
           <th>Estado</th>
@@ -40,6 +41,17 @@
               <i class="bi {% if c.turno == 'manana' %}bi-sunrise-fill{% else %}bi-moon-stars-fill{% endif %} me-1"></i>
               {{ c.get_turno_display }}
             </span>
+          </td>
+          <td>
+            {% if c.tipo_conteo == 'camiseta' %}
+              <span class="badge bg-primary"><i class="bi bi-bag-fill me-1"></i>Camiseta</span>
+            {% elif c.tipo_conteo == 'pigmentos' %}
+              <span class="badge bg-info text-dark"><i class="bi bi-palette-fill me-1"></i>Pigmentos</span>
+            {% elif c.tipo_conteo == 'lisa' %}
+              <span class="badge bg-success"><i class="bi bi-layers-fill me-1"></i>Lisa</span>
+            {% else %}
+              <span class="badge bg-secondary"><i class="bi bi-grid-fill me-1"></i>Otros</span>
+            {% endif %}
           </td>
           <td class="text-muted small">{{ c.fecha_hora_conteo|date:"H:i" }}</td>
           <td class="text-muted small">{{ c.num_detalles }} ítem(s)</td>
@@ -82,6 +94,10 @@
           <div class="fw-semibold">{{ c.fecha|date:"d/m/Y" }}
             <span class="badge ms-1 {% if c.turno == 'manana' %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
                   style="font-size:.65rem;">{{ c.get_turno_display }}</span>
+            {% if c.tipo_conteo == 'camiseta' %}<span class="badge bg-primary ms-1" style="font-size:.65rem;">Camiseta</span>
+            {% elif c.tipo_conteo == 'pigmentos' %}<span class="badge bg-info text-dark ms-1" style="font-size:.65rem;">Pigmentos</span>
+            {% elif c.tipo_conteo == 'lisa' %}<span class="badge bg-success ms-1" style="font-size:.65rem;">Lisa</span>
+            {% else %}<span class="badge bg-secondary ms-1" style="font-size:.65rem;">Otros</span>{% endif %}
           </div>
           <div class="text-muted small">
             {{ c.num_detalles }} ítem(s) · {{ c.fecha_hora_conteo|date:"H:i" }}

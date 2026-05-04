@@ -2,7 +2,7 @@
 {% block title %}Nueva Entrada{% endblock %}
 
 {% block content %}
-<div class="page-header" style="background: linear-gradient(135deg,#198754,#0f5132);">
+<div class="page-header" style="background:linear-gradient(135deg,#198754,#0f5132);">
   <h1><i class="bi bi-arrow-down-circle-fill me-2"></i>Nueva Entrada</h1>
   <small class="opacity-75">Podés registrar varios ítems de una sola vez</small>
 </div>
@@ -10,29 +10,28 @@
 <form method="post" novalidate id="form-entrada">
   {% csrf_token %}
 
-  <!-- Encabezado común -->
+  <!-- Datos generales -->
   <div class="card mb-3">
     <div class="card-header bg-white fw-bold">Datos generales</div>
     <div class="card-body">
       <div class="row g-3">
         <div class="col-12 col-md-6">
           <label class="form-label">Ubicación de entrada *</label>
-          <select name="ubicacion_destino" class="form-select form-select-lg" required>
+          <select name="ubicacion_destino" id="sel-ub-destino" class="form-select form-select-lg" required>
             <option value="">-- Seleccionar ubicación --</option>
-            {% for ub in ubicaciones %}
-            <option value="{{ ub.pk }}">{{ ub.nombre }} ({{ ub.get_tipo_display }})</option>
-            {% endfor %}
           </select>
         </div>
         <div class="col-12 col-md-6">
           <label class="form-label">Motivo / Descripción</label>
-          <input type="text" name="motivo" class="form-control form-control-lg"
-                 placeholder="Ej: Compra a proveedor, devolución...">
+          <input type="text" name="motivo" id="inp-motivo" class="form-control form-control-lg"
+                 placeholder="Ej: Compra a proveedor, devolución..."
+                 value="{{ motivo_previo|default:'' }}">
         </div>
         <div class="col-12 col-md-6">
           <label class="form-label">Fecha del movimiento</label>
-          <input type="datetime-local" name="fecha_movimiento" class="form-control form-control-lg"
-                 id="id_fecha_movimiento_entrada">
+          <input type="datetime-local" name="fecha_movimiento" id="inp-fecha"
+                 class="form-control form-control-lg"
+                 value="{{ fecha_mov_previo|default:'' }}">
           <div class="form-text">Si el movimiento ocurrió antes de hoy, indicalo aquí.</div>
         </div>
       </div>
@@ -49,17 +48,15 @@
     </div>
     <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table mb-0" id="tabla-items">
+        <table class="table mb-0 align-middle" id="tabla-items">
           <thead class="table-light">
             <tr>
-              <th style="min-width:260px;">Ítem *</th>
-              <th style="min-width:130px;">Cantidad *</th>
+              <th style="min-width:280px;">Ítem *</th>
+              <th style="min-width:150px;">Cantidad *</th>
               <th style="width:48px;"></th>
             </tr>
           </thead>
-          <tbody id="cuerpo-tabla">
-            <!-- Las filas se insertan aquí -->
-          </tbody>
+          <tbody id="cuerpo-tabla"></tbody>
         </table>
       </div>
       <div class="text-center py-3 text-muted" id="hint-empty">
@@ -70,109 +67,146 @@
 
   <div class="d-flex gap-2 flex-wrap">
     <button type="submit" class="btn btn-success btn-lg flex-fill flex-md-grow-0">
-      <i class="bi bi-check-lg me-2"></i>Registrar <span id="contador-label">entradas</span>
+      <i class="bi bi-check-lg me-2"></i>Registrar <span id="contador-label">entrada</span>
     </button>
     <a href="{% url 'movimiento_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
   </div>
 </form>
-
-<!-- Template de fila (oculto) -->
-<template id="tpl-fila">
-  <tr class="fila-item">
-    <td>
-      <select name="item[]" class="form-select select-item" required>
-        <option value="">-- Seleccionar ítem --</option>
-        {% for item in items %}
-        <option value="{{ item.pk }}" data-tipo="{{ item.tipo }}" data-unidad="{{ item.unidad_medida }}">
-          {{ item.nombre }} ({{ item.codigo }})
-        </option>
-        {% endfor %}
-      </select>
-      <div class="stock-info text-muted small mt-1 d-none">
-        <i class="bi bi-box-fill me-1"></i>Stock actual: <span class="stock-val">–</span>
-      </div>
-    </td>
-    <td>
-      <div class="input-group">
-        <input type="number" name="cantidad[]" class="form-control input-cantidad"
-               placeholder="0" step="0.01" min="0.01" required>
-        <span class="input-group-text unidad-label text-muted small">ud</span>
-      </div>
-    </td>
-    <td>
-      <button type="button" class="btn btn-outline-danger btn-sm btn-eliminar" title="Eliminar fila">
-        <i class="bi bi-trash-fill"></i>
-      </button>
-    </td>
-  </tr>
-</template>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-const tbody = document.getElementById('cuerpo-tabla');
-const hintEmpty = document.getElementById('hint-empty');
-const contadorLabel = document.getElementById('contador-label');
+const ITEMS_DATA     = {{ items_json|safe }};
+const UBICACIONES_DATA = {{ ubicaciones_json|safe }};
+const FILAS_PREVIAS  = {{ filas_previas_json|safe }};
+const ITEM_ID_INICIAL = '{{ item_id_inicial }}';
+const UB_DESTINO_PREVIO = '{{ ub_destino_previo|default:"" }}';
 
+const tbody      = document.getElementById('cuerpo-tabla');
+const hintEmpty  = document.getElementById('hint-empty');
+const contLbl    = document.getElementById('contador-label');
+
+// ── Tom Select en ubicación de destino ────────────────────────────────────────
+const tsUbDest = new TomSelect('#sel-ub-destino', {
+  maxOptions: 200,
+  placeholder: '-- Seleccionar ubicación --',
+  options: UBICACIONES_DATA.map(u => ({ value: String(u.pk), text: `${u.nombre} (${u.tipo})` })),
+  items: UB_DESTINO_PREVIO ? [UB_DESTINO_PREVIO] : [],
+});
+
+// ── Contador ──────────────────────────────────────────────────────────────────
 function actualizarContador() {
   const n = tbody.querySelectorAll('.fila-item').length;
   hintEmpty.style.display = n === 0 ? '' : 'none';
-  contadorLabel.textContent = n <= 1 ? 'entrada' : `${n} entradas`;
+  contLbl.textContent = n <= 1 ? 'entrada' : `${n} entradas`;
 }
 
-function agregarFila() {
-  const tpl = document.getElementById('tpl-fila');
-  const fila = tpl.content.cloneNode(true).querySelector('tr');
-  tbody.appendChild(fila);
+// ── Agregar fila ──────────────────────────────────────────────────────────────
+function agregarFila(preItemId = '', preCant = '') {
+  const tr = document.createElement('tr');
+  tr.className = 'fila-item';
+
+  // ── Ítem ──────────────────────────────────────────────────────────────────
+  const tdItem = document.createElement('td');
+  const selItem = document.createElement('select');
+  selItem.name = 'item[]';
+  selItem.className = 'form-select';
+  selItem.required = true;
+  selItem.innerHTML = '<option value="">-- Seleccionar ítem --</option>';
+  ITEMS_DATA.forEach(it => {
+    const opt = document.createElement('option');
+    opt.value = it.pk;
+    opt.textContent = `${it.nombre} (${it.codigo})`;
+    opt.dataset.unidad = it.unidad;
+    selItem.appendChild(opt);
+  });
+
+  const stockInfo = document.createElement('div');
+  stockInfo.className = 'text-muted small mt-1 d-none';
+  stockInfo.innerHTML = '<i class="bi bi-box-fill me-1"></i>Stock: <span class="stock-val">–</span>';
+  tdItem.append(selItem, stockInfo);
+  tr.appendChild(tdItem);
+
+  // ── Cantidad ───────────────────────────────────────────────────────────────
+  const tdCant = document.createElement('td');
+  const ig = document.createElement('div');
+  ig.className = 'input-group';
+  const inputCant = document.createElement('input');
+  inputCant.type = 'number';
+  inputCant.name = 'cantidad[]';
+  inputCant.className = 'form-control';
+  inputCant.placeholder = '0';
+  inputCant.step = '0.01';
+  inputCant.min = '0.01';
+  inputCant.required = true;
+  if (preCant) inputCant.value = preCant;
+  const unidadSpan = document.createElement('span');
+  unidadSpan.className = 'input-group-text text-muted small unidad-lbl';
+  unidadSpan.textContent = 'ud';
+  ig.append(inputCant, unidadSpan);
+  tdCant.appendChild(ig);
+  tr.appendChild(tdCant);
+
+  // ── Eliminar ───────────────────────────────────────────────────────────────
+  const tdDel = document.createElement('td');
+  const btnDel = document.createElement('button');
+  btnDel.type = 'button';
+  btnDel.className = 'btn btn-outline-danger btn-sm';
+  btnDel.innerHTML = '<i class="bi bi-trash-fill"></i>';
+  btnDel.addEventListener('click', () => { tr.remove(); actualizarContador(); });
+  tdDel.appendChild(btnDel);
+  tr.appendChild(tdDel);
+
+  tbody.appendChild(tr);
   actualizarContador();
 
-  const selectItem = fila.querySelector('.select-item');
-  const stockInfo  = fila.querySelector('.stock-info');
-  const stockVal   = fila.querySelector('.stock-val');
-  const unidadLbl  = fila.querySelector('.unidad-label');
+  // ── Tom Select en ítem ─────────────────────────────────────────────────────
+  const ts = new TomSelect(selItem, {
+    maxOptions: 500,
+    placeholder: '-- Seleccionar ítem --',
+  });
 
-  selectItem.addEventListener('change', function() {
-    const opt = this.selectedOptions[0];
-    if (!opt || !opt.value) {
+  ts.on('change', function(val) {
+    const it = ITEMS_DATA.find(x => String(x.pk) === String(val));
+    if (!it) {
       stockInfo.classList.add('d-none');
-      unidadLbl.textContent = 'ud';
+      unidadSpan.textContent = 'ud';
       return;
     }
-    const unidad = opt.dataset.unidad || 'ud';
-    unidadLbl.textContent = unidad;
-    fetch(`/api/item/${opt.value}/info/`)
+    unidadSpan.textContent = it.unidad || 'ud';
+    fetch(`/api/item/${it.pk}/info/`)
       .then(r => r.json())
       .then(data => {
-        stockVal.textContent = `${data.stock_total} ${unidad}`;
+        stockInfo.querySelector('.stock-val').textContent = `${data.stock_total} ${it.unidad}`;
         stockInfo.classList.remove('d-none');
-      });
+      })
+      .catch(() => {});
   });
 
-  fila.querySelector('.btn-eliminar').addEventListener('click', function() {
-    fila.remove();
-    actualizarContador();
-  });
-
-  // Enfocar el select recién creado
-  selectItem.focus();
+  if (preItemId) {
+    ts.setValue(String(preItemId), true);
+    ts.trigger('change', String(preItemId));
+  } else {
+    ts.focus();
+  }
 }
 
-document.getElementById('btn-agregar').addEventListener('click', agregarFila);
+document.getElementById('btn-agregar').addEventListener('click', () => agregarFila());
 
-// Ítem preseleccionado desde el detalle del ítem (?item=<pk>)
-const itemIdInicial = '{{ item_id_inicial }}';
-
-// Arrancar con una fila
-agregarFila();
-
-// Si hay ítem preseleccionado, seleccionarlo en la primera fila y disparar cambio
-if (itemIdInicial) {
-  const primerSelect = tbody.querySelector('.select-item');
-  if (primerSelect) {
-    primerSelect.value = itemIdInicial;
-    primerSelect.dispatchEvent(new Event('change'));
-    primerSelect.focus();
+document.getElementById('form-entrada').addEventListener('submit', function(e) {
+  if (tbody.querySelectorAll('.fila-item').length === 0) {
+    e.preventDefault();
+    alert('Agrega al menos un ítem antes de enviar.');
   }
+});
+
+// ── Inicializar ───────────────────────────────────────────────────────────────
+if (FILAS_PREVIAS.length > 0) {
+  FILAS_PREVIAS.forEach(f => agregarFila(f.item_id, f.cantidad));
+} else if (ITEM_ID_INICIAL) {
+  agregarFila(ITEM_ID_INICIAL, '');
+} else {
+  agregarFila();
 }
 </script>
 {% endblock %}

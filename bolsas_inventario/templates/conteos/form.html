@@ -3,22 +3,29 @@
 
 {% block extra_head %}
 <style>
-  .tipo-badge-producto  { background:#198754; }
-  .tipo-badge-repuesto  { background:#fd7e14; }
-  .tipo-badge-consumible{ background:#0dcaf0; color:#000; }
+  .tab-tipo .nav-link          { border-radius: 20px; font-weight: 600; padding: .35rem 1.1rem; }
+  .tab-tipo .nav-link.active   { background: #6610f2; color: #fff; border-color: #6610f2; }
+  .tab-tipo .nav-link:not(.active) { background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
+  .conteo-table th             { font-size: .75rem; text-transform: uppercase; color: #6c757d; }
+  .conteo-table td             { vertical-align: middle; }
+  .item-nombre                 { font-weight: 600; font-size: .9rem; }
+  .item-codigo                 { font-size: .75rem; color: #6c757d; }
+  .stock-sistema               { font-size: .8rem; color: #6c757d; }
+  .ts-wrapper.form-select-sm   { padding: 0 !important; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header" style="background:linear-gradient(135deg,#6610f2,#0d6efd);">
   <h1><i class="bi bi-clipboard-plus-fill me-2"></i>Nuevo Conteo Físico</h1>
-  <small class="opacity-75">Podés contar cualquier tipo de ítem</small>
+  <small class="opacity-75">Seleccioná el tipo, completá las cantidades y guardá</small>
 </div>
 
 <form method="post" novalidate id="form-conteo">
   {% csrf_token %}
+  {{ form.tipo_conteo }}
 
-  <!-- Encabezado del conteo -->
+  <!-- Encabezado -->
   <div class="card mb-3">
     <div class="card-header bg-white fw-bold"><i class="bi bi-calendar3 me-2"></i>Datos del conteo</div>
     <div class="card-body">
@@ -36,7 +43,7 @@
         <div class="col-12 col-md-6">
           <label class="form-label">Fecha y hora del conteo *</label>
           {{ form.fecha_hora_conteo }}
-          <div class="form-text">Cuándo se realizó físicamente el conteo (para detectar movimientos atrasados)</div>
+          <div class="form-text">Cuándo se realizó físicamente (para detectar movimientos atrasados)</div>
           {% if form.fecha_hora_conteo.errors %}<div class="invalid-feedback d-block">{{ form.fecha_hora_conteo.errors|join:", " }}</div>{% endif %}
         </div>
         <div class="col-12">
@@ -47,37 +54,61 @@
     </div>
   </div>
 
-  <!-- Filas de ítems -->
+  <!-- Selector de tipo -->
   <div class="card mb-3">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-      <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems contados</span>
-      <button type="button" id="btn-agregar" class="btn btn-primary btn-sm">
-        <i class="bi bi-plus-lg me-1"></i>Agregar ítem
-      </button>
-    </div>
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table mb-0 align-middle" id="tabla-conteo">
-          <thead class="table-light">
-            <tr>
-              <th style="min-width:280px;">Ítem *</th>
-              <th style="min-width:180px;">Ubicación *</th>
-              <th style="min-width:140px;">Cant. contada *</th>
-              <th style="min-width:120px;"><span class="text-muted small">Stock sistema</span></th>
-              <th style="width:44px;"></th>
-            </tr>
-          </thead>
-          <tbody id="cuerpo-tabla"></tbody>
-        </table>
+    <div class="card-body pb-2">
+      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <span class="fw-bold text-muted small text-uppercase">Tipo de conteo:</span>
+        <ul class="nav gap-2 tab-tipo" id="tabs-tipo">
+          <li class="nav-item">
+            <button type="button" class="nav-link" data-tipo="camiseta">
+              <i class="bi bi-bag-fill me-1"></i>Camiseta
+            </button>
+          </li>
+          <li class="nav-item">
+            <button type="button" class="nav-link" data-tipo="pigmentos">
+              <i class="bi bi-palette-fill me-1"></i>Pigmentos
+            </button>
+          </li>
+          <li class="nav-item">
+            <button type="button" class="nav-link" data-tipo="lisa">
+              <i class="bi bi-layers-fill me-1"></i>Lisa
+            </button>
+          </li>
+          <li class="nav-item">
+            <button type="button" class="nav-link" data-tipo="otros">
+              <i class="bi bi-grid-fill me-1"></i>Otros
+            </button>
+          </li>
+        </ul>
       </div>
-      <div class="text-center py-4 text-muted" id="hint-empty">
-        <i class="bi bi-clipboard-plus fs-3 d-block mb-2 opacity-50"></i>
-        Presioná <strong>Agregar ítem</strong> para comenzar el conteo
+
+      <!-- Panes por tipo -->
+      {% for tipo in tipos_conteo %}
+      <div id="pane-{{ tipo }}" class="conteo-pane d-none">
+        <div class="table-responsive">
+          <table class="table conteo-table mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="min-width:220px;">Ítem</th>
+                <th style="min-width:200px;">Ubicación *</th>
+                <th style="min-width:110px;" class="text-muted">Sistema</th>
+                <th style="min-width:160px;">Cant. contada</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-{{ tipo }}"></tbody>
+          </table>
+        </div>
+        <div class="text-center py-4 text-muted d-none" id="empty-{{ tipo }}">
+          <i class="bi bi-inbox fs-3 d-block mb-2 opacity-40"></i>
+          No hay ítems en esta categoría
+        </div>
       </div>
+      {% endfor %}
     </div>
   </div>
 
-  <div class="d-flex gap-2 flex-wrap">
+  <div class="d-flex gap-2 flex-wrap align-items-center">
     <button type="submit" class="btn btn-primary btn-lg flex-fill flex-md-grow-0">
       <i class="bi bi-check-lg me-2"></i>Guardar conteo (<span id="lbl-count">0</span> ítem(s))
     </button>
@@ -88,161 +119,165 @@
 
 {% block extra_js %}
 <script>
-const ITEMS        = {{ items_json|safe }};
-const UBICACIONES  = {{ ubicaciones_json|safe }};
-const FILAS_PREVIAS = {{ filas_previas_json|default:'[]'|safe }};
+const ITEMS_POR_TIPO  = {{ items_por_tipo_json|safe }};
+const UBICACIONES     = {{ ubicaciones_json|safe }};
+const FILAS_PREVIAS   = {{ filas_previas_json|safe }};
+const TIPO_INICIAL    = '{{ tipo_conteo_inicial|default:"camiseta" }}';
 
-const tbody    = document.getElementById('cuerpo-tabla');
-const hint     = document.getElementById('hint-empty');
-const lblCount = document.getElementById('lbl-count');
+const tipoInput  = document.getElementById('id_tipo_conteo');
+const lblCount   = document.getElementById('lbl-count');
 
-function actualizarUI() {
-  const n = tbody.querySelectorAll('tr').length;
-  hint.style.display = n === 0 ? '' : 'none';
+// Tom Select instances per row keyed by item pk
+const tsInstances = {};
+
+// ── Render tabla ──────────────────────────────────────────────────────────────
+function renderTabla(tipo) {
+  const items  = ITEMS_POR_TIPO[tipo] || [];
+  const tbody  = document.getElementById(`tbody-${tipo}`);
+  const empty  = document.getElementById(`empty-${tipo}`);
+
+  // Clean up old Tom Select instances for this tipo
+  items.forEach(item => {
+    const key = `${tipo}-${item.pk}`;
+    if (tsInstances[key]) {
+      tsInstances[key].destroy();
+      delete tsInstances[key];
+    }
+  });
+  tbody.innerHTML = '';
+
+  if (items.length === 0) {
+    empty.classList.remove('d-none');
+    return;
+  }
+  empty.classList.add('d-none');
+
+  items.forEach(item => {
+    const previa = FILAS_PREVIAS[String(item.pk)] || {};
+    const tr = document.createElement('tr');
+
+    // ── Ítem (display + hidden input) ─────────────────────────────────────────
+    const tdItem = document.createElement('td');
+    tdItem.innerHTML = `<div class="item-nombre">${item.nombre}</div>
+                        <div class="item-codigo">${item.codigo}</div>`;
+    const hiddenItem = document.createElement('input');
+    hiddenItem.type = 'hidden';
+    hiddenItem.name = 'item[]';
+    hiddenItem.value = item.pk;
+    tdItem.appendChild(hiddenItem);
+    tr.appendChild(tdItem);
+
+    // ── Ubicación select ───────────────────────────────────────────────────────
+    const tdUb = document.createElement('td');
+    const selUb = document.createElement('select');
+    selUb.name = 'ubicacion[]';
+    selUb.className = 'form-select form-select-sm';
+    UBICACIONES.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.pk;
+      opt.textContent = `${u.nombre}`;
+      selUb.appendChild(opt);
+    });
+    const ubToSet = previa.ub_id || item.default_ub;
+    if (ubToSet) selUb.value = String(ubToSet);
+    tdUb.appendChild(selUb);
+    tr.appendChild(tdUb);
+
+    // ── Stock sistema ──────────────────────────────────────────────────────────
+    const tdStock = document.createElement('td');
+    const stockSpan = document.createElement('span');
+    stockSpan.className = 'stock-sistema';
+    stockSpan.textContent = '–';
+    tdStock.appendChild(stockSpan);
+    tr.appendChild(tdStock);
+
+    // ── Cantidad contada ───────────────────────────────────────────────────────
+    const tdCant = document.createElement('td');
+    const ig = document.createElement('div');
+    ig.className = 'input-group input-group-sm';
+    const inputCant = document.createElement('input');
+    inputCant.type = 'number';
+    inputCant.name = 'cantidad_contada[]';
+    inputCant.className = 'form-control';
+    inputCant.placeholder = '–';
+    inputCant.step = '0.01';
+    inputCant.min = '0';
+    if (previa.cant) inputCant.value = previa.cant;
+    const unidadSpan = document.createElement('span');
+    unidadSpan.className = 'input-group-text text-muted small';
+    unidadSpan.textContent = item.unidad;
+    ig.append(inputCant, unidadSpan);
+    tdCant.appendChild(ig);
+    tr.appendChild(tdCant);
+
+    tbody.appendChild(tr);
+
+    // ── Tom Select en ubicación ────────────────────────────────────────────────
+    const ts = new TomSelect(selUb, {
+      maxOptions: 200,
+      dropdownParent: document.body,
+      render: { option: (data, escape) => `<div>${escape(data.text)}</div>` },
+    });
+    tsInstances[`${tipo}-${item.pk}`] = ts;
+
+    // ── Stock por ubicación ────────────────────────────────────────────────────
+    function updateStock() {
+      const ubId = selUb.value;
+      const qty  = item.stocks_by_ub[String(ubId)];
+      stockSpan.textContent = qty !== undefined
+        ? `${parseFloat(qty).toLocaleString('es')} ${item.unidad}`
+        : `0 ${item.unidad}`;
+    }
+    ts.on('change', updateStock);
+    updateStock();
+  });
+
+  actualizarCount();
+}
+
+// ── Contar ítems con cantidad ingresada ───────────────────────────────────────
+function actualizarCount() {
+  const tipo = tipoInput.value;
+  const tbody = document.getElementById(`tbody-${tipo}`);
+  if (!tbody) { lblCount.textContent = '0'; return; }
+  const n = Array.from(tbody.querySelectorAll('input[name="cantidad_contada[]"]'))
+    .filter(inp => inp.value.trim() !== '').length;
   lblCount.textContent = n;
 }
 
-function agregarFila(preItemId = '', preUbId = '', preCant = '') {
-  const tr = document.createElement('tr');
-
-  // ── Ítem ──────────────────────────────────────────────────────
-  const tdItem  = document.createElement('td');
-  const selItem = document.createElement('select');
-  selItem.name      = 'item[]';
-  selItem.className = 'form-select form-select-sm';
-  selItem.required  = true;
-  selItem.innerHTML = '<option value="">-- Ítem --</option>';
-  ITEMS.forEach(it => {
-    const opt = document.createElement('option');
-    opt.value          = it.pk;
-    opt.textContent    = `${it.nombre} (${it.codigo})`;
-    opt.dataset.tipo   = it.tipo;
-    opt.dataset.unidad = it.unidad;
-    opt.dataset.stock  = it.stock_total;
-    if (String(it.pk) === String(preItemId)) opt.selected = true;
-    selItem.appendChild(opt);
+// ── Cambiar de tab ────────────────────────────────────────────────────────────
+function activarTab(tipo) {
+  document.querySelectorAll('.conteo-pane').forEach(p => p.classList.add('d-none'));
+  document.getElementById(`pane-${tipo}`).classList.remove('d-none');
+  document.querySelectorAll('#tabs-tipo .nav-link').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tipo === tipo);
   });
-
-  const tipoBadge = document.createElement('span');
-  tipoBadge.className = 'badge rounded-pill mt-1 d-none';
-  tipoBadge.style.fontSize = '.65rem';
-  tdItem.append(selItem, tipoBadge);
-  tr.appendChild(tdItem);
-
-  // ── Ubicación ─────────────────────────────────────────────────
-  const tdUb  = document.createElement('td');
-  const selUb = document.createElement('select');
-  selUb.name      = 'ubicacion[]';
-  selUb.className = 'form-select form-select-sm';
-  selUb.required  = true;
-  selUb.innerHTML = '<option value="">-- Ubicación --</option>';
-  UBICACIONES.forEach(u => {
-    const opt = document.createElement('option');
-    opt.value       = u.pk;
-    opt.textContent = `${u.nombre} (${u.tipo})`;
-    if (String(u.pk) === String(preUbId)) opt.selected = true;
-    selUb.appendChild(opt);
-  });
-  tdUb.appendChild(selUb);
-  tr.appendChild(tdUb);
-
-  // ── Cantidad contada ──────────────────────────────────────────
-  const tdCant   = document.createElement('td');
-  const ig       = document.createElement('div');
-  ig.className   = 'input-group input-group-sm';
-  const inputCant = document.createElement('input');
-  inputCant.type        = 'number';
-  inputCant.name        = 'cantidad_contada[]';
-  inputCant.className   = 'form-control';
-  inputCant.placeholder = '0';
-  inputCant.step        = '0.01';
-  inputCant.min         = '0';
-  inputCant.required    = true;
-  if (preCant !== '') inputCant.value = preCant;
-  const unidadSpan = document.createElement('span');
-  unidadSpan.className = 'input-group-text text-muted small unidad-lbl';
-  unidadSpan.textContent = 'ud';
-  ig.append(inputCant, unidadSpan);
-  tdCant.appendChild(ig);
-  tr.appendChild(tdCant);
-
-  // ── Stock sistema ─────────────────────────────────────────────
-  const tdSistema = document.createElement('td');
-  const stockSpan = document.createElement('span');
-  stockSpan.className   = 'text-muted small';
-  stockSpan.textContent = '–';
-  tdSistema.appendChild(stockSpan);
-  tr.appendChild(tdSistema);
-
-  // ── Eliminar ──────────────────────────────────────────────────
-  const tdDel  = document.createElement('td');
-  const btnDel = document.createElement('button');
-  btnDel.type      = 'button';
-  btnDel.className = 'btn btn-outline-danger btn-sm';
-  btnDel.innerHTML = '<i class="bi bi-trash-fill"></i>';
-  btnDel.addEventListener('click', () => { tr.remove(); actualizarUI(); });
-  tdDel.appendChild(btnDel);
-  tr.appendChild(tdDel);
-
-  // ── Helpers internos ──────────────────────────────────────────
-  function actualizarStockPorUbicacion() {
-    const itemOpt = selItem.selectedOptions[0];
-    if (!itemOpt || !itemOpt.value || !selUb.value) return;
-    fetch(`/api/item/${itemOpt.value}/info/`)
-      .then(r => r.json())
-      .then(data => {
-        const s = data.stocks.find(x => String(x.ubicacion_id) === String(selUb.value));
-        const unidad = itemOpt.dataset.unidad || 'ud';
-        stockSpan.textContent = s ? `${s.cantidad} ${unidad}` : `0 ${unidad}`;
-      })
-      .catch(() => {});
-  }
-
-  function aplicarDatosItem(opt) {
-    if (!opt || !opt.value) {
-      tipoBadge.className   = 'badge rounded-pill mt-1 d-none';
-      unidadSpan.textContent = 'ud';
-      stockSpan.textContent  = '–';
-      return;
-    }
-    unidadSpan.textContent = opt.dataset.unidad || 'ud';
-    const tipo = opt.dataset.tipo;
-    tipoBadge.textContent = { producto: 'Producto', repuesto: 'Repuesto', consumible: 'Consumible' }[tipo] || tipo;
-    tipoBadge.className   = `badge rounded-pill mt-1 tipo-badge-${tipo}`;
-  }
-
-  selItem.addEventListener('change', function() {
-    aplicarDatosItem(this.selectedOptions[0]);
-    actualizarStockPorUbicacion();
-  });
-  selUb.addEventListener('change', actualizarStockPorUbicacion);
-
-  tbody.appendChild(tr);
-  actualizarUI();
-
-  // ── Rehidratar visual si viene con datos ─────────────────────
-  if (preItemId) {
-    aplicarDatosItem(selItem.selectedOptions[0]);
-    actualizarStockPorUbicacion();
-  } else {
-    selItem.focus();
-  }
+  tipoInput.value = tipo;
+  renderTabla(tipo);
 }
 
-document.getElementById('btn-agregar').addEventListener('click', () => agregarFila());
+document.querySelectorAll('#tabs-tipo .nav-link').forEach(btn => {
+  btn.addEventListener('click', () => activarTab(btn.dataset.tipo));
+});
 
+// ── Validar al enviar ─────────────────────────────────────────────────────────
 document.getElementById('form-conteo').addEventListener('submit', function(e) {
-  if (tbody.querySelectorAll('tr').length === 0) {
+  const tipo  = tipoInput.value;
+  const tbody = document.getElementById(`tbody-${tipo}`);
+  const hay   = tbody && Array.from(tbody.querySelectorAll('input[name="cantidad_contada[]"]'))
+    .some(inp => inp.value.trim() !== '');
+  if (!hay) {
     e.preventDefault();
-    alert('Agrega al menos un ítem al conteo.');
+    alert('Ingresá al menos una cantidad antes de guardar el conteo.');
   }
 });
 
-// ── Inicializar tabla: rehidratar si hay datos previos ────────────────────────
-if (FILAS_PREVIAS.length > 0) {
-  FILAS_PREVIAS.forEach(f => agregarFila(f.item_id, f.ubicacion_id, f.cantidad));
-} else {
-  agregarFila();
-}
+// ── Actualizar count en tiempo real ───────────────────────────────────────────
+document.addEventListener('input', function(e) {
+  if (e.target.name === 'cantidad_contada[]') actualizarCount();
+});
+
+// ── Inicializar ───────────────────────────────────────────────────────────────
+activarTab(TIPO_INICIAL);
 </script>
 {% endblock %}

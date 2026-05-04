@@ -221,10 +221,11 @@ class ConteoForm(forms.ModelForm):
 
     class Meta:
         model = Conteo
-        fields = ['fecha', 'turno', 'fecha_hora_conteo', 'observaciones']
+        fields = ['fecha', 'turno', 'tipo_conteo', 'fecha_hora_conteo', 'observaciones']
         widgets = {
             'fecha': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'turno': forms.Select(attrs={'class': 'form-select'}),
+            'tipo_conteo': forms.HiddenInput(),
             'observaciones': forms.Textarea(attrs={
                 'class': 'form-control', 'rows': 2,
                 'placeholder': 'Observaciones opcionales...'

@@ -528,23 +528,32 @@ def _exportar_movimientos_csv(movimientos):
 def movimiento_entrada(request):
     items = Item.objects.filter(activo=True).order_by('nombre')
     ubicaciones = Ubicacion.objects.all()
+    item_id_inicial = request.GET.get('item', '')
+
+    items_json = json.dumps([
+        {'pk': it.pk, 'nombre': it.nombre, 'codigo': it.codigo, 'unidad': it.unidad_medida}
+        for it in items
+    ])
+    ubicaciones_json = json.dumps([
+        {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
+        for u in ubicaciones
+    ])
 
     if request.method == 'POST':
-        ubicacion_destino_id = request.POST.get('ubicacion_destino')
+        ubicacion_destino_id = request.POST.get('ubicacion_destino', '').strip()
         motivo = request.POST.get('motivo', '')
         fecha_mov_str = request.POST.get('fecha_movimiento', '').strip()
         item_ids = request.POST.getlist('item[]')
         cantidades = request.POST.getlist('cantidad[]')
 
         errores = []
+        ubicacion_destino = None
 
         try:
             ubicacion_destino = Ubicacion.objects.get(pk=ubicacion_destino_id)
-        except Ubicacion.DoesNotExist:
+        except (Ubicacion.DoesNotExist, ValueError):
             errores.append('Debes seleccionar una ubicación de destino.')
-            ubicacion_destino = None
 
-        # Parsear fecha_movimiento
         fecha_movimiento = timezone.now()
         if fecha_mov_str:
             try:
@@ -580,38 +589,53 @@ def movimiento_entrada(request):
                 continue
             filas_validas.append((item, cantidad))
 
-        if not filas_validas:
+        if not filas_validas and not errores:
             errores.append('Agrega al menos un ítem con cantidad.')
 
         if errores:
             for e in errores:
                 messages.error(request, e)
-        elif ubicacion_destino:
-            with transaction.atomic():
-                for item, cantidad in filas_validas:
-                    MovimientoInventario.objects.create(
-                        item=item,
-                        tipo_movimiento='entrada',
-                        cantidad=cantidad,
-                        ubicacion_destino=ubicacion_destino,
-                        motivo=motivo,
-                        fecha_movimiento=fecha_movimiento,
-                        usuario=request.user,
-                    )
-                    send_event('movement_created', {
-                        'tipo': 'entrada', 'item': item.nombre, 'codigo': item.codigo,
-                        'cantidad': str(cantidad), 'ubicacion': ubicacion_destino.nombre,
-                        'usuario': request.user.username,
-                    })
-                    notify_stock(item, movimiento='entrada', usuario=request.user.username)
-            messages.success(request, f'{len(filas_validas)} entrada(s) registrada(s) exitosamente.')
-            return redirect('movimiento_lista')
+            filas_previas = [
+                {'item_id': iid, 'cantidad': cant}
+                for iid, cant in zip(item_ids, cantidades)
+                if iid or cant.strip()
+            ]
+            return render(request, 'movimientos/entrada.html', {
+                'items_json': items_json,
+                'ubicaciones_json': ubicaciones_json,
+                'item_id_inicial': item_id_inicial,
+                'ub_destino_previo': ubicacion_destino_id,
+                'motivo_previo': motivo,
+                'fecha_mov_previo': fecha_mov_str,
+                'filas_previas_json': json.dumps(filas_previas),
+            })
 
-    # Ítem preseleccionado desde ?item=<pk> (ej: desde detalle del ítem)
-    item_id_inicial = request.GET.get('item', '')
+        with transaction.atomic():
+            for item, cantidad in filas_validas:
+                MovimientoInventario.objects.create(
+                    item=item,
+                    tipo_movimiento='entrada',
+                    cantidad=cantidad,
+                    ubicacion_destino=ubicacion_destino,
+                    motivo=motivo,
+                    fecha_movimiento=fecha_movimiento,
+                    usuario=request.user,
+                )
+                send_event('movement_created', {
+                    'tipo': 'entrada', 'item': item.nombre, 'codigo': item.codigo,
+                    'cantidad': str(cantidad), 'ubicacion': ubicacion_destino.nombre,
+                    'usuario': request.user.username,
+                })
+                notify_stock(item, movimiento='entrada', usuario=request.user.username)
+        messages.success(request, f'{len(filas_validas)} entrada(s) registrada(s) exitosamente.')
+        return redirect('movimiento_lista')
 
-    context = {'items': items, 'ubicaciones': ubicaciones, 'item_id_inicial': item_id_inicial}
-    return render(request, 'movimientos/entrada.html', context)
+    return render(request, 'movimientos/entrada.html', {
+        'items_json': items_json,
+        'ubicaciones_json': ubicaciones_json,
+        'item_id_inicial': item_id_inicial,
+        'filas_previas_json': '[]',
+    })
 
 
 @login_required
@@ -621,7 +645,23 @@ def movimiento_salida(request):
     ubicaciones = Ubicacion.objects.all()
     clientes = Cliente.objects.filter(activo=True).order_by('nombre')
     maquinas = Maquina.objects.filter(activo=True).order_by('nombre')
-    items_tipos = {str(i.pk): i.tipo for i in items}
+    item_id_inicial = request.GET.get('item', '')
+
+    items_json = json.dumps([
+        {'pk': it.pk, 'nombre': it.nombre, 'codigo': it.codigo,
+         'tipo': it.tipo, 'unidad': it.unidad_medida}
+        for it in items
+    ])
+    ubicaciones_json = json.dumps([
+        {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
+        for u in ubicaciones
+    ])
+    clientes_json = json.dumps([
+        {'pk': c.pk, 'nombre': c.nombre} for c in clientes
+    ])
+    maquinas_json = json.dumps([
+        {'pk': m.pk, 'nombre': m.nombre} for m in maquinas
+    ])
 
     if request.method == 'POST':
         motivo = request.POST.get('motivo', '')
@@ -632,7 +672,6 @@ def movimiento_salida(request):
         cliente_ids = request.POST.getlist('cliente[]')
         maquina_ids = request.POST.getlist('maquina[]')
 
-        # Parsear fecha_movimiento
         fecha_movimiento = timezone.now()
         if fecha_mov_str:
             try:
@@ -725,42 +764,55 @@ def movimiento_salida(request):
         if errores:
             for e in errores:
                 messages.error(request, e)
-        else:
-            with transaction.atomic():
-                for item, cantidad, ubicacion, cliente, maquina in filas_validas:
-                    MovimientoInventario.objects.create(
-                        item=item,
-                        tipo_movimiento='salida',
-                        cantidad=cantidad,
-                        ubicacion_origen=ubicacion,
-                        cliente=cliente,
-                        maquina=maquina,
-                        motivo=motivo,
-                        fecha_movimiento=fecha_movimiento,
-                        usuario=request.user,
-                    )
-                    send_event('movement_created', {
-                        'tipo': 'salida', 'item': item.nombre, 'codigo': item.codigo,
-                        'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
-                        'cliente': cliente.nombre if cliente else None,
-                        'usuario': request.user.username,
-                    })
-                    notify_stock(item, movimiento='salida', usuario=request.user.username)
-            messages.success(request, f'{len(filas_validas)} salida(s) registrada(s) exitosamente.')
-            return redirect('movimiento_lista')
+            filas_previas = [
+                {'item_id': iid, 'cantidad': cant, 'ub_id': ub,
+                 'cli_id': cli, 'maq_id': maq}
+                for iid, cant, ub, cli, maq
+                in zip(item_ids, cantidades, ubicacion_ids, cliente_ids, maquina_ids)
+                if iid or cant.strip()
+            ]
+            return render(request, 'movimientos/salida.html', {
+                'items_json': items_json,
+                'ubicaciones_json': ubicaciones_json,
+                'clientes_json': clientes_json,
+                'maquinas_json': maquinas_json,
+                'item_id_inicial': item_id_inicial,
+                'motivo_previo': motivo,
+                'fecha_mov_previo': fecha_mov_str,
+                'filas_previas_json': json.dumps(filas_previas),
+            })
 
-    # Ítem preseleccionado desde ?item=<pk>
-    item_id_inicial = request.GET.get('item', '')
+        with transaction.atomic():
+            for item, cantidad, ubicacion, cliente, maquina in filas_validas:
+                MovimientoInventario.objects.create(
+                    item=item,
+                    tipo_movimiento='salida',
+                    cantidad=cantidad,
+                    ubicacion_origen=ubicacion,
+                    cliente=cliente,
+                    maquina=maquina,
+                    motivo=motivo,
+                    fecha_movimiento=fecha_movimiento,
+                    usuario=request.user,
+                )
+                send_event('movement_created', {
+                    'tipo': 'salida', 'item': item.nombre, 'codigo': item.codigo,
+                    'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
+                    'cliente': cliente.nombre if cliente else None,
+                    'usuario': request.user.username,
+                })
+                notify_stock(item, movimiento='salida', usuario=request.user.username)
+        messages.success(request, f'{len(filas_validas)} salida(s) registrada(s) exitosamente.')
+        return redirect('movimiento_lista')
 
-    context = {
-        'items': items,
-        'ubicaciones': ubicaciones,
-        'clientes': clientes,
-        'maquinas': maquinas,
-        'items_tipos_json': json.dumps(items_tipos),
+    return render(request, 'movimientos/salida.html', {
+        'items_json': items_json,
+        'ubicaciones_json': ubicaciones_json,
+        'clientes_json': clientes_json,
+        'maquinas_json': maquinas_json,
         'item_id_inicial': item_id_inicial,
-    }
-    return render(request, 'movimientos/salida.html', context)
+        'filas_previas_json': '[]',
+    })
 
 
 @login_required
@@ -1014,32 +1066,55 @@ def conteo_lista(request):
 @permission_required(_perm('registrar_conteo'), raise_exception=True)
 def conteo_nuevo(request):
     hoy = date.today()
-    items = Item.objects.filter(activo=True).order_by('tipo', 'nombre')
-    ubicaciones = Ubicacion.objects.all()
+    ubicaciones = list(Ubicacion.objects.all())
 
-    # Stock actual por (item, ubicacion) para mostrar en el formulario
     stocks_map = {}
     for s in Stock.objects.select_related('item', 'ubicacion').filter(item__activo=True):
         stocks_map[(s.item_id, s.ubicacion_id)] = s.cantidad_actual
 
-    # Stock total por item (para mostrar en el selector)
     stocks_totales = {}
     for s in Stock.objects.filter(item__activo=True).values('item_id').annotate(t=Sum('cantidad_actual')):
         stocks_totales[s['item_id']] = s['t'] or Decimal('0')
 
-    items_json = json.dumps([
-        {
+    all_items = list(
+        Item.objects.filter(activo=True)
+        .select_related('categoria')
+        .order_by('nombre')
+    )
+
+    def _clasificar(item):
+        cat = (item.categoria.nombre if item.categoria else '').lower()
+        nom = item.nombre.lower()
+        if item.tipo == 'producto' and ('camiseta' in cat or 'camiseta' in nom):
+            return 'camiseta'
+        if item.tipo == 'consumible' and ('pigment' in cat or 'pigment' in nom):
+            return 'pigmentos'
+        if item.tipo == 'producto' and ('lisa' in cat or 'lisa' in nom):
+            return 'lisa'
+        return 'otros'
+
+    def _build_item_dict(item):
+        stocks_by_ub = {
+            str(upk): str(qty)
+            for (ipk, upk), qty in stocks_map.items()
+            if ipk == item.pk
+        }
+        best_ub = max(stocks_by_ub, key=lambda k: Decimal(stocks_by_ub[k]), default=None)
+        return {
             'pk': item.pk,
             'nombre': item.nombre,
             'codigo': item.codigo,
-            'tipo': item.tipo,
-            'tipo_display': item.get_tipo_display(),
             'unidad': item.unidad_medida,
             'stock_total': str(stocks_totales.get(item.pk, Decimal('0'))),
+            'default_ub': int(best_ub) if best_ub else (ubicaciones[0].pk if ubicaciones else None),
+            'stocks_by_ub': stocks_by_ub,
         }
-        for item in items
-    ])
 
+    items_por_tipo = {'camiseta': [], 'pigmentos': [], 'lisa': [], 'otros': []}
+    for item in all_items:
+        items_por_tipo[_clasificar(item)].append(_build_item_dict(item))
+
+    items_por_tipo_json = json.dumps(items_por_tipo)
     ubicaciones_json = json.dumps([
         {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
         for u in ubicaciones
@@ -1048,23 +1123,27 @@ def conteo_nuevo(request):
     if request.method == 'POST':
         form = ConteoForm(request.POST)
 
-        item_ids     = request.POST.getlist('item[]')
+        item_ids = request.POST.getlist('item[]')
         ubicacion_ids = request.POST.getlist('ubicacion[]')
-        cantidades   = request.POST.getlist('cantidad_contada[]')
+        cantidades = request.POST.getlist('cantidad_contada[]')
 
-        filas_previas_json = json.dumps([
-            {'item_id': iid, 'ubicacion_id': uid, 'cantidad': cant}
+        filas_previas = {
+            iid: {'cant': cant, 'ub_id': uid}
             for iid, uid, cant in zip(item_ids, ubicacion_ids, cantidades)
-            if iid or cant
-        ])
+            if cant.strip()
+        }
+        filas_previas_json = json.dumps(filas_previas)
+        tipo_conteo_previo = request.POST.get('tipo_conteo', 'camiseta')
 
-        def _render_error(form):
+        def _render_error(f):
             return render(request, 'conteos/form.html', {
-                'form': form,
-                'items_json': items_json,
+                'form': f,
+                'items_por_tipo_json': items_por_tipo_json,
                 'ubicaciones_json': ubicaciones_json,
                 'hoy': hoy,
                 'filas_previas_json': filas_previas_json,
+                'tipo_conteo_inicial': tipo_conteo_previo,
+                'tipos_conteo': ['camiseta', 'pigmentos', 'lisa', 'otros'],
             })
 
         if not form.is_valid():
@@ -1072,9 +1151,15 @@ def conteo_nuevo(request):
 
         fecha = form.cleaned_data['fecha']
         turno = form.cleaned_data['turno']
+        tipo_conteo = form.cleaned_data['tipo_conteo']
 
-        if Conteo.objects.filter(fecha=fecha, turno=turno).exists():
-            messages.error(request, f'Ya existe un conteo de {dict(Conteo.TURNO_CHOICES)[turno]} para {fecha}.')
+        if Conteo.objects.filter(fecha=fecha, turno=turno, tipo_conteo=tipo_conteo).exists():
+            label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(tipo_conteo, tipo_conteo)
+            label_turno = dict(Conteo.TURNO_CHOICES).get(turno, turno)
+            messages.error(
+                request,
+                f'Ya existe un conteo de {label_tipo} - {label_turno} para {fecha}.'
+            )
             return _render_error(form)
 
         errores = []
@@ -1084,18 +1169,14 @@ def conteo_nuevo(request):
             zip(item_ids, ubicacion_ids, cantidades), 1
         ):
             cant_str = cant_str.strip()
-            if not item_id and not cant_str:
+            if not cant_str:
                 continue
             if not item_id:
-                errores.append(f'Fila {i}: selecciona un ítem.')
-                continue
-            if not cant_str:
-                errores.append(f'Fila {i}: ingresa una cantidad.')
+                errores.append(f'Fila {i}: ítem inválido.')
                 continue
             if not ub_id:
                 errores.append(f'Fila {i}: selecciona una ubicación.')
                 continue
-
             try:
                 cantidad_contada = Decimal(cant_str)
             except Exception:
@@ -1104,7 +1185,6 @@ def conteo_nuevo(request):
             if cantidad_contada < 0:
                 errores.append(f'Fila {i}: la cantidad no puede ser negativa.')
                 continue
-
             try:
                 item = Item.objects.get(pk=item_id, activo=True)
             except Item.DoesNotExist:
@@ -1125,7 +1205,7 @@ def conteo_nuevo(request):
             return _render_error(form)
 
         if not filas:
-            messages.error(request, 'Debes ingresar al menos un ítem con cantidad.')
+            messages.error(request, 'Ingresá al menos una cantidad en el conteo.')
             return _render_error(form)
 
         with transaction.atomic():
@@ -1141,22 +1221,27 @@ def conteo_nuevo(request):
                     cantidad_sistema_al_conteo=cantidad_sistema,
                 )
 
+        label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(conteo.tipo_conteo, conteo.tipo_conteo)
         messages.success(
             request,
-            f'Conteo de {conteo.get_turno_display()} registrado con {len(filas)} ítem(s). '
+            f'Conteo {label_tipo} - {conteo.get_turno_display()} registrado con {len(filas)} ítem(s). '
             f'Revisá la conciliación para calcular diferencias.'
         )
         return redirect('conteo_conciliar', pk=conteo.pk)
 
     form = ConteoForm(initial={
         'fecha': hoy,
+        'tipo_conteo': 'camiseta',
         'fecha_hora_conteo': timezone.localtime(timezone.now()).strftime('%Y-%m-%dT%H:%M'),
     })
     return render(request, 'conteos/form.html', {
         'form': form,
-        'items_json': items_json,
+        'items_por_tipo_json': items_por_tipo_json,
         'ubicaciones_json': ubicaciones_json,
         'hoy': hoy,
+        'filas_previas_json': '{}',
+        'tipo_conteo_inicial': 'camiseta',
+        'tipos_conteo': ['camiseta', 'pigmentos', 'lisa', 'otros'],
     })
 
 
