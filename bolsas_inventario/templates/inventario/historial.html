@@ -71,7 +71,7 @@
 <div class="row g-2 mb-3">
   <div class="col-6 col-md-3">
     <div class="card text-center py-2 px-1">
-      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Movimientos</div>
+      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Total historial</div>
       <div class="fw-bold fs-5">{{ total_general }}</div>
     </div>
   </div>
@@ -85,40 +85,71 @@
   </div>
   <div class="col-6 col-md-3">
     <div class="card text-center py-2 px-1">
-      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Stock mínimo</div>
-      <div class="fw-bold fs-5">{{ item.stock_minimo }} <span class="fs-6 fw-normal text-muted">{{ item.unidad_medida }}</span></div>
+      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Activos</div>
+      <div class="fw-bold fs-5 text-success">{{ total_activos }}</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="card text-center py-2 px-1">
-      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Mostrando</div>
-      <div class="fw-bold fs-5">{{ total }}</div>
+      <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Anulados / Eliminados</div>
+      <div class="fw-bold fs-5 text-secondary">{{ total_anulados }} / {{ total_eliminados }}</div>
     </div>
   </div>
 </div>
 
-<!-- ── Filtros de tipo ────────────────────────────────────────────────────── -->
-<div class="filter-tabs d-flex flex-wrap gap-2 mb-3">
-  <a href="?tipo="
+{% if total_anulados or total_eliminados %}
+<div class="alert alert-light border d-flex align-items-start gap-2 py-2 mb-3" style="font-size:.8rem;">
+  <i class="bi bi-info-circle-fill text-secondary flex-shrink-0 mt-1"></i>
+  <span>
+    Los movimientos <strong>anulados</strong> y <strong>eliminados</strong> se muestran en gris por trazabilidad de auditoría,
+    pero <strong>no afectan el cálculo de stock</strong> mostrado en la columna antes→después.
+  </span>
+</div>
+{% endif %}
+
+<!-- ── Filtros de tipo + estado ───────────────────────────────────────────── -->
+<div class="filter-tabs d-flex flex-wrap gap-2 mb-2">
+  <a href="?tipo=&estado={{ estado_filtro }}"
      class="btn btn-sm {% if not tipo_filtro %}btn-dark{% else %}btn-outline-secondary{% endif %}">
-    Todos
+    Todos los tipos
   </a>
-  <a href="?tipo=entrada"
+  <a href="?tipo=entrada&estado={{ estado_filtro }}"
      class="btn btn-sm {% if tipo_filtro == 'entrada' %}btn-success{% else %}btn-outline-success{% endif %}">
     <i class="bi bi-arrow-down-circle me-1"></i>Entradas
   </a>
-  <a href="?tipo=salida"
+  <a href="?tipo=salida&estado={{ estado_filtro }}"
      class="btn btn-sm {% if tipo_filtro == 'salida' %}btn-danger{% else %}btn-outline-danger{% endif %}">
     <i class="bi bi-arrow-up-circle me-1"></i>Salidas
   </a>
-  <a href="?tipo=ajuste"
+  <a href="?tipo=ajuste&estado={{ estado_filtro }}"
      class="btn btn-sm {% if tipo_filtro == 'ajuste' %}btn-warning{% else %}btn-outline-warning{% endif %}">
     <i class="bi bi-sliders me-1"></i>Ajustes
   </a>
-  <a href="?tipo=transferencia"
+  <a href="?tipo=transferencia&estado={{ estado_filtro }}"
      class="btn btn-sm {% if tipo_filtro == 'transferencia' %}btn-info{% else %}btn-outline-info{% endif %}">
-    <i class="bi bi-arrow-left-right me-1"></i>Transferencias
+    <i class="bi bi-arrow-left-right me-1"></i>Transf.
   </a>
+</div>
+
+<div class="filter-tabs d-flex flex-wrap gap-2 mb-3">
+  <a href="?tipo={{ tipo_filtro }}&estado="
+     class="btn btn-sm {% if not estado_filtro %}btn-dark{% else %}btn-outline-secondary{% endif %}">
+    Todos los estados
+  </a>
+  <a href="?tipo={{ tipo_filtro }}&estado=activos"
+     class="btn btn-sm {% if estado_filtro == 'activos' %}btn-success{% else %}btn-outline-success{% endif %}">
+    <i class="bi bi-check-circle me-1"></i>Solo activos
+  </a>
+  <a href="?tipo={{ tipo_filtro }}&estado=anulados"
+     class="btn btn-sm {% if estado_filtro == 'anulados' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+    <i class="bi bi-slash-circle me-1"></i>Solo anulados
+  </a>
+  {% if total_eliminados %}
+  <a href="?tipo={{ tipo_filtro }}&estado=eliminados"
+     class="btn btn-sm {% if estado_filtro == 'eliminados' %}btn-dark{% else %}btn-outline-dark{% endif %}">
+    <i class="bi bi-trash3 me-1"></i>Solo eliminados
+  </a>
+  {% endif %}
 </div>
 
 <!-- ── Lista Kardex ───────────────────────────────────────────────────────── -->
@@ -162,17 +193,24 @@
       {% endif %}
     </div>
 
-    <!-- Delta de cantidad (siempre con signo) -->
+    <!-- Delta de cantidad -->
+    {% if entrada.afecta_stock %}
     <span class="delta-badge
       {% if entrada.delta > 0 %}text-success
       {% elif entrada.delta < 0 %}text-danger
       {% else %}text-muted{% endif %}">
       {% if entrada.delta > 0 %}+{% endif %}{{ entrada.delta|floatformat:"-2" }} {{ item.unidad_medida }}
     </span>
+    {% else %}
+    <span class="delta-badge text-muted" style="opacity:.5;">
+      — {{ item.unidad_medida }}
+    </span>
+    {% endif %}
 
   </div>
 
   <!-- Fila media: stock antes → después -->
+  {% if entrada.afecta_stock %}
   <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
     <div class="stock-flow">
       <span class="val-antes">{{ entrada.stock_antes|floatformat:"-2" }}</span>
@@ -191,6 +229,19 @@
       <span class="badge bg-warning text-dark" style="font-size:.7rem;">Stock bajo</span>
     {% endif %}
   </div>
+  {% else %}
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <div class="stock-flow" style="opacity:.5;">
+      <span class="val-antes">{{ entrada.stock_antes|floatformat:"-2" }}</span>
+      <span class="arrow"><i class="bi bi-arrow-right"></i></span>
+      <span class="val-despues text-muted">{{ entrada.stock_antes|floatformat:"-2" }}</span>
+      <span class="text-muted fw-normal" style="font-size:.75rem;">{{ item.unidad_medida }}</span>
+    </div>
+    <span class="badge bg-secondary" style="font-size:.68rem;">
+      <i class="bi bi-slash-circle me-1"></i>No afecta el stock
+    </span>
+  </div>
+  {% endif %}
 
   <!-- Fila inferior: usuario + motivo + ubicación -->
   <div class="text-muted" style="font-size:.72rem; line-height:1.5;">
@@ -257,7 +308,7 @@
 
     {% if page_obj.has_previous %}
     <li class="page-item">
-      <a class="page-link" href="?tipo={{ tipo_filtro }}&page={{ page_obj.previous_page_number }}">
+      <a class="page-link" href="?tipo={{ tipo_filtro }}&estado={{ estado_filtro }}&page={{ page_obj.previous_page_number }}">
         <i class="bi bi-chevron-left"></i>
       </a>
     </li>
@@ -269,7 +320,7 @@
       {% if page_obj.number == num %}
         <li class="page-item active"><span class="page-link">{{ num }}</span></li>
       {% elif num == 1 or num == page_obj.paginator.num_pages or num|add:"-1" == page_obj.number or num|add:"1" == page_obj.number %}
-        <li class="page-item"><a class="page-link" href="?tipo={{ tipo_filtro }}&page={{ num }}">{{ num }}</a></li>
+        <li class="page-item"><a class="page-link" href="?tipo={{ tipo_filtro }}&estado={{ estado_filtro }}&page={{ num }}">{{ num }}</a></li>
       {% elif num == 2 and page_obj.number > 4 %}
         <li class="page-item disabled"><span class="page-link">…</span></li>
       {% elif num == page_obj.paginator.num_pages|add:"-1" and page_obj.number < page_obj.paginator.num_pages|add:"-3" %}
@@ -279,7 +330,7 @@
 
     {% if page_obj.has_next %}
     <li class="page-item">
-      <a class="page-link" href="?tipo={{ tipo_filtro }}&page={{ page_obj.next_page_number }}">
+      <a class="page-link" href="?tipo={{ tipo_filtro }}&estado={{ estado_filtro }}&page={{ page_obj.next_page_number }}">
         <i class="bi bi-chevron-right"></i>
       </a>
     </li>

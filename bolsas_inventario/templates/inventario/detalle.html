@@ -103,9 +103,9 @@
   <div class="card-body p-0">
     <ul class="list-group list-group-flush">
       {% for mov in movimientos %}
-      <li class="list-group-item px-3 py-2">
-        <div class="d-flex justify-content-between">
-          <div>
+      <li class="list-group-item px-3 py-2{% if mov.anulado %} opacity-50{% endif %}">
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="d-flex align-items-center flex-wrap gap-1">
             <span class="badge rounded-pill
               {% if mov.tipo_movimiento == 'entrada' %}bg-success
               {% elif mov.tipo_movimiento == 'salida' %}bg-danger
@@ -113,14 +113,21 @@
               {% else %}bg-info text-dark{% endif %}">
               {{ mov.get_tipo_movimiento_display }}
             </span>
-            {% if mov.cliente %}<span class="small text-muted ms-1">→ {{ mov.cliente.nombre }}</span>{% endif %}
-            {% if mov.maquina %}<span class="small text-muted ms-1">→ {{ mov.maquina.nombre }}</span>{% endif %}
+            {% if mov.anulado %}<span class="badge bg-secondary" style="font-size:.65rem;">Anulado</span>{% endif %}
+            {% if mov.editado %}<span class="badge bg-warning text-dark" style="font-size:.65rem;">Editado</span>{% endif %}
+            {% if mov.cliente %}<span class="small text-muted">→ {{ mov.cliente.nombre }}</span>{% endif %}
+            {% if mov.maquina %}<span class="small text-muted">→ {{ mov.maquina.nombre }}</span>{% endif %}
           </div>
-          <span class="fw-bold">{{ mov.cantidad }} {{ item.unidad_medida }}</span>
+          <span class="fw-bold {% if mov.anulado %}text-decoration-line-through text-muted{% endif %}">
+            {{ mov.cantidad }} {{ item.unidad_medida }}
+          </span>
         </div>
         <div class="text-muted mt-1" style="font-size:.72rem">
-          {{ mov.fecha|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
+          {{ mov.fecha_movimiento|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
           {% if mov.motivo %} · {{ mov.motivo|truncatechars:40 }}{% endif %}
+          {% if mov.anulado and mov.motivo_anulacion %}
+            · <em class="text-danger">{{ mov.motivo_anulacion|truncatechars:30 }}</em>
+          {% endif %}
         </div>
       </li>
       {% empty %}
