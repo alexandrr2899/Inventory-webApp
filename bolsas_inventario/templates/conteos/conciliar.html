@@ -204,11 +204,11 @@
         <tr class="table-warning" style="font-size:.8rem;">
           <td colspan="10" class="py-1 px-4">
             <strong><i class="bi bi-clock-history me-1"></i>Movimientos atrasados detectados:</strong>
-            {% for mov in p.late_movimientos %}
+            {% for det in p.late_movimientos %}
               <span class="badge bg-secondary ms-2">
-                {{ mov.get_tipo_movimiento_display }} {{ mov.cantidad }} {{ d.item.unidad_medida }}
-                · {{ mov.fecha_movimiento|date:"d/m H:i" }}
-                (registrado {{ mov.fecha|date:"d/m H:i" }})
+                {{ det.movimiento.get_tipo_movimiento_display }} {{ det.cantidad }} {{ d.item.unidad_medida }}
+                · {{ det.movimiento.fecha_movimiento|date:"d/m H:i" }}
+                (registrado {{ det.movimiento.fecha|date:"d/m H:i" }})
               </span>
             {% endfor %}
           </td>

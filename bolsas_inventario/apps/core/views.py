@@ -184,16 +184,25 @@ def dashboard(request):
         .order_by('nombre')[:20]
     )
 
-    ultimos_movimientos = MovimientoInventario.objects.select_related(
-        'item', 'usuario', 'ubicacion_origen', 'ubicacion_destino'
-    ).order_by('-fecha')[:10]
+    ultimos_detalles = (
+        DetalleMovimiento.objects
+        .filter(movimiento__eliminado=False)
+        .select_related('item', 'movimiento', 'movimiento__usuario')
+        .order_by('-movimiento__fecha')[:10]
+    )
 
     produccion_hoy = _calcular_produccion(hoy)
 
     hace_30 = timezone.now() - timedelta(days=30)
     repuestos_top = (
-        MovimientoInventario.objects
-        .filter(tipo_movimiento='salida', item__tipo='repuesto', fecha__gte=hace_30)
+        DetalleMovimiento.objects
+        .filter(
+            movimiento__tipo_movimiento='salida',
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__gte=hace_30,
+            item__tipo='repuesto',
+        )
         .values('item__nombre', 'item__unidad_medida')
         .annotate(total=Sum('cantidad'))
         .order_by('-total')[:5]
@@ -209,7 +218,7 @@ def dashboard(request):
 
     context = {
         'items_bajo_stock': items_bajo_stock,
-        'ultimos_movimientos': ultimos_movimientos,
+        'ultimos_detalles': ultimos_detalles,
         'produccion_hoy': produccion_hoy,
         'repuestos_top': repuestos_top,
         'hoy': hoy,
@@ -239,11 +248,17 @@ def _calcular_produccion(fecha):
         conteo_tarde = None
         total_tarde = None
 
-    salidas_hoy = MovimientoInventario.objects.filter(
-        tipo_movimiento='salida',
-        item__tipo='producto',
-        fecha__date=fecha
-    ).aggregate(total=Sum('cantidad'))['total'] or Decimal('0')
+    salidas_hoy = (
+        DetalleMovimiento.objects
+        .filter(
+            movimiento__tipo_movimiento='salida',
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__date=fecha,
+            item__tipo='producto',
+        )
+        .aggregate(total=Sum('cantidad'))['total'] or Decimal('0')
+    )
 
     produccion = None
     if total_manana is not None and total_tarde is not None:
@@ -1390,21 +1405,22 @@ def conteo_conciliar(request, pk):
         for detalle in detalles:
             # Movimientos atrasados: registrados DESPUÉS del conteo, pero con fecha_movimiento
             # ANTERIOR al momento del conteo → debían haber sido parte del stock al contar
-            late_movs = MovimientoInventario.objects.filter(
+            late_movs = DetalleMovimiento.objects.filter(
                 item=detalle.item,
-                fecha__gt=conteo.fecha_hora_conteo,
-                fecha_movimiento__lte=conteo.fecha_hora_conteo,
+                movimiento__fecha__gt=conteo.fecha_hora_conteo,
+                movimiento__fecha_movimiento__lte=conteo.fecha_hora_conteo,
+                movimiento__eliminado=False,
             ).filter(
                 Q(ubicacion_destino=detalle.ubicacion) | Q(ubicacion_origen=detalle.ubicacion)
-            ).select_related('ubicacion_origen', 'ubicacion_destino', 'usuario')
+            ).select_related('movimiento', 'movimiento__usuario', 'ubicacion_origen', 'ubicacion_destino')
 
             late_entradas = late_movs.filter(
-                tipo_movimiento='entrada',
+                movimiento__tipo_movimiento='entrada',
                 ubicacion_destino=detalle.ubicacion,
             ).aggregate(s=Sum('cantidad'))['s'] or Decimal('0')
 
             late_salidas = late_movs.filter(
-                tipo_movimiento='salida',
+                movimiento__tipo_movimiento='salida',
                 ubicacion_origen=detalle.ubicacion,
             ).aggregate(s=Sum('cantidad'))['s'] or Decimal('0')
 
@@ -1453,14 +1469,18 @@ def conteo_ajustar_detalle(request, pk, det_pk):
         return redirect('conteo_conciliar', pk=pk)
 
     with transaction.atomic():
-        MovimientoInventario.objects.create(
-            item=detalle.item,
+        mov_ajuste = MovimientoInventario.objects.create(
             tipo_movimiento='ajuste',
-            cantidad=detalle.diferencia_final,
-            ubicacion_destino=detalle.ubicacion,
             motivo=f'Ajuste por conciliación — Conteo #{conteo.pk} ({conteo.get_turno_display()} {conteo.fecha})',
             usuario=request.user,
         )
+        det_ajuste = DetalleMovimiento.objects.create(
+            movimiento=mov_ajuste,
+            item=detalle.item,
+            cantidad=detalle.diferencia_final,
+            ubicacion_destino=detalle.ubicacion,
+        )
+        _aplicar_efecto_detalle(det_ajuste)
         ConteoDetalle.objects.filter(pk=detalle.pk).update(ajuste_aplicado=True)
         conteo.refresh_from_db()
         conteo.actualizar_estado()
@@ -1494,14 +1514,18 @@ def conteo_ajustar_todos(request, pk):
     count = 0
     with transaction.atomic():
         for detalle in detalles:
-            MovimientoInventario.objects.create(
-                item=detalle.item,
+            mov_ajuste = MovimientoInventario.objects.create(
                 tipo_movimiento='ajuste',
-                cantidad=detalle.diferencia_final,
-                ubicacion_destino=detalle.ubicacion,
                 motivo=f'Ajuste por conciliación — Conteo #{conteo.pk} ({conteo.get_turno_display()} {conteo.fecha})',
                 usuario=request.user,
             )
+            det_ajuste = DetalleMovimiento.objects.create(
+                movimiento=mov_ajuste,
+                item=detalle.item,
+                cantidad=detalle.diferencia_final,
+                ubicacion_destino=detalle.ubicacion,
+            )
+            _aplicar_efecto_detalle(det_ajuste)
             count += 1
         ConteoDetalle.objects.filter(
             conteo=conteo, ajuste_aplicado=False,
@@ -1716,9 +1740,17 @@ def reporte_produccion(request):
             conteo=conteo_t, item__tipo='producto'
         ).select_related('item')
 
-    salidas_detalle = MovimientoInventario.objects.filter(
-        tipo_movimiento='salida', item__tipo='producto', fecha__date=fecha
-    ).select_related('item', 'cliente')
+    salidas_detalle = (
+        DetalleMovimiento.objects
+        .filter(
+            movimiento__tipo_movimiento='salida',
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__date=fecha,
+            item__tipo='producto',
+        )
+        .select_related('item', 'cliente')
+    )
 
     context = {
         'fecha': fecha,
@@ -1783,15 +1815,19 @@ def produccion_nueva(request):
                 fecha_movimiento = timezone.make_aware(fecha_movimiento)
 
             with transaction.atomic():
-                MovimientoInventario.objects.create(
-                    item=item,
+                mov_prod = MovimientoInventario.objects.create(
                     tipo_movimiento='entrada',
-                    cantidad=cantidad,
-                    ubicacion_destino=ubicacion,
                     motivo=motivo,
                     fecha_movimiento=fecha_movimiento,
                     usuario=request.user,
                 )
+                det_prod = DetalleMovimiento.objects.create(
+                    movimiento=mov_prod,
+                    item=item,
+                    cantidad=cantidad,
+                    ubicacion_destino=ubicacion,
+                )
+                _aplicar_efecto_detalle(det_prod)
 
             send_event('production_created', {
                 'item': item.nombre, 'codigo': item.codigo,
