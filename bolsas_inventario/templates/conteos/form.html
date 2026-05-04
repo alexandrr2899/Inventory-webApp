@@ -3,9 +3,11 @@
 
 {% block extra_head %}
 <style>
-  .tab-tipo .nav-link            { border-radius: 20px; font-weight: 600; padding: .35rem 1.1rem; }
+  .tab-tipo .nav-link            { border-radius: 20px; font-weight: 600; padding: .35rem 1.1rem;
+                                   cursor: pointer; pointer-events: auto; opacity: 1; }
   .tab-tipo .nav-link.active     { background: #6610f2; color: #fff; border-color: #6610f2; }
   .tab-tipo .nav-link:not(.active){ background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
+  .tab-tipo .nav-link:hover:not(.active){ background: #e9ecef; }
   .conteo-table th               { font-size: .75rem; text-transform: uppercase; color: #6c757d; }
   .conteo-table td               { vertical-align: middle; }
   .item-nombre                   { font-weight: 600; font-size: .9rem; }
@@ -474,6 +476,11 @@ function activarTab(tipo) {
     renderTablaFija(tipo);
   }
 }
+
+// ── Click en botones de tab ────────────────────────────────────────────────────
+document.querySelectorAll('#tabs-tipo .nav-link').forEach(function(btn) {
+  btn.addEventListener('click', function() { activarTab(this.dataset.tipo); });
+});
 
 // ── Botón "Agregar ítem" en Otros ─────────────────────────────────────────────
 document.getElementById('btn-agregar-otros').addEventListener('click', () => agregarFilaOtros());
