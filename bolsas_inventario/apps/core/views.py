@@ -1047,25 +1047,35 @@ def conteo_nuevo(request):
 
     if request.method == 'POST':
         form = ConteoForm(request.POST)
-        if not form.is_valid():
+
+        item_ids     = request.POST.getlist('item[]')
+        ubicacion_ids = request.POST.getlist('ubicacion[]')
+        cantidades   = request.POST.getlist('cantidad_contada[]')
+
+        filas_previas_json = json.dumps([
+            {'item_id': iid, 'ubicacion_id': uid, 'cantidad': cant}
+            for iid, uid, cant in zip(item_ids, ubicacion_ids, cantidades)
+            if iid or cant
+        ])
+
+        def _render_error(form):
             return render(request, 'conteos/form.html', {
-                'form': form, 'items_json': items_json,
-                'ubicaciones_json': ubicaciones_json, 'hoy': hoy
+                'form': form,
+                'items_json': items_json,
+                'ubicaciones_json': ubicaciones_json,
+                'hoy': hoy,
+                'filas_previas_json': filas_previas_json,
             })
+
+        if not form.is_valid():
+            return _render_error(form)
 
         fecha = form.cleaned_data['fecha']
         turno = form.cleaned_data['turno']
 
         if Conteo.objects.filter(fecha=fecha, turno=turno).exists():
             messages.error(request, f'Ya existe un conteo de {dict(Conteo.TURNO_CHOICES)[turno]} para {fecha}.')
-            return render(request, 'conteos/form.html', {
-                'form': form, 'items_json': items_json,
-                'ubicaciones_json': ubicaciones_json, 'hoy': hoy
-            })
-
-        item_ids = request.POST.getlist('item[]')
-        ubicacion_ids = request.POST.getlist('ubicacion[]')
-        cantidades = request.POST.getlist('cantidad_contada[]')
+            return _render_error(form)
 
         errores = []
         filas = []
@@ -1112,17 +1122,11 @@ def conteo_nuevo(request):
         if errores:
             for e in errores:
                 messages.error(request, e)
-            return render(request, 'conteos/form.html', {
-                'form': form, 'items_json': items_json,
-                'ubicaciones_json': ubicaciones_json, 'hoy': hoy
-            })
+            return _render_error(form)
 
         if not filas:
             messages.error(request, 'Debes ingresar al menos un ítem con cantidad.')
-            return render(request, 'conteos/form.html', {
-                'form': form, 'items_json': items_json,
-                'ubicaciones_json': ubicaciones_json, 'hoy': hoy
-            })
+            return _render_error(form)
 
         with transaction.atomic():
             conteo = form.save(commit=False)

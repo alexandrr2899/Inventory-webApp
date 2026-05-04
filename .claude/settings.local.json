@@ -4,7 +4,8 @@
       "Bash(python3 -m py_compile \"/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/views.py\")",
       "Bash(python3 -m py_compile \"/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/forms.py\")",
       "Bash(python3 -m py_compile '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/views.py' '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/forms.py' '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/urls.py' '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/migrations/0003_alter_item_options.py')",
-      "Bash(python3 -m py_compile '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/views.py' '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/models.py' '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/migrations/0004_add_indexes.py')"
+      "Bash(python3 -m py_compile '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/views.py' '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/models.py' '/Users/alexanderordonez/Library/Mobile Documents/com~apple~CloudDocs/app/bolsas_inventario/apps/core/migrations/0004_add_indexes.py')",
+      "Bash(docker compose *)"
     ]
   }
 }

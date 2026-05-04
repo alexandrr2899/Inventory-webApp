@@ -210,16 +210,21 @@ class MovimientoTransferenciaForm(forms.Form):
 
 
 class ConteoForm(forms.ModelForm):
+    fecha_hora_conteo = forms.DateTimeField(
+        input_formats=['%Y-%m-%dT%H:%M'],
+        widget=forms.DateTimeInput(
+            attrs={'class': 'form-control', 'type': 'datetime-local'},
+            format='%Y-%m-%dT%H:%M',
+        ),
+        label='Fecha y hora del conteo',
+    )
+
     class Meta:
         model = Conteo
         fields = ['fecha', 'turno', 'fecha_hora_conteo', 'observaciones']
         widgets = {
             'fecha': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'turno': forms.Select(attrs={'class': 'form-select'}),
-            'fecha_hora_conteo': forms.DateTimeInput(
-                attrs={'class': 'form-control', 'type': 'datetime-local'},
-                format='%Y-%m-%dT%H:%M',
-            ),
             'observaciones': forms.Textarea(attrs={
                 'class': 'form-control', 'rows': 2,
                 'placeholder': 'Observaciones opcionales...'
@@ -228,9 +233,11 @@ class ConteoForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Pre-format datetime for the datetime-local input
-        if self.instance and self.instance.fecha_hora_conteo:
-            self.initial['fecha_hora_conteo'] = self.instance.fecha_hora_conteo.strftime('%Y-%m-%dT%H:%M')
+        if self.instance and self.instance.pk and self.instance.fecha_hora_conteo:
+            from django.utils import timezone as tz
+            self.initial['fecha_hora_conteo'] = tz.localtime(
+                self.instance.fecha_hora_conteo
+            ).strftime('%Y-%m-%dT%H:%M')
 
 
 class ProduccionForm(forms.Form):

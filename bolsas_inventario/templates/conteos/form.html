@@ -88,8 +88,9 @@
 
 {% block extra_js %}
 <script>
-const ITEMS = {{ items_json|safe }};
-const UBICACIONES = {{ ubicaciones_json|safe }};
+const ITEMS        = {{ items_json|safe }};
+const UBICACIONES  = {{ ubicaciones_json|safe }};
+const FILAS_PREVIAS = {{ filas_previas_json|default:'[]'|safe }};
 
 const tbody    = document.getElementById('cuerpo-tabla');
 const hint     = document.getElementById('hint-empty');
@@ -101,51 +102,26 @@ function actualizarUI() {
   lblCount.textContent = n;
 }
 
-function buildSelect(name, opts, labelKey, valueKey) {
-  const sel = document.createElement('select');
-  sel.name = name;
-  sel.className = 'form-select form-select-sm';
-  sel.required = true;
-  const def = document.createElement('option');
-  def.value = '';
-  def.textContent = name.includes('item') ? '-- Ítem --' : '-- Ubicación --';
-  sel.appendChild(def);
-  opts.forEach(o => {
-    const opt = document.createElement('option');
-    opt.value = o[valueKey];
-    opt.textContent = o[labelKey];
-    if (name.includes('item')) {
-      opt.dataset.tipo  = o.tipo;
-      opt.dataset.unidad = o.unidad;
-      opt.dataset.stock  = o.stock_total;
-    }
-    sel.appendChild(opt);
-  });
-  return sel;
-}
-
-function agregarFila() {
+function agregarFila(preItemId = '', preUbId = '', preCant = '') {
   const tr = document.createElement('tr');
 
   // ── Ítem ──────────────────────────────────────────────────────
-  const tdItem = document.createElement('td');
-  const selItem = buildSelect('item[]', ITEMS,
-    it => `${it.nombre} (${it.codigo})`,
-    'pk');
-  // fix: buildSelect needs fn for label, let me redo inline
+  const tdItem  = document.createElement('td');
+  const selItem = document.createElement('select');
+  selItem.name      = 'item[]';
+  selItem.className = 'form-select form-select-sm';
+  selItem.required  = true;
   selItem.innerHTML = '<option value="">-- Ítem --</option>';
   ITEMS.forEach(it => {
     const opt = document.createElement('option');
-    opt.value = it.pk;
-    opt.textContent = `${it.nombre} (${it.codigo})`;
-    opt.dataset.tipo  = it.tipo;
+    opt.value          = it.pk;
+    opt.textContent    = `${it.nombre} (${it.codigo})`;
+    opt.dataset.tipo   = it.tipo;
     opt.dataset.unidad = it.unidad;
     opt.dataset.stock  = it.stock_total;
+    if (String(it.pk) === String(preItemId)) opt.selected = true;
     selItem.appendChild(opt);
   });
-  selItem.name = 'item[]';
-  selItem.className = 'form-select form-select-sm';
-  selItem.required = true;
 
   const tipoBadge = document.createElement('span');
   tipoBadge.className = 'badge rounded-pill mt-1 d-none';
@@ -154,33 +130,35 @@ function agregarFila() {
   tr.appendChild(tdItem);
 
   // ── Ubicación ─────────────────────────────────────────────────
-  const tdUb = document.createElement('td');
+  const tdUb  = document.createElement('td');
   const selUb = document.createElement('select');
-  selUb.name = 'ubicacion[]';
+  selUb.name      = 'ubicacion[]';
   selUb.className = 'form-select form-select-sm';
-  selUb.required = true;
+  selUb.required  = true;
   selUb.innerHTML = '<option value="">-- Ubicación --</option>';
   UBICACIONES.forEach(u => {
     const opt = document.createElement('option');
-    opt.value = u.pk;
+    opt.value       = u.pk;
     opt.textContent = `${u.nombre} (${u.tipo})`;
+    if (String(u.pk) === String(preUbId)) opt.selected = true;
     selUb.appendChild(opt);
   });
   tdUb.appendChild(selUb);
   tr.appendChild(tdUb);
 
   // ── Cantidad contada ──────────────────────────────────────────
-  const tdCant = document.createElement('td');
-  const ig = document.createElement('div');
-  ig.className = 'input-group input-group-sm';
+  const tdCant   = document.createElement('td');
+  const ig       = document.createElement('div');
+  ig.className   = 'input-group input-group-sm';
   const inputCant = document.createElement('input');
-  inputCant.type = 'number';
-  inputCant.name = 'cantidad_contada[]';
-  inputCant.className = 'form-control';
+  inputCant.type        = 'number';
+  inputCant.name        = 'cantidad_contada[]';
+  inputCant.className   = 'form-control';
   inputCant.placeholder = '0';
-  inputCant.step = '0.01';
-  inputCant.min = '0';
-  inputCant.required = true;
+  inputCant.step        = '0.01';
+  inputCant.min         = '0';
+  inputCant.required    = true;
+  if (preCant !== '') inputCant.value = preCant;
   const unidadSpan = document.createElement('span');
   unidadSpan.className = 'input-group-text text-muted small unidad-lbl';
   unidadSpan.textContent = 'ud';
@@ -191,22 +169,22 @@ function agregarFila() {
   // ── Stock sistema ─────────────────────────────────────────────
   const tdSistema = document.createElement('td');
   const stockSpan = document.createElement('span');
-  stockSpan.className = 'text-muted small';
+  stockSpan.className   = 'text-muted small';
   stockSpan.textContent = '–';
   tdSistema.appendChild(stockSpan);
   tr.appendChild(tdSistema);
 
   // ── Eliminar ──────────────────────────────────────────────────
-  const tdDel = document.createElement('td');
+  const tdDel  = document.createElement('td');
   const btnDel = document.createElement('button');
-  btnDel.type = 'button';
+  btnDel.type      = 'button';
   btnDel.className = 'btn btn-outline-danger btn-sm';
   btnDel.innerHTML = '<i class="bi bi-trash-fill"></i>';
   btnDel.addEventListener('click', () => { tr.remove(); actualizarUI(); });
   tdDel.appendChild(btnDel);
   tr.appendChild(tdDel);
 
-  // ── Lógica: cambio de ítem ────────────────────────────────────
+  // ── Helpers internos ──────────────────────────────────────────
   function actualizarStockPorUbicacion() {
     const itemOpt = selItem.selectedOptions[0];
     if (!itemOpt || !itemOpt.value || !selUb.value) return;
@@ -220,29 +198,38 @@ function agregarFila() {
       .catch(() => {});
   }
 
-  selItem.addEventListener('change', function() {
-    const opt = this.selectedOptions[0];
+  function aplicarDatosItem(opt) {
     if (!opt || !opt.value) {
-      tipoBadge.className = 'badge rounded-pill mt-1 d-none';
+      tipoBadge.className   = 'badge rounded-pill mt-1 d-none';
       unidadSpan.textContent = 'ud';
-      stockSpan.textContent = '–';
+      stockSpan.textContent  = '–';
       return;
     }
     unidadSpan.textContent = opt.dataset.unidad || 'ud';
     const tipo = opt.dataset.tipo;
     tipoBadge.textContent = { producto: 'Producto', repuesto: 'Repuesto', consumible: 'Consumible' }[tipo] || tipo;
-    tipoBadge.className = `badge rounded-pill mt-1 tipo-badge-${tipo}`;
+    tipoBadge.className   = `badge rounded-pill mt-1 tipo-badge-${tipo}`;
+  }
+
+  selItem.addEventListener('change', function() {
+    aplicarDatosItem(this.selectedOptions[0]);
     actualizarStockPorUbicacion();
   });
-
   selUb.addEventListener('change', actualizarStockPorUbicacion);
 
   tbody.appendChild(tr);
   actualizarUI();
-  selItem.focus();
+
+  // ── Rehidratar visual si viene con datos ─────────────────────
+  if (preItemId) {
+    aplicarDatosItem(selItem.selectedOptions[0]);
+    actualizarStockPorUbicacion();
+  } else {
+    selItem.focus();
+  }
 }
 
-document.getElementById('btn-agregar').addEventListener('click', agregarFila);
+document.getElementById('btn-agregar').addEventListener('click', () => agregarFila());
 
 document.getElementById('form-conteo').addEventListener('submit', function(e) {
   if (tbody.querySelectorAll('tr').length === 0) {
@@ -251,6 +238,11 @@ document.getElementById('form-conteo').addEventListener('submit', function(e) {
   }
 });
 
-agregarFila();
+// ── Inicializar tabla: rehidratar si hay datos previos ────────────────────────
+if (FILAS_PREVIAS.length > 0) {
+  FILAS_PREVIAS.forEach(f => agregarFila(f.item_id, f.ubicacion_id, f.cantidad));
+} else {
+  agregarFila();
+}
 </script>
 {% endblock %}
