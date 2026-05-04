@@ -19,6 +19,78 @@
   .conteo-table .ts-wrapper      { min-width: 0; }
   /* Tom Select en modo form-select-sm */
   .ts-control { padding: .25rem .5rem; font-size: .875rem; }
+
+  /* ── Mobile: tabla → tarjetas ──────────────────────────────────────────── */
+  @media (max-width: 767px) {
+    /* Tabs: scroll horizontal sin wrap */
+    .tab-tipo-wrapper {
+      flex-wrap: nowrap !important;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: .35rem;
+      scrollbar-width: none;
+    }
+    .tab-tipo-wrapper::-webkit-scrollbar { display: none; }
+    .tab-tipo-label { white-space: nowrap; flex-shrink: 0; }
+    #tabs-tipo { flex-wrap: nowrap !important; }
+
+    /* Ocultar cabecera de tabla */
+    .conteo-table thead { display: none !important; }
+
+    /* Cada fila se convierte en una tarjeta */
+    .conteo-table tbody tr {
+      display: block !important;
+      border: 1px solid #dee2e6;
+      border-radius: .6rem;
+      padding: .75rem .85rem;
+      margin-bottom: .75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+      background: #fff;
+      position: relative;
+    }
+
+    /* Celdas en bloque con etiqueta superior */
+    .conteo-table tbody td {
+      display: block !important;
+      border: none !important;
+      padding: .3rem 0 !important;
+    }
+    .conteo-table tbody td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      font-size: .68rem;
+      text-transform: uppercase;
+      color: #6c757d;
+      font-weight: 700;
+      letter-spacing: .04em;
+      margin-bottom: .2rem;
+    }
+    .conteo-table tbody td:empty { display: none !important; }
+
+    /* Ítem más visible */
+    .item-nombre { font-size: 1rem; }
+    .item-codigo { font-size: .8rem; }
+
+    /* Input de cantidad: grande y cómodo para tocar */
+    .cant-input {
+      font-size: 1.5rem !important;
+      height: 3.25rem !important;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    /* Botón eliminar en fila Otros: esquina superior derecha */
+    .fila-otros .td-del {
+      position: absolute !important;
+      top: .5rem;
+      right: .5rem;
+      padding: 0 !important;
+    }
+    .fila-otros .td-del::before { content: none !important; }
+
+    /* Tom Select en mobile: width 100% */
+    .conteo-table .ts-wrapper { width: 100%; }
+  }
 </style>
 {% endblock %}
 
@@ -64,8 +136,8 @@
   <!-- Selector de tipo + panes -->
   <div class="card mb-3">
     <div class="card-body pb-2">
-      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-        <span class="fw-bold text-muted small text-uppercase">Tipo de conteo:</span>
+      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap tab-tipo-wrapper">
+        <span class="fw-bold text-muted small text-uppercase tab-tipo-label">Tipo de conteo:</span>
         <ul class="nav gap-2 tab-tipo" id="tabs-tipo">
           <li class="nav-item">
             <button type="button" class="nav-link" data-tipo="camiseta">
@@ -234,6 +306,7 @@ function renderTablaFija(tipo) {
 
     // ── Ubicación ─────────────────────────────────────────────────────────────
     const tdUb  = document.createElement('td');
+    tdUb.setAttribute('data-label', 'Ubicación');
     const selUb = document.createElement('select');
     selUb.name  = 'ubicacion[]';
     selUb.className = 'form-select form-select-sm';
@@ -248,6 +321,7 @@ function renderTablaFija(tipo) {
 
     // ── Stock sistema ─────────────────────────────────────────────────────────
     const tdStock  = document.createElement('td');
+    tdStock.setAttribute('data-label', 'Stock sistema');
     const stockSpan = document.createElement('span');
     stockSpan.className = 'stock-sistema';
     stockSpan.textContent = '–';
@@ -256,15 +330,17 @@ function renderTablaFija(tipo) {
 
     // ── Cantidad contada ──────────────────────────────────────────────────────
     const tdCant  = document.createElement('td');
+    tdCant.setAttribute('data-label', 'Cant. contada');
     const ig      = document.createElement('div');
-    ig.className  = 'input-group input-group-sm';
+    ig.className  = 'input-group ig-cant';
     const inputCant = document.createElement('input');
     inputCant.type = 'number';
     inputCant.name = 'cantidad_contada[]';
-    inputCant.className = 'form-control';
+    inputCant.className = 'form-control cant-input';
     inputCant.placeholder = '–';
     inputCant.step = '0.01';
     inputCant.min  = '0';
+    inputCant.setAttribute('inputmode', 'decimal');
     if (previa.cant) inputCant.value = previa.cant;
     const unidadSpan = document.createElement('span');
     unidadSpan.className = 'input-group-text text-muted small';
@@ -315,6 +391,7 @@ function agregarFilaOtros(pre = {}) {
 
   // ── Ítem (Tom Select sobre select vacío) ──────────────────────────────────
   const tdItem = document.createElement('td');
+  tdItem.setAttribute('data-label', 'Ítem');
   const selItem = document.createElement('select');
   selItem.name  = 'item[]';
   // Sin <option>: Tom Select las maneja con el array options
@@ -323,6 +400,7 @@ function agregarFilaOtros(pre = {}) {
 
   // ── Ubicación ─────────────────────────────────────────────────────────────
   const tdUb  = document.createElement('td');
+  tdUb.setAttribute('data-label', 'Ubicación');
   const selUb = document.createElement('select');
   selUb.name  = 'ubicacion[]';
   selUb.className = 'form-select form-select-sm';
@@ -337,6 +415,7 @@ function agregarFilaOtros(pre = {}) {
 
   // ── Stock sistema ─────────────────────────────────────────────────────────
   const tdStock   = document.createElement('td');
+  tdStock.setAttribute('data-label', 'Stock sistema');
   const stockSpan = document.createElement('span');
   stockSpan.className = 'stock-sistema';
   stockSpan.textContent = '–';
@@ -345,15 +424,17 @@ function agregarFilaOtros(pre = {}) {
 
   // ── Cantidad contada ──────────────────────────────────────────────────────
   const tdCant   = document.createElement('td');
+  tdCant.setAttribute('data-label', 'Cant. contada');
   const ig       = document.createElement('div');
-  ig.className   = 'input-group input-group-sm';
+  ig.className   = 'input-group ig-cant';
   const inputCant = document.createElement('input');
   inputCant.type = 'number';
   inputCant.name = 'cantidad_contada[]';
-  inputCant.className = 'form-control';
+  inputCant.className = 'form-control cant-input';
   inputCant.placeholder = '0';
   inputCant.step = '0.01';
   inputCant.min  = '0';
+  inputCant.setAttribute('inputmode', 'decimal');
   if (pre.cant) inputCant.value = pre.cant;
   const unidadSpan = document.createElement('span');
   unidadSpan.className = 'input-group-text text-muted small';
@@ -364,6 +445,7 @@ function agregarFilaOtros(pre = {}) {
 
   // ── Eliminar fila ─────────────────────────────────────────────────────────
   const tdDel  = document.createElement('td');
+  tdDel.className = 'td-del';
   const btnDel = document.createElement('button');
   btnDel.type = 'button';
   btnDel.className = 'btn btn-outline-danger btn-sm';
