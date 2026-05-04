@@ -1146,7 +1146,7 @@ def conteo_nuevo(request):
 
     form = ConteoForm(initial={
         'fecha': hoy,
-        'fecha_hora_conteo': timezone.now().strftime('%Y-%m-%dT%H:%M'),
+        'fecha_hora_conteo': timezone.localtime(timezone.now()).strftime('%Y-%m-%dT%H:%M'),
     })
     return render(request, 'conteos/form.html', {
         'form': form,
@@ -1599,7 +1599,7 @@ def produccion_nueva(request):
             return redirect('produccion_nueva')
     else:
         form = ProduccionForm(initial={
-            'fecha_movimiento': timezone.now().strftime('%Y-%m-%dT%H:%M'),
+            'fecha_movimiento': timezone.localtime(timezone.now()).strftime('%Y-%m-%dT%H:%M'),
         })
 
     return render(request, 'produccion/form.html', {
