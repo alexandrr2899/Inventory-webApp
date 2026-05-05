@@ -1861,9 +1861,27 @@ def reporte_produccion(request):
                 .select_related('item')
             )
 
-    # Salidas dentro del tramo de producción de día (entre los dos conteos)
+    # Detalle del conteo mañana siguiente (para producción de noche)
+    detalle_manana_sig = []
+    if produccion['tiene_manana_sig']:
+        from datetime import timedelta as _td
+        fecha_sig = fecha + _td(days=1)
+        conteo_ms = (
+            Conteo.objects
+            .filter(fecha=fecha_sig, turno='manana', tipo_conteo='camiseta')
+            .order_by('fecha_hora_conteo')
+            .first()
+        )
+        if conteo_ms:
+            detalle_manana_sig = (
+                ConteoDetalle.objects
+                .filter(conteo=conteo_ms, item__tipo='producto')
+                .select_related('item')
+            )
+
+    # Salidas del tramo día (entre conteo mañana y conteo tarde)
     if produccion['hora_manana'] and produccion['hora_tarde']:
-        salidas_detalle = (
+        salidas_detalle_dia = (
             DetalleMovimiento.objects
             .filter(
                 movimiento__tipo_movimiento='salida',
@@ -1873,17 +1891,38 @@ def reporte_produccion(request):
                 movimiento__fecha_movimiento__lt=produccion['hora_tarde'],
                 item__tipo='producto',
             )
-            .select_related('item', 'cliente')
+            .select_related('item', 'cliente', 'movimiento')
         )
     else:
-        salidas_detalle = []
+        salidas_detalle_dia = []
+
+    # Salidas del tramo noche (entre conteo tarde y conteo mañana siguiente)
+    if produccion['hora_tarde'] and produccion['hora_manana_sig']:
+        salidas_detalle_noche = (
+            DetalleMovimiento.objects
+            .filter(
+                movimiento__tipo_movimiento='salida',
+                movimiento__anulado=False,
+                movimiento__eliminado=False,
+                movimiento__fecha_movimiento__gt=produccion['hora_tarde'],
+                movimiento__fecha_movimiento__lt=produccion['hora_manana_sig'],
+                item__tipo='producto',
+            )
+            .select_related('item', 'cliente', 'movimiento')
+        )
+    else:
+        salidas_detalle_noche = []
 
     context = {
         'fecha': fecha,
         'produccion': produccion,
         'detalle_manana': detalle_manana,
         'detalle_tarde': detalle_tarde,
-        'salidas_detalle': salidas_detalle,
+        'detalle_manana_sig': detalle_manana_sig,
+        'salidas_detalle_dia': salidas_detalle_dia,
+        'salidas_detalle_noche': salidas_detalle_noche,
+        # compat con referencias antiguas al template
+        'salidas_detalle': salidas_detalle_dia,
     }
     return render(request, 'reportes/produccion.html', context)
 
