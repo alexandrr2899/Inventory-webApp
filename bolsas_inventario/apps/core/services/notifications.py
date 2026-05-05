@@ -216,7 +216,7 @@ def generar_resumen_pigmentos() -> dict:
             )
         )
         .select_related('categoria')
-        .order_by('nombre')
+        .order_by('orden', 'nombre')
     )
 
     ahora    = timezone.now()

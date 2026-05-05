@@ -73,7 +73,7 @@ class ClienteForm(forms.ModelForm):
 
 class MovimientoEntradaForm(forms.Form):
     item = forms.ModelChoiceField(
-        queryset=Item.objects.filter(activo=True).order_by('nombre'),
+        queryset=Item.objects.filter(activo=True).order_by('orden', 'nombre'),
         widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_item'}),
         label='Ítem',
         empty_label='-- Seleccionar ítem --'
@@ -96,7 +96,7 @@ class MovimientoEntradaForm(forms.Form):
 
 class MovimientoSalidaForm(forms.Form):
     item = forms.ModelChoiceField(
-        queryset=Item.objects.filter(activo=True).order_by('nombre'),
+        queryset=Item.objects.filter(activo=True).order_by('orden', 'nombre'),
         widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_item_salida'}),
         label='Ítem',
         empty_label='-- Seleccionar ítem --'
@@ -160,7 +160,7 @@ class MovimientoSalidaForm(forms.Form):
 
 class MovimientoTransferenciaForm(forms.Form):
     item = forms.ModelChoiceField(
-        queryset=Item.objects.filter(activo=True).order_by('nombre'),
+        queryset=Item.objects.filter(activo=True).order_by('orden', 'nombre'),
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Ítem',
         empty_label='-- Seleccionar ítem --'
@@ -243,7 +243,7 @@ class ConteoForm(forms.ModelForm):
 
 class ProduccionForm(forms.Form):
     item = forms.ModelChoiceField(
-        queryset=Item.objects.filter(activo=True, tipo='producto').order_by('nombre'),
+        queryset=Item.objects.filter(activo=True, tipo='producto').order_by('orden', 'nombre'),
         widget=forms.Select(attrs={'class': 'form-select form-select-lg'}),
         label='Producto',
         empty_label='-- Seleccionar producto --',
@@ -416,7 +416,7 @@ class FiltroMovimientosForm(forms.Form):
         label='Tipo'
     )
     item = forms.ModelChoiceField(
-        queryset=Item.objects.filter(activo=True).order_by('nombre'),
+        queryset=Item.objects.filter(activo=True).order_by('orden', 'nombre'),
         required=False,
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Ítem',

@@ -181,7 +181,7 @@ def dashboard(request):
         .annotate(stock_calc=_STOCK_ANN)
         .filter(stock_calc__lte=F('stock_minimo'))
         .select_related('categoria')
-        .order_by('nombre')[:20]
+        .order_by('orden', 'nombre')[:20]
     )
 
     ultimos_detalles = (
@@ -390,7 +390,7 @@ def inventario_lista(request):
         .filter(activo=True)
         .select_related('categoria')
         .annotate(stock_calc=_STOCK_ANN)
-        .order_by('nombre')
+        .order_by('orden', 'nombre')
     )
     if q:
         qs = qs.filter(Q(nombre__icontains=q) | Q(codigo__icontains=q))
@@ -711,7 +711,7 @@ def _exportar_movimientos_csv(movimientos):
 @login_required
 @permission_required(_perm('registrar_entrada'), raise_exception=True)
 def movimiento_entrada(request):
-    items = Item.objects.filter(activo=True).order_by('nombre')
+    items = Item.objects.filter(activo=True).order_by('orden', 'nombre')
     ubicaciones = Ubicacion.objects.all()
     item_id_inicial = request.GET.get('item', '')
 
@@ -833,7 +833,7 @@ def movimiento_entrada(request):
 @login_required
 @permission_required(_perm('registrar_salida'), raise_exception=True)
 def movimiento_salida(request):
-    items = Item.objects.filter(activo=True).order_by('nombre')
+    items = Item.objects.filter(activo=True).order_by('orden', 'nombre')
     ubicaciones = Ubicacion.objects.all()
     clientes = Cliente.objects.filter(activo=True).order_by('nombre')
     maquinas = Maquina.objects.filter(activo=True).order_by('nombre')
@@ -1310,7 +1310,7 @@ def conteo_nuevo(request):
     all_items = list(
         Item.objects.filter(activo=True)
         .select_related('categoria')
-        .order_by('nombre')
+        .order_by('orden', 'nombre')
     )
 
     def _clasificar(item):
@@ -1485,7 +1485,7 @@ def conteo_nuevo(request):
 @permission_required(_perm('registrar_conteo'), raise_exception=True)
 def conteo_detalle(request, pk):
     conteo = get_object_or_404(Conteo, pk=pk)
-    detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__nombre')
+    detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__orden', 'item__nombre')
     total_contado = detalles.aggregate(t=Sum('cantidad_contada'))['t'] or 0
     total_dif_original = detalles.aggregate(t=Sum('diferencia_original'))['t'] or 0
 
@@ -1502,7 +1502,7 @@ def conteo_detalle(request, pk):
 @permission_required(_perm('aplicar_conciliacion'), raise_exception=True)
 def conteo_conciliar(request, pk):
     conteo = get_object_or_404(Conteo, pk=pk)
-    detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__nombre')
+    detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__orden', 'item__nombre')
 
     plan = []
     with transaction.atomic():
@@ -1792,7 +1792,7 @@ def reporte_stock_bajo(request):
             .select_related('categoria')
             .annotate(stock_calc=_STOCK_ANN)
             .filter(stock_calc__lte=F('stock_minimo'))
-            .order_by('nombre')
+            .order_by('orden', 'nombre')
         )
     ]
 

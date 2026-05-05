@@ -17,10 +17,12 @@ class CategoriaAdmin(admin.ModelAdmin):
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
-    list_display = ['codigo', 'nombre', 'tipo', 'categoria', 'unidad_medida', 'stock_minimo', 'activo']
-    list_filter = ['tipo', 'categoria', 'activo']
-    search_fields = ['codigo', 'nombre']
-    list_editable = ['activo']
+    list_display       = ['codigo', 'orden', 'nombre', 'tipo', 'categoria', 'unidad_medida', 'stock_minimo', 'activo']
+    list_display_links = ['codigo']
+    list_filter        = ['tipo', 'categoria', 'activo']
+    search_fields      = ['codigo', 'nombre']
+    list_editable      = ['orden', 'activo']
+    ordering           = ['orden', 'nombre']
 
 
 @admin.register(Ubicacion)

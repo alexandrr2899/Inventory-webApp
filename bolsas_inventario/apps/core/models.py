@@ -37,11 +37,16 @@ class Item(models.Model):
         verbose_name='Stock mínimo'
     )
     activo = models.BooleanField(default=True)
+    orden  = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Orden',
+        help_text='Posición en listados. 0 = sin orden definido (usa nombre como fallback).',
+    )
 
     class Meta:
         verbose_name = 'Ítem'
         verbose_name_plural = 'Ítems'
-        ordering = ['nombre']
+        ordering = ['orden', 'nombre']
         indexes = [
             models.Index(fields=['activo', 'tipo'], name='item_activo_tipo_idx'),
         ]
