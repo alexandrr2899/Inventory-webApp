@@ -229,48 +229,152 @@ def dashboard(request):
 
 
 def _calcular_produccion(fecha):
-    """Producción = conteo_tarde - conteo_mañana + salidas_del_día (productos terminados)"""
-    try:
-        conteo_manana = Conteo.objects.get(fecha=fecha, turno='manana')
-        total_manana = ConteoDetalle.objects.filter(
-            conteo=conteo_manana, item__tipo='producto'
-        ).aggregate(total=Sum('cantidad_contada'))['total'] or Decimal('0')
-    except Conteo.DoesNotExist:
-        conteo_manana = None
-        total_manana = None
+    """
+    Calcula producción de día y noche usando SOLO conteos tipo Camiseta.
 
-    try:
-        conteo_tarde = Conteo.objects.get(fecha=fecha, turno='tarde')
-        total_tarde = ConteoDetalle.objects.filter(
-            conteo=conteo_tarde, item__tipo='producto'
-        ).aggregate(total=Sum('cantidad_contada'))['total'] or Decimal('0')
-    except Conteo.DoesNotExist:
-        conteo_tarde = None
-        total_tarde = None
+    Producción de día:   conteo mañana → conteo tarde  (mismo día)
+    Producción de noche: conteo tarde  → conteo mañana del día siguiente
 
-    salidas_hoy = (
-        DetalleMovimiento.objects
-        .filter(
-            movimiento__tipo_movimiento='salida',
-            movimiento__anulado=False,
-            movimiento__eliminado=False,
-            movimiento__fecha_movimiento__date=fecha,
-            item__tipo='producto',
-        )
-        .aggregate(total=Sum('cantidad'))['total'] or Decimal('0')
+    Fórmulas:
+      prod_dia   = total_tarde     - total_manana     + salidas entre ambos conteos
+      prod_noche = total_manana_sig - total_tarde     + salidas entre ambos conteos
+
+    Reglas:
+    - Solo usa conteos con tipo_conteo='camiseta'.
+    - Usa .first()/.last() ordenados por fecha_hora_conteo (nunca .get()).
+    - Salidas: solo movimientos activos (no anulados, no eliminados) dentro
+      del rango horario exacto entre los dos conteos involucrados.
+    - Si falta algún conteo no lanza error — informa qué falta.
+    """
+    from datetime import timedelta as _td
+
+    qs_camiseta = Conteo.objects.filter(tipo_conteo='camiseta')
+
+    # Conteo mañana: el más temprano del día (fecha_hora_conteo asc)
+    conteo_manana = (
+        qs_camiseta.filter(fecha=fecha, turno='manana')
+        .order_by('fecha_hora_conteo')
+        .first()
+    )
+    # Conteo tarde: el más reciente del día (fecha_hora_conteo desc)
+    conteo_tarde = (
+        qs_camiseta.filter(fecha=fecha, turno='tarde')
+        .order_by('-fecha_hora_conteo')
+        .first()
+    )
+    # Conteo mañana del día siguiente: el más temprano
+    conteo_manana_sig = (
+        qs_camiseta.filter(fecha=fecha + _td(days=1), turno='manana')
+        .order_by('fecha_hora_conteo')
+        .first()
     )
 
-    produccion = None
-    if total_manana is not None and total_tarde is not None:
-        produccion = total_tarde - total_manana + salidas_hoy
+    def _total(conteo):
+        """Suma cantidad_contada de ítems tipo 'producto' en un conteo."""
+        if conteo is None:
+            return None
+        t = (
+            ConteoDetalle.objects
+            .filter(conteo=conteo, item__tipo='producto')
+            .aggregate(t=Sum('cantidad_contada'))['t']
+        )
+        return t if t is not None else Decimal('0')
+
+    def _salidas_entre(t_inicio, t_fin):
+        """
+        Suma de DetalleMovimiento de salidas activas cuya fecha_movimiento
+        cae estrictamente entre t_inicio y t_fin.
+        Solo ítems tipo 'producto'.
+        """
+        return (
+            DetalleMovimiento.objects
+            .filter(
+                movimiento__tipo_movimiento='salida',
+                movimiento__anulado=False,
+                movimiento__eliminado=False,
+                movimiento__fecha_movimiento__gt=t_inicio,
+                movimiento__fecha_movimiento__lt=t_fin,
+                item__tipo='producto',
+            )
+            .aggregate(t=Sum('cantidad'))['t'] or Decimal('0')
+        )
+
+    total_manana    = _total(conteo_manana)
+    total_tarde     = _total(conteo_tarde)
+    total_manana_sig = _total(conteo_manana_sig)
+
+    # ── Producción de día ────────────────────────────────────────────────────
+    if conteo_manana and conteo_tarde:
+        salidas_dia   = _salidas_entre(
+            conteo_manana.fecha_hora_conteo,
+            conteo_tarde.fecha_hora_conteo,
+        )
+        produccion_dia  = total_tarde - total_manana + salidas_dia
+        falta_dia       = None
+    else:
+        salidas_dia    = Decimal('0')
+        produccion_dia = None
+        if not conteo_manana and not conteo_tarde:
+            falta_dia = 'conteo de mañana y tarde'
+        elif not conteo_manana:
+            falta_dia = 'conteo de mañana'
+        else:
+            falta_dia = 'conteo de tarde'
+
+    # ── Producción de noche ──────────────────────────────────────────────────
+    if conteo_tarde and conteo_manana_sig:
+        salidas_noche   = _salidas_entre(
+            conteo_tarde.fecha_hora_conteo,
+            conteo_manana_sig.fecha_hora_conteo,
+        )
+        produccion_noche = total_manana_sig - total_tarde + salidas_noche
+        falta_noche      = None
+    else:
+        salidas_noche    = Decimal('0')
+        produccion_noche = None
+        if not conteo_tarde and not conteo_manana_sig:
+            falta_noche = 'conteo de tarde y mañana del día siguiente'
+        elif not conteo_tarde:
+            falta_noche = 'conteo de tarde'
+        else:
+            falta_noche = 'conteo de mañana del día siguiente'
+
+    # ── Total estimado ───────────────────────────────────────────────────────
+    if produccion_dia is not None and produccion_noche is not None:
+        produccion_total = produccion_dia + produccion_noche
+    elif produccion_dia is not None:
+        produccion_total = produccion_dia
+    else:
+        produccion_total = produccion_noche  # None si tampoco hay noche
 
     return {
-        'produccion': produccion,
-        'conteo_manana': total_manana,
-        'conteo_tarde': total_tarde,
-        'salidas': salidas_hoy,
-        'tiene_manana': conteo_manana is not None,
-        'tiene_tarde': conteo_tarde is not None,
+        # Producción calculada
+        'produccion_dia':    produccion_dia,
+        'produccion_noche':  produccion_noche,
+        'produccion_total':  produccion_total,
+        # Totales brutos de cada conteo
+        'total_manana':      total_manana,
+        'total_tarde':       total_tarde,
+        'total_manana_sig':  total_manana_sig,
+        # Salidas por tramo
+        'salidas_dia':       salidas_dia,
+        'salidas_noche':     salidas_noche,
+        # Existencia de conteos
+        'tiene_manana':      conteo_manana is not None,
+        'tiene_tarde':       conteo_tarde is not None,
+        'tiene_manana_sig':  conteo_manana_sig is not None,
+        # Horarios usados (para mostrar rango)
+        'hora_manana':       conteo_manana.fecha_hora_conteo     if conteo_manana     else None,
+        'hora_tarde':        conteo_tarde.fecha_hora_conteo      if conteo_tarde      else None,
+        'hora_manana_sig':   conteo_manana_sig.fecha_hora_conteo if conteo_manana_sig else None,
+        # Qué falta (string descriptivo)
+        'falta_dia':         falta_dia,
+        'falta_noche':       falta_noche,
+        # ── Compatibilidad con reporte_produccion template ────────────────────
+        'produccion':        produccion_dia,
+        'conteo_manana':     total_manana,
+        'conteo_tarde':      total_tarde,
+        'salidas':           salidas_dia,
     }
 
 
@@ -1726,31 +1830,53 @@ def reporte_produccion(request):
 
     produccion = _calcular_produccion(fecha)
 
+    # Detalles de los conteos camiseta usados para producción de día
     detalle_manana = []
-    detalle_tarde = []
+    detalle_tarde  = []
     if produccion['tiene_manana']:
-        conteo_m = Conteo.objects.get(fecha=fecha, turno='manana')
-        detalle_manana = ConteoDetalle.objects.filter(
-            conteo=conteo_m, item__tipo='producto'
-        ).select_related('item')
+        conteo_m = (
+            Conteo.objects
+            .filter(fecha=fecha, turno='manana', tipo_conteo='camiseta')
+            .order_by('fecha_hora_conteo')
+            .first()
+        )
+        if conteo_m:
+            detalle_manana = (
+                ConteoDetalle.objects
+                .filter(conteo=conteo_m, item__tipo='producto')
+                .select_related('item')
+            )
 
     if produccion['tiene_tarde']:
-        conteo_t = Conteo.objects.get(fecha=fecha, turno='tarde')
-        detalle_tarde = ConteoDetalle.objects.filter(
-            conteo=conteo_t, item__tipo='producto'
-        ).select_related('item')
-
-    salidas_detalle = (
-        DetalleMovimiento.objects
-        .filter(
-            movimiento__tipo_movimiento='salida',
-            movimiento__anulado=False,
-            movimiento__eliminado=False,
-            movimiento__fecha_movimiento__date=fecha,
-            item__tipo='producto',
+        conteo_t = (
+            Conteo.objects
+            .filter(fecha=fecha, turno='tarde', tipo_conteo='camiseta')
+            .order_by('-fecha_hora_conteo')
+            .first()
         )
-        .select_related('item', 'cliente')
-    )
+        if conteo_t:
+            detalle_tarde = (
+                ConteoDetalle.objects
+                .filter(conteo=conteo_t, item__tipo='producto')
+                .select_related('item')
+            )
+
+    # Salidas dentro del tramo de producción de día (entre los dos conteos)
+    if produccion['hora_manana'] and produccion['hora_tarde']:
+        salidas_detalle = (
+            DetalleMovimiento.objects
+            .filter(
+                movimiento__tipo_movimiento='salida',
+                movimiento__anulado=False,
+                movimiento__eliminado=False,
+                movimiento__fecha_movimiento__gt=produccion['hora_manana'],
+                movimiento__fecha_movimiento__lt=produccion['hora_tarde'],
+                item__tipo='producto',
+            )
+            .select_related('item', 'cliente')
+        )
+    else:
+        salidas_detalle = []
 
     context = {
         'fecha': fecha,

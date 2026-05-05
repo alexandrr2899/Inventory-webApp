@@ -30,37 +30,160 @@
   <div class="col-6 col-md-3">
     <div class="card h-100">
       <div class="card-body text-center py-3">
-        {% if produccion_hoy.produccion is not None %}
-          <div class="fs-1 fw-bold text-success">{{ produccion_hoy.produccion }}</div>
+        {% if produccion_hoy.produccion_dia is not None %}
+          <div class="fs-1 fw-bold text-success">{{ produccion_hoy.produccion_dia|floatformat:0 }}</div>
         {% else %}
           <div class="fs-2 fw-bold text-muted">–</div>
         {% endif %}
-        <div class="text-muted small">Producción hoy</div>
-        <i class="bi bi-graph-up-arrow text-success fs-4"></i>
+        <div class="text-muted small">Prod. Día</div>
+        <i class="bi bi-brightness-high-fill text-warning fs-5 mt-1 d-block"></i>
       </div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="card h-100">
       <div class="card-body text-center py-3">
-        <div class="d-flex justify-content-center gap-3 mb-1">
-          <div class="text-center">
-            <div class="fw-bold {% if produccion_hoy.tiene_manana %}text-success{% else %}text-muted{% endif %}">
-              <i class="bi bi-{% if produccion_hoy.tiene_manana %}check-circle-fill{% else %}circle{% endif %}"></i>
-            </div>
-            <div class="small text-muted">Mañana</div>
-          </div>
-          <div class="text-center">
-            <div class="fw-bold {% if produccion_hoy.tiene_tarde %}text-success{% else %}text-muted{% endif %}">
-              <i class="bi bi-{% if produccion_hoy.tiene_tarde %}check-circle-fill{% else %}circle{% endif %}"></i>
-            </div>
-            <div class="small text-muted">Tarde</div>
-          </div>
-        </div>
-        <div class="text-muted small">Conteos hoy</div>
+        {% if produccion_hoy.produccion_noche is not None %}
+          <div class="fs-1 fw-bold text-primary">{{ produccion_hoy.produccion_noche|floatformat:0 }}</div>
+        {% else %}
+          <div class="fs-2 fw-bold text-muted">–</div>
+        {% endif %}
+        <div class="text-muted small">Prod. Noche</div>
+        <i class="bi bi-moon-stars-fill text-primary fs-5 mt-1 d-block"></i>
       </div>
     </div>
   </div>
+</div>
+
+<!-- Panel de producción camiseta -->
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="fw-bold">
+      <i class="bi bi-graph-up-arrow text-success me-2"></i>Producción Camiseta
+    </span>
+    {% if produccion_hoy.produccion_total is not None %}
+    <span class="badge bg-success fs-6">Total: {{ produccion_hoy.produccion_total|floatformat:0 }} und.</span>
+    {% else %}
+    <span class="badge bg-secondary">Sin datos completos</span>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="px-3">Turno</th>
+            <th class="text-end">Inicio</th>
+            <th class="text-end">Fin</th>
+            <th class="text-end">+ Salidas</th>
+            <th class="text-end px-3">Producción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Producción de Día -->
+          <tr>
+            <td class="px-3">
+              <i class="bi bi-brightness-high-fill text-warning me-1"></i>
+              <span class="fw-semibold">Día</span>
+              {% if produccion_hoy.hora_manana and produccion_hoy.hora_tarde %}
+              <div class="text-muted" style="font-size:.7rem">
+                {{ produccion_hoy.hora_manana|date:"H:i" }} → {{ produccion_hoy.hora_tarde|date:"H:i" }}
+              </div>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if produccion_hoy.total_manana is not None %}
+                {{ produccion_hoy.total_manana|floatformat:0 }}
+                <div class="text-muted" style="font-size:.7rem">mañana</div>
+              {% else %}
+                <span class="text-danger small">–</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if produccion_hoy.total_tarde is not None %}
+                {{ produccion_hoy.total_tarde|floatformat:0 }}
+                <div class="text-muted" style="font-size:.7rem">tarde</div>
+              {% else %}
+                <span class="text-danger small">–</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <span class="text-danger">+{{ produccion_hoy.salidas_dia|floatformat:0 }}</span>
+            </td>
+            <td class="text-end px-3">
+              {% if produccion_hoy.produccion_dia is not None %}
+                <span class="fw-bold text-success">{{ produccion_hoy.produccion_dia|floatformat:0 }}</span>
+              {% else %}
+                <span class="text-muted small">Falta: {{ produccion_hoy.falta_dia }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          <!-- Producción de Noche -->
+          <tr class="table-light">
+            <td class="px-3">
+              <i class="bi bi-moon-stars-fill text-primary me-1"></i>
+              <span class="fw-semibold">Noche</span>
+              {% if produccion_hoy.hora_tarde and produccion_hoy.hora_manana_sig %}
+              <div class="text-muted" style="font-size:.7rem">
+                {{ produccion_hoy.hora_tarde|date:"H:i" }} → {{ produccion_hoy.hora_manana_sig|date:"H:i d/m" }}
+              </div>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if produccion_hoy.total_tarde is not None %}
+                {{ produccion_hoy.total_tarde|floatformat:0 }}
+                <div class="text-muted" style="font-size:.7rem">tarde</div>
+              {% else %}
+                <span class="text-danger small">–</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if produccion_hoy.total_manana_sig is not None %}
+                {{ produccion_hoy.total_manana_sig|floatformat:0 }}
+                <div class="text-muted" style="font-size:.7rem">mañana sig.</div>
+              {% else %}
+                <span class="text-muted small">–</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <span class="text-danger">+{{ produccion_hoy.salidas_noche|floatformat:0 }}</span>
+            </td>
+            <td class="text-end px-3">
+              {% if produccion_hoy.produccion_noche is not None %}
+                <span class="fw-bold text-primary">{{ produccion_hoy.produccion_noche|floatformat:0 }}</span>
+              {% else %}
+                <span class="text-muted small">
+                  {% if produccion_hoy.falta_noche %}Falta: {{ produccion_hoy.falta_noche }}{% else %}–{% endif %}
+                </span>
+              {% endif %}
+            </td>
+          </tr>
+        </tbody>
+        {% if produccion_hoy.produccion_total is not None %}
+        <tfoot class="table-success">
+          <tr>
+            <td colspan="4" class="px-3 fw-bold">Total estimado del día</td>
+            <td class="text-end px-3 fw-bold fs-6">
+              {{ produccion_hoy.produccion_total|floatformat:0 }} und.
+            </td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+  {% if produccion_hoy.falta_dia or produccion_hoy.falta_noche %}
+  <div class="card-footer bg-warning bg-opacity-10 py-2 px-3" style="font-size:.8rem">
+    <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+    {% if produccion_hoy.falta_dia %}
+      <strong>Día:</strong> Falta {{ produccion_hoy.falta_dia }}.
+    {% endif %}
+    {% if produccion_hoy.falta_noche %}
+      <strong>Noche:</strong> Falta {{ produccion_hoy.falta_noche }}.
+    {% endif %}
+    <a href="{% url 'conteo_nuevo' %}" class="ms-2 text-warning fw-semibold">Registrar conteo</a>
+  </div>
+  {% endif %}
 </div>
 
 <!-- Acciones rápidas -->
