@@ -64,13 +64,15 @@
     </li>
   </ul>
 
+  <div class="tab-content">
+
   <!-- ══════════════════════════════════════════════════════════════════════ -->
   <!-- TAB: Producto Terminado                                                -->
   <!-- ══════════════════════════════════════════════════════════════════════ -->
-  <div class="tab-content">
   <div class="tab-pane fade {% if tab_inicial == 'producto_terminado' or not tab_inicial %}show active{% endif %}"
        id="panel-pt" role="tabpanel">
 
+    <!-- Cabecera: cliente y ubicación -->
     <div class="card mb-3">
       <div class="card-header bg-white fw-bold">
         <i class="bi bi-person-fill text-primary me-2"></i>Cliente y ubicación
@@ -105,29 +107,27 @@
       </div>
     </div>
 
+    <!-- Aviso stock negativo -->
     <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3" style="font-size:.85rem;">
-      <i class="bi bi-exclamation-triangle-fill"></i>
-      <span>Si el stock es insuficiente, la salida se registra igual y queda <strong>pendiente de conciliación</strong>.</span>
+      <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
+      <span>Si el stock es insuficiente la salida se registra igual y queda
+            <strong>pendiente de conciliación</strong>.</span>
     </div>
 
-    <!-- Grilla fija de productos -->
+    <!-- Filas dinámicas PT -->
     <div class="card mb-3">
-      <div class="card-header bg-white fw-bold">
-        <i class="bi bi-table me-2"></i>Productos
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-bold">
+          <i class="bi bi-bag me-2"></i>Productos a retirar
+        </span>
+        <button type="button" class="btn btn-danger btn-sm" id="btn-agregar-pt">
+          <i class="bi bi-plus-lg me-1"></i>Agregar producto
+        </button>
       </div>
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0" id="tabla-grilla-pt">
-          <thead class="table-light">
-            <tr>
-              <th>Producto</th>
-              <th class="text-end" style="min-width:110px">Stock</th>
-              <th class="text-end" style="min-width:130px">Cantidad a retirar</th>
-            </tr>
-          </thead>
-          <tbody id="grilla-pt-body">
-            <!-- Renderizado dinámico por JS con datos de grilla_productos_json -->
-          </tbody>
-        </table>
+      <div class="card-body" id="contenedor-pt">
+        <div class="text-center py-3 text-muted" id="hint-pt">
+          <i class="bi bi-bag me-1"></i>Presioná <strong>Agregar producto</strong> para comenzar
+        </div>
       </div>
     </div>
 
@@ -146,7 +146,7 @@
         </button>
       </div>
       <div class="card-body" id="contenedor-rep">
-        <div class="text-center py-2 text-muted hint-empty" id="hint-rep">
+        <div class="text-center py-2 text-muted" id="hint-rep">
           <i class="bi bi-tools me-1"></i>Presioná <strong>Agregar</strong> para comenzar
         </div>
       </div>
@@ -166,7 +166,7 @@
         </button>
       </div>
       <div class="card-body" id="contenedor-con">
-        <div class="text-center py-2 text-muted hint-empty" id="hint-con">
+        <div class="text-center py-2 text-muted" id="hint-con">
           <i class="bi bi-droplet me-1"></i>Presioná <strong>Agregar</strong> para comenzar
         </div>
       </div>
@@ -186,7 +186,7 @@
         </button>
       </div>
       <div class="card-body" id="contenedor-otros">
-        <div class="text-center py-2 text-muted hint-empty" id="hint-otros">
+        <div class="text-center py-2 text-muted" id="hint-otros">
           <i class="bi bi-three-dots me-1"></i>Presioná <strong>Agregar</strong> para comenzar
         </div>
       </div>
@@ -208,13 +208,16 @@
 {% block extra_js %}
 <script>
 // ── Datos master ──────────────────────────────────────────────────────────────
+const ITEMS_PRODUCTO   = {{ items_producto_json|safe }};
 const ITEMS_REPUESTO   = {{ items_repuesto_json|safe }};
 const ITEMS_CONSUMIBLE = {{ items_consumible_json|safe }};
 const ITEMS_OTROS      = {{ items_otros_json|safe }};
 const UBICACIONES_DATA = {{ ubicaciones_json|safe }};
 const MAQUINAS_DATA    = {{ maquinas_json|safe }};
-const STOCKS           = {{ stocks_json|safe }};          // {item_pk: {ub_pk: qty}}
-const GRILLA_PRODUCTOS = {{ grilla_productos_json|safe }}; // [{pk,nombre,codigo,unidad,stock_total}]
+const STOCKS           = {{ stocks_json|safe }};   // {item_pk: {ub_pk: qty}}
+
+// Filas previas (para recuperación de errores del servidor)
+const FILAS_PT_PREVIAS = {{ filas_pt_previas_json|default:'[]' }};
 const FILAS_PREVIAS    = {{ filas_previas_json|safe }};
 const TAB_INICIAL      = '{{ tab_inicial|default:"producto_terminado" }}';
 
@@ -224,7 +227,6 @@ document.querySelectorAll('#salida-tabs button[data-tipo]').forEach(btn => {
     document.getElementById('tipo_salida_hidden').value = btn.dataset.tipo;
   });
 });
-// Inicializar el valor correcto al cargar
 (function(){
   const active = document.querySelector('#salida-tabs button.active');
   if (active) document.getElementById('tipo_salida_hidden').value = active.dataset.tipo;
@@ -238,82 +240,220 @@ function stockParaItemUb(itemPk, ubPk) {
   return byUb[String(ubPk)] || 0;
 }
 
-// ── Grilla fija de Producto Terminado ─────────────────────────────────────────
-(function buildGrilla() {
-  const tbody = document.getElementById('grilla-pt-body');
-  const selUb = document.getElementById('sel-ub-pt');
-  const QTY_PREVIAS = {{ qty_previas_json|default:'{}' }};
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB PRODUCTO TERMINADO — filas dinámicas (item_pt[], cantidad_pt[])
+// Nueva fila se inserta SIEMPRE al inicio para no forzar scroll hacia abajo
+// ══════════════════════════════════════════════════════════════════════════════
 
-  function renderRow(prod) {
-    const ubPk = selUb.value;
-    const stockUb = ubPk ? stockParaItemUb(prod.pk, ubPk) : prod.stock_total;
-    const stockStr = stockUb.toLocaleString('es-HN', {maximumFractionDigits: 2});
-    const bajo = stockUb <= 0;
-    const prevQty = QTY_PREVIAS[String(prod.pk)] || '';
+// Tom Select para cliente y ubicación (cabecera PT)
+let tsClienteHeader = null;
+let tsUbPt = null;
 
-    const tr = document.createElement('tr');
-    tr.dataset.prodPk = prod.pk;
-    tr.innerHTML = `
-      <td>
-        <div class="fw-semibold">${prod.nombre}</div>
-        <div class="text-muted small">${prod.codigo}</div>
-      </td>
-      <td class="text-end">
-        <span class="badge ${bajo ? 'bg-danger' : 'bg-success'} stock-badge">
-          ${stockStr} ${prod.unidad}
-        </span>
-      </td>
-      <td class="text-end">
-        <div class="input-group input-group-sm justify-content-end" style="max-width:130px;margin-left:auto;">
-          <input type="number" name="qty_${prod.pk}"
-                 class="form-control text-end qty-input"
-                 min="0" step="0.01" placeholder="0"
-                 value="${prevQty}"
-                 data-prod-pk="${prod.pk}">
-          <span class="input-group-text small text-muted">${prod.unidad}</span>
-        </div>
-      </td>`;
-    return tr;
-  }
-
-  function renderAll() {
-    tbody.innerHTML = '';
-    GRILLA_PRODUCTOS.forEach(p => tbody.appendChild(renderRow(p)));
-  }
-
-  function updateBadges() {
-    const ubPk = selUb.value;
-    tbody.querySelectorAll('tr[data-prod-pk]').forEach(tr => {
-      const pk = tr.dataset.prodPk;
-      const prod = GRILLA_PRODUCTOS.find(p => String(p.pk) === String(pk));
-      if (!prod) return;
-      const stockUb = ubPk ? stockParaItemUb(pk, ubPk) : prod.stock_total;
-      const stockStr = stockUb.toLocaleString('es-HN', {maximumFractionDigits: 2});
-      const bajo = stockUb <= 0;
-      const badge = tr.querySelector('.stock-badge');
-      if (badge) {
-        badge.textContent = `${stockStr} ${prod.unidad}`;
-        badge.className = `badge ${bajo ? 'bg-danger' : 'bg-success'} stock-badge`;
-      }
+(function initCabeceraPT() {
+  const selCli = document.getElementById('sel-cliente-header');
+  const selUb  = document.getElementById('sel-ub-pt');
+  if (selCli) {
+    tsClienteHeader = new TomSelect(selCli, {
+      maxOptions: 300, dropdownParent: 'body',
+      placeholder: '-- Seleccionar cliente --',
     });
   }
-
-  renderAll();
-  selUb.addEventListener('change', updateBadges);
-
-  // Tom Select para cliente y ubicación PT
-  if (document.getElementById('sel-cliente-header')) {
-    new TomSelect('#sel-cliente-header', { maxOptions: 300, dropdownParent: 'body',
-      placeholder: '-- Seleccionar cliente --' });
-  }
   if (selUb) {
-    new TomSelect('#sel-ub-pt', { maxOptions: 100, dropdownParent: 'body',
+    tsUbPt = new TomSelect(selUb, {
+      maxOptions: 100, dropdownParent: 'body',
       placeholder: '-- Ubicación --',
-      onChange: updateBadges });
+      onChange: actualizarTodosLosStocksPT,
+    });
   }
 })();
 
-// ── Filas dinámicas (Repuestos / Consumibles / Otros) ─────────────────────────
+let filaPtCount = 0;
+// Conjunto de pks ya seleccionados (para evitar duplicados)
+const selectedPtPks = new Set();
+
+function actualizarTodosLosStocksPT() {
+  const ubPk = tsUbPt ? tsUbPt.getValue() : '';
+  document.querySelectorAll('#contenedor-pt .fila-pt').forEach(wrap => {
+    const itemPk = wrap.dataset.itemPk;
+    if (!itemPk) return;
+    actualizarStockBadgePT(wrap, itemPk, ubPk);
+  });
+}
+
+function actualizarStockBadgePT(wrap, itemPk, ubPk) {
+  const badge = wrap.querySelector('.stock-badge-pt');
+  if (!badge) return;
+  const it = ITEMS_PRODUCTO.find(x => String(x.pk) === String(itemPk));
+  if (!it) return;
+  const stock = stockParaItemUb(itemPk, ubPk);
+  const bajo = stock <= 0;
+  badge.textContent = `Stock: ${stock.toLocaleString('es-HN', {maximumFractionDigits:2})} ${it.unidad}`;
+  badge.className = `badge stock-badge-pt ${bajo ? 'bg-warning text-dark' : 'bg-success'}`;
+}
+
+function agregarFilaPT(pre = {}) {
+  filaPtCount++;
+  const idx = filaPtCount;
+  const contenedor = document.getElementById('contenedor-pt');
+  const hint = document.getElementById('hint-pt');
+
+  // ── Construir fila ─────────────────────────────────────────────────────
+  const wrap = document.createElement('div');
+  wrap.className = 'fila-pt border rounded-3 p-3 mb-3 position-relative';
+
+  // Cabecera de fila
+  const hdr = document.createElement('div');
+  hdr.className = 'd-flex justify-content-between align-items-center mb-2';
+  hdr.innerHTML = `<span class="fw-semibold text-muted small">Ítem #${idx}</span>`;
+  const btnDel = document.createElement('button');
+  btnDel.type = 'button';
+  btnDel.className = 'btn btn-outline-danger btn-sm';
+  btnDel.innerHTML = '<i class="bi bi-trash-fill"></i>';
+  btnDel.addEventListener('click', () => {
+    // Liberar el pk de este item del conjunto de seleccionados
+    const pk = wrap.dataset.itemPk;
+    if (pk) selectedPtPks.delete(pk);
+    wrap.remove();
+    actualizarHintPT();
+  });
+  hdr.appendChild(btnDel);
+  wrap.appendChild(hdr);
+
+  // Grid de campos
+  const grid = document.createElement('div');
+  grid.className = 'row g-2 align-items-end';
+  wrap.appendChild(grid);
+
+  // — Ítem (dropdown solo productos) ——
+  const colItem = document.createElement('div');
+  colItem.className = 'col-12 col-md-6';
+  const lblItem = document.createElement('label');
+  lblItem.className = 'form-label';
+  lblItem.textContent = 'Producto *';
+  const selItem = document.createElement('select');
+  selItem.name = 'item_pt[]';    // campo separado para no colisionar con otros tabs
+  selItem.className = 'form-select';
+  selItem.required = true;
+  selItem.innerHTML = '<option value="">-- Seleccionar producto --</option>';
+  ITEMS_PRODUCTO.forEach(it => {
+    const o = document.createElement('option');
+    o.value = it.pk;
+    o.textContent = `${it.nombre} (${it.codigo})`;
+    if (String(it.pk) === String(pre.item_id)) o.selected = true;
+    selItem.appendChild(o);
+  });
+  colItem.append(lblItem, selItem);
+  grid.appendChild(colItem);
+
+  // — Cantidad ——
+  const colCant = document.createElement('div');
+  colCant.className = 'col-7 col-md-3';
+  const lblCant = document.createElement('label');
+  lblCant.className = 'form-label';
+  lblCant.textContent = 'Cantidad *';
+  const ig = document.createElement('div');
+  ig.className = 'input-group';
+  const inputCant = document.createElement('input');
+  inputCant.type = 'number';
+  inputCant.name = 'cantidad_pt[]';   // campo separado
+  inputCant.className = 'form-control';
+  inputCant.placeholder = '0';
+  inputCant.step = '0.01';
+  inputCant.min = '0.01';
+  inputCant.required = true;
+  if (pre.cantidad) inputCant.value = pre.cantidad;
+  const unidLbl = document.createElement('span');
+  unidLbl.className = 'input-group-text small text-muted unidad-lbl-pt';
+  unidLbl.textContent = 'ud';
+  ig.append(inputCant, unidLbl);
+  colCant.append(lblCant, ig);
+  grid.appendChild(colCant);
+
+  // — Stock badge ——
+  const colBadge = document.createElement('div');
+  colBadge.className = 'col-5 col-md-3 d-flex align-items-end pb-1';
+  const badge = document.createElement('span');
+  badge.className = 'badge bg-secondary stock-badge-pt';
+  badge.textContent = 'Stock: –';
+  colBadge.appendChild(badge);
+  grid.appendChild(colBadge);
+
+  // ── Insertar AL INICIO (no al final) sin causar scroll ─────────────────
+  // Guardamos la posición del scroll antes de insertar
+  const scrollY = window.scrollY;
+  hint.style.display = 'none';
+  contenedor.insertBefore(wrap, contenedor.firstChild);
+  // Restaurar scroll inmediatamente para que la pantalla no salte
+  window.scrollTo({ top: scrollY, behavior: 'instant' });
+
+  // ── Tom Select para este item ──────────────────────────────────────────
+  const tsItem = new TomSelect(selItem, {
+    maxOptions: 500,
+    dropdownParent: 'body',
+    placeholder: '-- Seleccionar producto --',
+    render: {
+      option: (data, escape) => `<div>${escape(data.text)}</div>`,
+    },
+  });
+
+  // Al cambiar ítem: actualizar unidad, badge de stock, rastrear duplicados
+  function onItemChangePT(val) {
+    // Liberar pk previo
+    if (wrap.dataset.itemPk) selectedPtPks.delete(wrap.dataset.itemPk);
+
+    const it = ITEMS_PRODUCTO.find(x => String(x.pk) === String(val));
+    if (!it) {
+      wrap.dataset.itemPk = '';
+      badge.textContent = 'Stock: –';
+      badge.className = 'badge bg-secondary stock-badge-pt';
+      unidLbl.textContent = 'ud';
+      return;
+    }
+
+    // Verificar duplicado
+    if (selectedPtPks.has(String(val))) {
+      // Ya está en otra fila → avisar y limpiar
+      alert(`"${it.nombre}" ya está agregado en otra fila.`);
+      tsItem.clear(true);
+      wrap.dataset.itemPk = '';
+      return;
+    }
+
+    wrap.dataset.itemPk = String(val);
+    selectedPtPks.add(String(val));
+    unidLbl.textContent = it.unidad || 'ud';
+    const ubPk = tsUbPt ? tsUbPt.getValue() : '';
+    actualizarStockBadgePT(wrap, val, ubPk);
+  }
+
+  tsItem.on('change', val => onItemChangePT(val));
+
+  // Pre-fill
+  if (pre.item_id) {
+    tsItem.setValue(String(pre.item_id), true);
+    onItemChangePT(pre.item_id);
+  } else {
+    // Foco sin scroll
+    requestAnimationFrame(() => {
+      tsItem.focus();
+      window.scrollTo({ top: scrollY, behavior: 'instant' });
+    });
+  }
+}
+
+function actualizarHintPT() {
+  const contenedor = document.getElementById('contenedor-pt');
+  const hint = document.getElementById('hint-pt');
+  const n = contenedor.querySelectorAll('.fila-pt').length;
+  hint.style.display = n === 0 ? '' : 'none';
+}
+
+document.getElementById('btn-agregar-pt').addEventListener('click', () => agregarFilaPT());
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TABS DINÁMICOS — Repuestos / Consumibles / Otros
+// Nueva fila también se inserta al inicio
+// ══════════════════════════════════════════════════════════════════════════════
 const PANEL_ITEMS = {
   rep:   ITEMS_REPUESTO,
   con:   ITEMS_CONSUMIBLE,
@@ -327,13 +467,12 @@ function agregarFila(panel, pre = {}) {
   const items = PANEL_ITEMS[panel];
   const contenedor = document.getElementById(`contenedor-${panel}`);
   const hint = document.getElementById(`hint-${panel}`);
-
   const esRepuesto = panel === 'rep';
 
   const wrap = document.createElement('div');
   wrap.className = 'fila-dinamica border rounded-3 p-3 mb-3 position-relative';
 
-  // Header
+  // Cabecera de fila
   const hdr = document.createElement('div');
   hdr.className = 'd-flex justify-content-between align-items-center mb-3';
   hdr.innerHTML = `<span class="fw-semibold text-muted small">Ítem #${idx}</span>`;
@@ -366,9 +505,10 @@ function agregarFila(panel, pre = {}) {
   const stockDiv = document.createElement('div');
   stockDiv.className = 'text-muted small mt-1 d-none';
   stockDiv.innerHTML = '<i class="bi bi-box-fill me-1"></i>Stock: <span class="stock-val">–</span>';
-  colItem.append(document.createElement('label'), selItem, stockDiv);
-  colItem.querySelector('label').textContent = 'Ítem *';
-  colItem.querySelector('label').className = 'form-label';
+  const lblIt = document.createElement('label');
+  lblIt.className = 'form-label';
+  lblIt.textContent = 'Ítem *';
+  colItem.append(lblIt, selItem, stockDiv);
   grid.appendChild(colItem);
 
   // Cantidad
@@ -436,74 +576,82 @@ function agregarFila(panel, pre = {}) {
   colMaq.append(lblMaq, selMaq);
   grid.appendChild(colMaq);
 
-  contenedor.insertBefore(wrap, hint);
-  actualizarHint(panel);
+  // Insertar al inicio sin scroll
+  const scrollY = window.scrollY;
+  hint.style.display = 'none';
+  contenedor.insertBefore(wrap, contenedor.firstChild);
+  window.scrollTo({ top: scrollY, behavior: 'instant' });
 
   // Tom Select
-  const tsItem = new TomSelect(selItem, { maxOptions: 500, dropdownParent: 'body',
-    placeholder: '-- Seleccionar ítem --' });
-  const tsUb   = new TomSelect(selUb,   { maxOptions: 200, dropdownParent: 'body' });
-  const tsMaq  = new TomSelect(selMaq,  { maxOptions: 200, dropdownParent: 'body' });
+  const tsItem = new TomSelect(selItem, {
+    maxOptions: 500, dropdownParent: 'body',
+    placeholder: '-- Seleccionar ítem --',
+  });
+  const tsUb   = new TomSelect(selUb, { maxOptions: 200, dropdownParent: 'body' });
+  const tsMaq  = new TomSelect(selMaq, { maxOptions: 200, dropdownParent: 'body' });
 
-  // Ítem → actualizar stock y unidad
   function onItemChange(val) {
     const it = items.find(x => String(x.pk) === String(val));
     if (!it) { stockDiv.classList.add('d-none'); unidLbl.textContent = 'ud'; return; }
     unidLbl.textContent = it.unidad || 'ud';
     const ubVal = tsUb.getValue();
     const s = stockParaItemUb(it.pk, ubVal);
-    stockDiv.querySelector('.stock-val').textContent = `${s.toLocaleString('es-HN', {maximumFractionDigits:2})} ${it.unidad}`;
+    stockDiv.querySelector('.stock-val').textContent =
+      `${s.toLocaleString('es-HN', {maximumFractionDigits:2})} ${it.unidad}`;
     stockDiv.classList.remove('d-none');
   }
   tsItem.on('change', val => onItemChange(val));
-  tsUb.on('change', () => {
-    const itmVal = tsItem.getValue();
-    if (itmVal) onItemChange(itmVal);
-  });
+  tsUb.on('change', () => { const v = tsItem.getValue(); if (v) onItemChange(v); });
 
   // Pre-fill
   if (pre.item_id) { tsItem.setValue(String(pre.item_id), true); onItemChange(pre.item_id); }
   if (pre.ub_id)   tsUb.setValue(String(pre.ub_id), true);
   if (pre.maq_id)  tsMaq.setValue(String(pre.maq_id), true);
-  if (!pre.item_id) tsItem.focus();
+  if (!pre.item_id) {
+    requestAnimationFrame(() => {
+      tsItem.focus();
+      window.scrollTo({ top: scrollY, behavior: 'instant' });
+    });
+  }
 }
 
 function actualizarHint(panel) {
   const contenedor = document.getElementById(`contenedor-${panel}`);
   const hint = document.getElementById(`hint-${panel}`);
-  const n = contenedor.querySelectorAll('.fila-dinamica').length;
+  const n = contenedor ? contenedor.querySelectorAll('.fila-dinamica').length : 0;
   if (hint) hint.style.display = n === 0 ? '' : 'none';
 }
 
-// Botones agregar
 document.querySelectorAll('.btn-agregar').forEach(btn => {
   btn.addEventListener('click', () => agregarFila(btn.dataset.panel));
 });
 
-// Submit guard
+// ── Validación al enviar ──────────────────────────────────────────────────────
 document.getElementById('form-salida').addEventListener('submit', function(e) {
   const tipo = document.getElementById('tipo_salida_hidden').value;
   if (tipo === 'producto_terminado') {
-    // Verificar que al menos un qty > 0
-    const qtys = Array.from(document.querySelectorAll('#grilla-pt-body input.qty-input'))
-      .map(i => parseFloat(i.value) || 0);
-    if (qtys.every(q => q <= 0)) {
+    const n = document.querySelectorAll('#contenedor-pt .fila-pt').length;
+    if (n === 0) {
       e.preventDefault();
-      alert('Ingresá al menos una cantidad mayor a 0 en la grilla de productos.');
+      alert('Agrega al menos un producto antes de guardar.');
     }
   } else {
     const panel = tipo === 'repuestos' ? 'rep' : tipo === 'consumibles' ? 'con' : 'otros';
     const contenedor = document.getElementById(`contenedor-${panel}`);
-    if (contenedor.querySelectorAll('.fila-dinamica').length === 0) {
+    if (!contenedor || contenedor.querySelectorAll('.fila-dinamica').length === 0) {
       e.preventDefault();
-      alert('Agrega al menos un ítem antes de enviar.');
+      alert('Agrega al menos un ítem antes de guardar.');
     }
   }
 });
 
-// Restore filas previas (tabs dinámicos)
+// ── Inicialización: restaurar filas previas tras error del servidor ───────────
+if (FILAS_PT_PREVIAS.length > 0) {
+  FILAS_PT_PREVIAS.forEach(f => agregarFilaPT(f));
+}
 if (FILAS_PREVIAS.length > 0 && TAB_INICIAL !== 'producto_terminado') {
-  const panel = TAB_INICIAL === 'repuestos' ? 'rep' : TAB_INICIAL === 'consumibles' ? 'con' : 'otros';
+  const panel = TAB_INICIAL === 'repuestos' ? 'rep'
+              : TAB_INICIAL === 'consumibles' ? 'con' : 'otros';
   FILAS_PREVIAS.forEach(f => agregarFila(panel, f));
 }
 </script>

@@ -878,9 +878,12 @@ def movimiento_salida(request):
     """
     Registro de salidas con cuatro tabs:
 
-    • Producto Terminado  — grilla fija de todos los productos (orden por item.orden),
+    • Producto Terminado  — filas dinámicas (usuario agrega solo los necesarios),
+                           dropdown filtrado a productos, orden por item.orden,
                            cliente a nivel de cabecera, permite stock negativo
                            (marca pendiente_conciliacion=True en cada línea).
+                           Usa campos item_pt[] y cantidad_pt[] para evitar
+                           colisión con los tabs de filas dinámicas (item[], cantidad[]).
     • Repuestos           — filas dinámicas, bloquea si stock insuficiente.
     • Consumibles         — filas dinámicas, bloquea si stock insuficiente.
     • Otros               — filas dinámicas, bloquea si stock insuficiente.
@@ -928,16 +931,6 @@ def movimiento_salida(request):
     ])
     stocks_json = json.dumps(stocks_por_item)
 
-    # Grilla fija de productos con stock pre-calculado
-    grilla_productos = []
-    for it in items_producto:
-        stock_total = sum(stocks_por_item.get(it.pk, {}).values())
-        grilla_productos.append({
-            'pk': it.pk, 'nombre': it.nombre, 'codigo': it.codigo,
-            'unidad': it.unidad_medida, 'stock_total': stock_total,
-        })
-    grilla_productos_json = json.dumps(grilla_productos)
-
     def _parse_fecha(fecha_str):
         if not fecha_str:
             return timezone.now()
@@ -960,7 +953,6 @@ def movimiento_salida(request):
             'clientes_json':         clientes_json,
             'maquinas_json':         maquinas_json,
             'stocks_json':           stocks_json,
-            'grilla_productos_json': grilla_productos_json,
             'ubicaciones':           ubicaciones,
             'clientes':              clientes,
         }
@@ -974,7 +966,7 @@ def movimiento_salida(request):
         return render(request, 'movimientos/salida.html',
                       _ctx({'tab_inicial': tab_inicial,
                             'item_id_inicial': item_id_inicial,
-                            'qty_previas_json': '{}',
+                            'filas_pt_previas_json': '[]',
                             'filas_previas_json': '[]'}))
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -992,6 +984,11 @@ def movimiento_salida(request):
     if tipo_salida == 'producto_terminado':
         cliente_id  = request.POST.get('cliente_header', '').strip()
         ub_pt_id    = request.POST.get('ubicacion_origen_pt', '').strip()
+
+        # Filas dinámicas PT usan nombres distintos (item_pt[], cantidad_pt[])
+        # para evitar colisión con los tabs de rep/con/otros (item[], cantidad[])
+        item_ids_pt  = request.POST.getlist('item_pt[]')
+        cantidades_pt = request.POST.getlist('cantidad_pt[]')
 
         cliente = None
         if not cliente_id:
@@ -1011,35 +1008,48 @@ def movimiento_salida(request):
             except Ubicacion.DoesNotExist:
                 errores.append('Ubicación no encontrada.')
 
-        # Recorrer grilla fija: qty_{pk} por cada producto
-        for it in items_producto:
-            qty_str = request.POST.get(f'qty_{it.pk}', '').strip()
-            if not qty_str or qty_str == '0':
+        items_producto_map = {str(it.pk): it for it in items_producto}
+        for i, (item_id, cant_str) in enumerate(zip(item_ids_pt, cantidades_pt), 1):
+            cant_str = cant_str.strip()
+            if not item_id and not cant_str:
+                continue
+            if not item_id:
+                errores.append(f'Fila {i}: selecciona un producto.')
+                continue
+            if not cant_str:
+                errores.append(f'Fila {i}: ingresa una cantidad.')
                 continue
             try:
-                cantidad = Decimal(qty_str)
+                cantidad = Decimal(cant_str)
                 if cantidad <= 0:
                     raise ValueError
             except (ValueError, Exception):
-                errores.append(f'{it.nombre}: cantidad inválida.')
+                errores.append(f'Fila {i}: cantidad inválida.')
                 continue
-            filas_validas.append((it, cantidad, None, True, None))  # ubicacion se añade tras validar
+            it = items_producto_map.get(str(item_id))
+            if not it:
+                errores.append(f'Fila {i}: producto no encontrado.')
+                continue
+            filas_validas.append((it, cantidad, None, True, None))
 
         if not filas_validas and not errores:
-            errores.append('Ingresa al menos una cantidad mayor a 0.')
+            errores.append('Agrega al menos un producto con cantidad.')
 
         if errores:
             for e in errores:
                 messages.error(request, e)
-            qty_previas = {str(it.pk): request.POST.get(f'qty_{it.pk}', '')
-                           for it in items_producto}
+            filas_pt_previas = [
+                {'item_id': iid, 'cantidad': cant}
+                for iid, cant in zip(item_ids_pt, cantidades_pt)
+                if iid or cant.strip()
+            ]
             return render(request, 'movimientos/salida.html',
                           _ctx({'tab_inicial': 'producto_terminado',
                                 'motivo_previo': motivo,
                                 'fecha_mov_previo': fecha_mov_str,
                                 'cliente_previo': cliente_id,
                                 'ub_pt_previo': ub_pt_id,
-                                'qty_previas_json': json.dumps(qty_previas),
+                                'filas_pt_previas_json': json.dumps(filas_pt_previas),
                                 'filas_previas_json': '[]'}))
 
         # Todo OK → guardar
@@ -2503,4 +2513,170 @@ def usuario_editar(request, pk):
         'form': form,
         'titulo': f'Editar: {usuario.username}',
         'usuario': usuario,
+    })
+
+
+# ─── REPORTE CONSUMO PIGMENTOS ────────────────────────────────────────────────
+
+@login_required
+@permission_required(_perm('ver_reportes'), raise_exception=True)
+def reporte_consumo_pigmentos(request):
+    """
+    Reporte de consumo de pigmentos en un rango de fechas.
+
+    Consumo = ajustes negativos sobre ítems de categoría Pigmentos.
+    Muestra: consumo total, promedio diario, stock actual, días de cobertura,
+    estado (ok / bajo / crítico) y pedido sugerido.
+    """
+    hoy = date.today()
+
+    # ── Filtros ───────────────────────────────────────────────────────────────
+    def _parse_date(s, fallback):
+        try:
+            return date.fromisoformat(s) if s else fallback
+        except ValueError:
+            return fallback
+
+    fecha_inicio = _parse_date(request.GET.get('fecha_inicio', ''), hoy - timedelta(days=30))
+    fecha_fin    = _parse_date(request.GET.get('fecha_fin', ''),    hoy)
+    if fecha_fin < fecha_inicio:
+        fecha_fin = fecha_inicio
+
+    pigmento_pk  = request.GET.get('pigmento', '').strip()
+    try:
+        dias_objetivo = max(1, int(request.GET.get('dias_objetivo', 14)))
+    except (ValueError, TypeError):
+        dias_objetivo = 14
+
+    dias_rango = max(1, (fecha_fin - fecha_inicio).days + 1)
+
+    # ── Pigmentos activos ─────────────────────────────────────────────────────
+    pigmentos_qs = (
+        Item.objects
+        .filter(activo=True, tipo='consumible', categoria__nombre__iexact='Pigmentos')
+        .select_related('categoria')
+        .annotate(stock_calc=_STOCK_ANN)
+        .order_by('orden', 'nombre')
+    )
+    if pigmento_pk:
+        pigmentos_qs = pigmentos_qs.filter(pk=pigmento_pk)
+
+    todos_pigmentos = (
+        Item.objects
+        .filter(activo=True, tipo='consumible', categoria__nombre__iexact='Pigmentos')
+        .order_by('orden', 'nombre')
+    )
+
+    # ── Consumo por ítem: ajustes negativos en el rango ───────────────────────
+    consumos_base = DetalleMovimiento.objects.filter(
+        movimiento__tipo_movimiento='ajuste',
+        movimiento__anulado=False,
+        movimiento__eliminado=False,
+        movimiento__fecha_movimiento__date__gte=fecha_inicio,
+        movimiento__fecha_movimiento__date__lte=fecha_fin,
+        item__tipo='consumible',
+        item__categoria__nombre__iexact='Pigmentos',
+        cantidad__lt=0,
+    )
+    if pigmento_pk:
+        consumos_base = consumos_base.filter(item_id=pigmento_pk)
+
+    consumo_por_item = {
+        row['item_id']: abs(row['total'])
+        for row in consumos_base.values('item_id').annotate(total=Sum('cantidad'))
+    }
+
+    # ── Construir tabla de resultados ─────────────────────────────────────────
+    ESTADO_LABELS = {
+        'ok':          'OK',
+        'bajo':        'Bajo',
+        'critico':     'Crítico',
+        'sin_consumo': 'Sin consumo',
+    }
+
+    resultados = []
+    total_consumo  = Decimal('0')
+    total_criticos = 0
+    total_pedido   = Decimal('0')
+
+    for pig in pigmentos_qs:
+        consumo = consumo_por_item.get(pig.pk, Decimal('0'))
+        stock   = pig.stock_calc or Decimal('0')
+
+        if consumo > 0:
+            promedio_diario = consumo / Decimal(str(dias_rango))
+            dias_cob = float(stock / promedio_diario) if promedio_diario else None
+            pedido   = max(Decimal('0'), promedio_diario * Decimal(str(dias_objetivo)) - stock)
+        else:
+            promedio_diario = Decimal('0')
+            dias_cob = None
+            pedido   = Decimal('0')
+
+        if dias_cob is None:
+            estado = 'sin_consumo'
+        elif dias_cob < 3:
+            estado = 'critico'
+            total_criticos += 1
+        elif dias_cob <= 7:
+            estado = 'bajo'
+        else:
+            estado = 'ok'
+
+        total_consumo += consumo
+        total_pedido  += pedido
+
+        resultados.append({
+            'item':           pig,
+            'consumo':        consumo,
+            'promedio_diario': round(promedio_diario, 2),
+            'stock':          stock,
+            'dias_cobertura': round(dias_cob, 1) if dias_cob is not None else None,
+            'pedido':         round(pedido, 2),
+            'estado':         estado,
+            'estado_label':   ESTADO_LABELS[estado],
+        })
+
+    # ── Detalle de movimientos (solo cuando se filtra un pigmento) ─────────────
+    detalle_movimientos = []
+    if pigmento_pk:
+        detalle_movimientos = list(
+            consumos_base
+            .select_related('movimiento', 'movimiento__usuario', 'item')
+            .order_by('-movimiento__fecha_movimiento')
+        )
+
+    # ── Exportar CSV ──────────────────────────────────────────────────────────
+    if request.GET.get('export') == 'csv':
+        fname = f'consumo_pigmentos_{fecha_inicio}_{fecha_fin}.csv'
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{fname}"'
+        response.write('﻿')  # BOM para Excel
+        writer = csv.writer(response)
+        writer.writerow([
+            'Pigmento', 'Código', 'Consumo total', 'Promedio diario',
+            'Stock actual', 'Cobertura (días)', 'Pedido sugerido', 'Unidad', 'Estado',
+        ])
+        for r in resultados:
+            writer.writerow([
+                r['item'].nombre, r['item'].codigo,
+                r['consumo'], r['promedio_diario'],
+                r['stock'],
+                r['dias_cobertura'] if r['dias_cobertura'] is not None else '',
+                r['pedido'], r['item'].unidad_medida,
+                r['estado_label'],
+            ])
+        return response
+
+    return render(request, 'reportes/pigmentos.html', {
+        'resultados':          resultados,
+        'todos_pigmentos':     todos_pigmentos,
+        'fecha_inicio':        fecha_inicio,
+        'fecha_fin':           fecha_fin,
+        'dias_rango':          dias_rango,
+        'dias_objetivo':       dias_objetivo,
+        'pigmento_pk':         pigmento_pk,
+        'total_consumo':       total_consumo,
+        'total_criticos':      total_criticos,
+        'total_pedido':        total_pedido,
+        'detalle_movimientos': detalle_movimientos,
     })

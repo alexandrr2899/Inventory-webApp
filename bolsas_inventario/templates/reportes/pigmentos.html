@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% block title %}Consumo de Pigmentos{% endblock %}
+
+{% block extra_head %}
+<style>
+  .estado-ok       { color: #198754; }
+  .estado-bajo     { color: #fd7e14; }
+  .estado-critico  { color: #dc3545; }
+  .estado-sin      { color: #6c757d; }
+
+  .card-estado-ok      { border-left: 4px solid #198754 !important; }
+  .card-estado-bajo    { border-left: 4px solid #fd7e14 !important; }
+  .card-estado-critico { border-left: 4px solid #dc3545 !important; }
+  .card-estado-sin     { border-left: 4px solid #dee2e6 !important; }
+
+  .cobertura-bar { height: 6px; border-radius: 3px; background: #e9ecef; }
+  .cobertura-fill { height: 6px; border-radius: 3px; transition: width .3s; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center"
+     style="background:linear-gradient(135deg,#6610f2,#0d6efd);">
+  <div>
+    <h1><i class="bi bi-droplet-half me-2"></i>Consumo de Pigmentos</h1>
+    <small class="opacity-75">
+      {{ fecha_inicio|date:"d/m/Y" }} → {{ fecha_fin|date:"d/m/Y" }}
+      &middot; {{ dias_rango }} día(s)
+    </small>
+  </div>
+  {% if resultados %}
+  <a href="?{% if pigmento_pk %}pigmento={{ pigmento_pk }}&{% endif %}fecha_inicio={{ fecha_inicio|date:'Y-m-d' }}&fecha_fin={{ fecha_fin|date:'Y-m-d' }}&dias_objetivo={{ dias_objetivo }}&export=csv"
+     class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-file-earmark-spreadsheet me-1"></i>CSV
+  </a>
+  {% endif %}
+</div>
+
+<!-- ── Filtros ──────────────────────────────────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-body py-2 px-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-6 col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="fecha_inicio" class="form-control"
+               value="{{ fecha_inicio|date:'Y-m-d' }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="fecha_fin" class="form-control"
+               value="{{ fecha_fin|date:'Y-m-d' }}">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">Pigmento</label>
+        <select name="pigmento" class="form-select">
+          <option value="">Todos</option>
+          {% for p in todos_pigmentos %}
+          <option value="{{ p.pk }}" {% if pigmento_pk == p.pk|stringformat:'s' %}selected{% endif %}>
+            {{ p.nombre }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Objetivo (días)</label>
+        <input type="number" name="dias_objetivo" class="form-control"
+               value="{{ dias_objetivo }}" min="1" max="365">
+      </div>
+      <div class="col-6 col-md-3 d-flex gap-2 align-items-end">
+        <button type="submit" class="btn btn-primary flex-fill">
+          <i class="bi bi-search me-1"></i>Consultar
+        </button>
+        <a href="{% url 'reporte_consumo_pigmentos' %}" class="btn btn-outline-secondary">
+          <i class="bi bi-x-lg"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Tarjetas resumen ─────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-4">
+    <div class="card h-100 text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-primary">
+          {{ total_consumo|floatformat:1 }}
+        </div>
+        <div class="text-muted small">Consumo total</div>
+        <i class="bi bi-graph-down-arrow text-primary fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="card h-100 text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold {% if total_criticos %}text-danger{% else %}text-success{% endif %}">
+          {{ total_criticos }}
+        </div>
+        <div class="text-muted small">Críticos</div>
+        <i class="bi bi-exclamation-triangle-fill
+          {% if total_criticos %}text-danger{% else %}text-success{% endif %} fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="card h-100 text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-warning">
+          {{ total_pedido|floatformat:1 }}
+        </div>
+        <div class="text-muted small">Pedido sugerido</div>
+        <i class="bi bi-cart-fill text-warning fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not resultados %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>
+  No se encontraron pigmentos activos con los filtros seleccionados.
+</div>
+{% else %}
+
+<!-- ══ MOBILE: cards ══════════════════════════════════════════════════════════ -->
+<div class="d-md-none">
+  {% for r in resultados %}
+  <div class="card mb-3
+    {% if r.estado == 'critico' %}card-estado-critico
+    {% elif r.estado == 'bajo' %}card-estado-bajo
+    {% elif r.estado == 'ok' %}card-estado-ok
+    {% else %}card-estado-sin{% endif %}">
+    <div class="card-body py-3 px-3">
+
+      <!-- Nombre y estado -->
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+          <div class="fw-bold">{{ r.item.nombre }}</div>
+          <div class="text-muted small">{{ r.item.codigo }}</div>
+        </div>
+        <span class="badge rounded-pill
+          {% if r.estado == 'ok' %}bg-success
+          {% elif r.estado == 'bajo' %}bg-warning text-dark
+          {% elif r.estado == 'critico' %}bg-danger
+          {% else %}bg-secondary{% endif %}">
+          {{ r.estado_label }}
+        </span>
+      </div>
+
+      <!-- Datos clave -->
+      <div class="row g-2 mb-2" style="font-size:.85rem;">
+        <div class="col-6">
+          <div class="text-muted" style="font-size:.7rem;">Consumo</div>
+          <div class="fw-semibold">{{ r.consumo|floatformat:2 }} {{ r.item.unidad_medida }}</div>
+        </div>
+        <div class="col-6">
+          <div class="text-muted" style="font-size:.7rem;">Promedio/día</div>
+          <div class="fw-semibold">{{ r.promedio_diario|floatformat:2 }} {{ r.item.unidad_medida }}</div>
+        </div>
+        <div class="col-6">
+          <div class="text-muted" style="font-size:.7rem;">Stock actual</div>
+          <div class="fw-semibold {% if r.stock <= 0 %}text-danger{% endif %}">
+            {{ r.stock|floatformat:2 }} {{ r.item.unidad_medida }}
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="text-muted" style="font-size:.7rem;">Cobertura</div>
+          {% if r.dias_cobertura is not None %}
+            <div class="fw-semibold
+              {% if r.estado == 'critico' %}text-danger
+              {% elif r.estado == 'bajo' %}text-warning{% endif %}">
+              {{ r.dias_cobertura }} días
+            </div>
+          {% else %}
+            <div class="text-muted">Sin consumo</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Pedido sugerido -->
+      {% if r.pedido > 0 %}
+      <div class="alert alert-warning py-1 px-2 mb-0 mt-1" style="font-size:.8rem;">
+        <i class="bi bi-cart-fill me-1"></i>
+        Pedido sugerido: <strong>{{ r.pedido|floatformat:2 }} {{ r.item.unidad_medida }}</strong>
+        <span class="text-muted">(objetivo {{ dias_objetivo }} días)</span>
+      </div>
+      {% endif %}
+
+      {% if pigmento_pk %}
+      <!-- Barra de cobertura visual -->
+      {% if r.dias_cobertura is not None %}
+      <div class="mt-2">
+        {% with pct=r.dias_cobertura|floatformat:0 %}
+        <div class="cobertura-bar mt-1">
+          <div class="cobertura-fill
+            {% if r.estado == 'critico' %}bg-danger
+            {% elif r.estado == 'bajo' %}bg-warning
+            {% else %}bg-success{% endif %}"
+            style="width:{% if r.dias_cobertura > 14 %}100{% elif r.dias_cobertura > 0 %}{{ r.dias_cobertura|floatformat:0|add:'0' }}{% else %}2{% endif %}%;
+                   max-width:100%;">
+          </div>
+        </div>
+        {% endwith %}
+      </div>
+      {% endif %}
+      {% endif %}
+
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ══ DESKTOP: tabla ═════════════════════════════════════════════════════════ -->
+<div class="d-none d-md-block">
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Pigmento</th>
+            <th class="text-end">Consumo total</th>
+            <th class="text-end">Prom/día</th>
+            <th class="text-end">Stock actual</th>
+            <th class="text-end">Stock mín.</th>
+            <th class="text-end">Cobertura</th>
+            <th class="text-end">Pedido sug.</th>
+            <th class="text-center">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in resultados %}
+          <tr class="{% if r.estado == 'critico' %}table-danger{% elif r.estado == 'bajo' %}table-warning{% endif %}">
+            <td>
+              <a href="?pigmento={{ r.item.pk }}&fecha_inicio={{ fecha_inicio|date:'Y-m-d' }}&fecha_fin={{ fecha_fin|date:'Y-m-d' }}&dias_objetivo={{ dias_objetivo }}"
+                 class="text-decoration-none fw-semibold">
+                {{ r.item.nombre }}
+              </a>
+              <div class="text-muted small">{{ r.item.codigo }}</div>
+            </td>
+            <td class="text-end fw-semibold">
+              {{ r.consumo|floatformat:2 }}
+              <span class="text-muted small">{{ r.item.unidad_medida }}</span>
+            </td>
+            <td class="text-end">
+              {% if r.promedio_diario > 0 %}
+                {{ r.promedio_diario|floatformat:2 }}
+              {% else %}
+                <span class="text-muted">–</span>
+              {% endif %}
+            </td>
+            <td class="text-end {% if r.stock <= 0 %}text-danger fw-bold{% endif %}">
+              {{ r.stock|floatformat:2 }}
+            </td>
+            <td class="text-end text-muted">
+              {{ r.item.stock_minimo|floatformat:2 }}
+            </td>
+            <td class="text-end">
+              {% if r.dias_cobertura is not None %}
+                <span class="fw-semibold
+                  {% if r.estado == 'critico' %}text-danger
+                  {% elif r.estado == 'bajo' %}text-warning{% else %}text-success{% endif %}">
+                  {{ r.dias_cobertura }} días
+                </span>
+              {% else %}
+                <span class="text-muted small">–</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if r.pedido > 0 %}
+                <span class="fw-bold text-warning">{{ r.pedido|floatformat:2 }}</span>
+                <span class="text-muted small">{{ r.item.unidad_medida }}</span>
+              {% else %}
+                <span class="text-muted small">–</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              <span class="badge rounded-pill
+                {% if r.estado == 'ok' %}bg-success
+                {% elif r.estado == 'bajo' %}bg-warning text-dark
+                {% elif r.estado == 'critico' %}bg-danger
+                {% else %}bg-secondary{% endif %}">
+                {{ r.estado_label }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td>Total ({{ resultados|length }} pigmentos)</td>
+            <td class="text-end">{{ total_consumo|floatformat:2 }}</td>
+            <td colspan="4"></td>
+            <td class="text-end text-warning">{{ total_pedido|floatformat:2 }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Leyenda de cálculo -->
+  <div class="text-muted mt-2" style="font-size:.75rem;">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>Promedio diario</strong> = consumo ÷ {{ dias_rango }} días del rango &nbsp;|&nbsp;
+    <strong>Cobertura</strong> = stock actual ÷ promedio diario &nbsp;|&nbsp;
+    <strong>Pedido sugerido</strong> = (promedio × {{ dias_objetivo }} días objetivo) − stock actual
+  </div>
+</div>
+
+<!-- ══ DETALLE DE MOVIMIENTOS (solo cuando se filtra un pigmento) ════════════ -->
+{% if pigmento_pk and detalle_movimientos %}
+<div class="card mt-4">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-list-ul me-2"></i>
+    Detalle de ajustes — {{ detalle_movimientos.0.item.nombre }}
+    <span class="badge bg-secondary ms-2">{{ detalle_movimientos|length }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha movimiento</th>
+          <th class="text-end">Consumo</th>
+          <th>Mov. #</th>
+          <th>Usuario</th>
+          <th>Motivo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for det in detalle_movimientos %}
+        <tr>
+          <td class="text-nowrap small">
+            {{ det.movimiento.fecha_movimiento|date:"d/m/Y H:i" }}
+          </td>
+          <td class="text-end fw-semibold">
+            {{ det.cantidad|floatformat:2|slice:"1:" }}
+            <span class="text-muted small">{{ det.item.unidad_medida }}</span>
+          </td>
+          <td class="small">
+            <a href="{% url 'movimiento_detalle' det.movimiento.pk %}" class="text-decoration-none">
+              #{{ det.movimiento.pk }}
+            </a>
+          </td>
+          <td class="small text-muted">{{ det.movimiento.usuario.username }}</td>
+          <td class="small text-muted">{{ det.movimiento.motivo|default:"–"|truncatechars:50 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif pigmento_pk %}
+<div class="alert alert-info mt-3">
+  <i class="bi bi-info-circle me-2"></i>
+  No se registraron ajustes negativos para este pigmento en el rango seleccionado.
+</div>
+{% endif %}
+
+{% endif %}{# /if resultados #}
+
+{% endblock %}

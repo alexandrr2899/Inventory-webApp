@@ -71,6 +71,9 @@
 <a href="{% url 'reporte_produccion' %}" class="nav-link {% if request.resolver_match.url_name == 'reporte_produccion' %}active{% endif %}">
   <i class="bi bi-graph-up-arrow"></i> Producción
 </a>
+<a href="{% url 'reporte_consumo_pigmentos' %}" class="nav-link {% if request.resolver_match.url_name == 'reporte_consumo_pigmentos' %}active{% endif %}">
+  <i class="bi bi-droplet-half text-info"></i> Consumo Pigmentos
+</a>
 {% endif %}
 
 {% if perms.core.importar_excel or user.is_staff %}

@@ -52,6 +52,7 @@ urlpatterns = [
     # Reportes
     path('reportes/stock-bajo/', views.reporte_stock_bajo, name='reporte_stock_bajo'),
     path('reportes/produccion/', views.reporte_produccion, name='reporte_produccion'),
+    path('reportes/pigmentos/', views.reporte_consumo_pigmentos, name='reporte_consumo_pigmentos'),
 
     # Producción
     path('produccion/nueva/', views.produccion_nueva, name='produccion_nueva'),
