@@ -168,6 +168,30 @@ def _movimiento_editable(mov):
     return not mov.anulado and not mov.eliminado
 
 
+def _cerrar_pendientes_conciliacion(item, ubicacion):
+    """
+    Después de aplicar un ajuste, revisa si el stock del ítem en la ubicación
+    es ahora ≥ 0 y, de ser así, cierra (marca como conciliadas) todas las líneas
+    de DetalleMovimiento que estén pendientes para ese ítem/ubicación.
+
+    Debe llamarse dentro de transaction.atomic().
+    """
+    stock_obj = Stock.objects.filter(item=item, ubicacion=ubicacion).first()
+    if not stock_obj or stock_obj.cantidad_actual < Decimal('0'):
+        return 0
+
+    ahora = timezone.now()
+    pendientes = DetalleMovimiento.objects.filter(
+        item=item,
+        ubicacion_origen=ubicacion,
+        pendiente_conciliacion=True,
+        movimiento__anulado=False,
+        movimiento__eliminado=False,
+    )
+    n = pendientes.update(pendiente_conciliacion=False, fecha_conciliacion=ahora)
+    return n
+
+
 # ─── DASHBOARD ────────────────────────────────────────────────────────────────
 
 @login_required
@@ -216,6 +240,16 @@ def dashboard(request):
         .count()
     )
 
+    total_pendientes_conciliacion = (
+        DetalleMovimiento.objects
+        .filter(
+            pendiente_conciliacion=True,
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+        )
+        .count()
+    )
+
     context = {
         'items_bajo_stock': items_bajo_stock,
         'ultimos_detalles': ultimos_detalles,
@@ -224,6 +258,7 @@ def dashboard(request):
         'hoy': hoy,
         'total_items': Item.objects.filter(activo=True).count(),
         'total_bajo_stock': total_bajo_stock,
+        'total_pendientes_conciliacion': total_pendientes_conciliacion,
     }
     return render(request, 'dashboard.html', context)
 
@@ -634,8 +669,15 @@ def movimiento_lista(request):
                           'detalles__ubicacion_destino', 'detalles__cliente',
                           'detalles__maquina')
         .select_related('usuario', 'usuario_anulacion', 'usuario_edicion',
-                        'usuario_eliminacion')
-        .annotate(num_detalles=Count('detalles'))
+                        'usuario_eliminacion', 'cliente')
+        .annotate(
+            num_detalles=Count('detalles', distinct=True),
+            num_pendientes=Count(
+                'detalles',
+                filter=Q(detalles__pendiente_conciliacion=True),
+                distinct=True,
+            ),
+        )
         .order_by('-fecha_movimiento')
     )
 
@@ -833,17 +875,47 @@ def movimiento_entrada(request):
 @login_required
 @permission_required(_perm('registrar_salida'), raise_exception=True)
 def movimiento_salida(request):
-    items = Item.objects.filter(activo=True).order_by('orden', 'nombre')
-    ubicaciones = Ubicacion.objects.all()
-    clientes = Cliente.objects.filter(activo=True).order_by('nombre')
-    maquinas = Maquina.objects.filter(activo=True).order_by('nombre')
-    item_id_inicial = request.GET.get('item', '')
+    """
+    Registro de salidas con cuatro tabs:
 
-    items_json = json.dumps([
-        {'pk': it.pk, 'nombre': it.nombre, 'codigo': it.codigo,
-         'tipo': it.tipo, 'unidad': it.unidad_medida}
-        for it in items
-    ])
+    • Producto Terminado  — grilla fija de todos los productos (orden por item.orden),
+                           cliente a nivel de cabecera, permite stock negativo
+                           (marca pendiente_conciliacion=True en cada línea).
+    • Repuestos           — filas dinámicas, bloquea si stock insuficiente.
+    • Consumibles         — filas dinámicas, bloquea si stock insuficiente.
+    • Otros               — filas dinámicas, bloquea si stock insuficiente.
+    """
+    from django.utils.dateparse import parse_datetime
+
+    # ── Datos maestros ────────────────────────────────────────────────────────
+    items_producto   = list(Item.objects.filter(activo=True, tipo='producto')
+                            .order_by('orden', 'nombre'))
+    items_repuesto   = list(Item.objects.filter(activo=True, tipo='repuesto')
+                            .order_by('orden', 'nombre'))
+    items_consumible = list(Item.objects.filter(activo=True, tipo='consumible')
+                            .order_by('orden', 'nombre'))
+    items_otros      = list(Item.objects.filter(activo=True)
+                            .exclude(tipo__in=['producto', 'repuesto', 'consumible'])
+                            .order_by('orden', 'nombre'))
+
+    ubicaciones = list(Ubicacion.objects.all().order_by('nombre'))
+    clientes    = list(Cliente.objects.filter(activo=True).order_by('nombre'))
+    maquinas    = list(Maquina.objects.filter(activo=True).order_by('nombre'))
+
+    # ── Stock por item {item_pk: {ub_pk: stock_actual}} ───────────────────────
+    stocks_qs = Stock.objects.select_related('item', 'ubicacion').all()
+    stocks_por_item = {}
+    for s in stocks_qs:
+        stocks_por_item.setdefault(s.item_id, {})[s.ubicacion_id] = float(s.cantidad_actual)
+
+    # ── JSON para JavaScript ──────────────────────────────────────────────────
+    def _items_json(lst):
+        return json.dumps([
+            {'pk': it.pk, 'nombre': it.nombre, 'codigo': it.codigo,
+             'tipo': it.tipo, 'unidad': it.unidad_medida}
+            for it in lst
+        ])
+
     ubicaciones_json = json.dumps([
         {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
         for u in ubicaciones
@@ -854,164 +926,295 @@ def movimiento_salida(request):
     maquinas_json = json.dumps([
         {'pk': m.pk, 'nombre': m.nombre} for m in maquinas
     ])
+    stocks_json = json.dumps(stocks_por_item)
 
-    if request.method == 'POST':
-        motivo = request.POST.get('motivo', '')
-        fecha_mov_str = request.POST.get('fecha_movimiento', '').strip()
-        item_ids = request.POST.getlist('item[]')
-        cantidades = request.POST.getlist('cantidad[]')
-        ubicacion_ids = request.POST.getlist('ubicacion_origen[]')
-        cliente_ids = request.POST.getlist('cliente[]')
-        maquina_ids = request.POST.getlist('maquina[]')
+    # Grilla fija de productos con stock pre-calculado
+    grilla_productos = []
+    for it in items_producto:
+        stock_total = sum(stocks_por_item.get(it.pk, {}).values())
+        grilla_productos.append({
+            'pk': it.pk, 'nombre': it.nombre, 'codigo': it.codigo,
+            'unidad': it.unidad_medida, 'stock_total': stock_total,
+        })
+    grilla_productos_json = json.dumps(grilla_productos)
 
-        fecha_movimiento = timezone.now()
-        if fecha_mov_str:
+    def _parse_fecha(fecha_str):
+        if not fecha_str:
+            return timezone.now()
+        try:
+            parsed = parse_datetime(fecha_str.strip())
+            if parsed:
+                return timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
+        except Exception:
+            pass
+        return timezone.now()
+
+    # ── Contexto base (GET y re-render en error) ───────────────────────────────
+    def _ctx(extra=None):
+        ctx = {
+            'items_producto_json':   _items_json(items_producto),
+            'items_repuesto_json':   _items_json(items_repuesto),
+            'items_consumible_json': _items_json(items_consumible),
+            'items_otros_json':      _items_json(items_otros),
+            'ubicaciones_json':      ubicaciones_json,
+            'clientes_json':         clientes_json,
+            'maquinas_json':         maquinas_json,
+            'stocks_json':           stocks_json,
+            'grilla_productos_json': grilla_productos_json,
+            'ubicaciones':           ubicaciones,
+            'clientes':              clientes,
+        }
+        if extra:
+            ctx.update(extra)
+        return ctx
+
+    if request.method != 'POST':
+        tab_inicial = request.GET.get('tab', 'producto_terminado')
+        item_id_inicial = request.GET.get('item', '')
+        return render(request, 'movimientos/salida.html',
+                      _ctx({'tab_inicial': tab_inicial,
+                            'item_id_inicial': item_id_inicial,
+                            'qty_previas_json': '{}',
+                            'filas_previas_json': '[]'}))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # POST
+    # ═══════════════════════════════════════════════════════════════════════════
+    tipo_salida   = request.POST.get('tipo_salida', 'producto_terminado')
+    motivo        = request.POST.get('motivo', '').strip()
+    fecha_mov_str = request.POST.get('fecha_movimiento', '')
+    fecha_movimiento = _parse_fecha(fecha_mov_str)
+
+    errores      = []
+    filas_validas = []   # (item, cantidad, ubicacion, pendiente, maquina)
+
+    # ── TAB: Producto Terminado ────────────────────────────────────────────────
+    if tipo_salida == 'producto_terminado':
+        cliente_id  = request.POST.get('cliente_header', '').strip()
+        ub_pt_id    = request.POST.get('ubicacion_origen_pt', '').strip()
+
+        cliente = None
+        if not cliente_id:
+            errores.append('Selecciona un cliente.')
+        else:
             try:
-                from django.utils.dateparse import parse_datetime
-                parsed = parse_datetime(fecha_mov_str)
-                if parsed:
-                    fecha_movimiento = timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
-            except Exception:
-                pass
+                cliente = Cliente.objects.get(pk=cliente_id)
+            except Cliente.DoesNotExist:
+                errores.append('Cliente no encontrado.')
 
-        errores = []
-        filas_validas = []
+        ubicacion_pt = None
+        if not ub_pt_id:
+            errores.append('Selecciona la ubicación de origen.')
+        else:
+            try:
+                ubicacion_pt = Ubicacion.objects.get(pk=ub_pt_id)
+            except Ubicacion.DoesNotExist:
+                errores.append('Ubicación no encontrada.')
 
-        for i, (item_id, cant_str, ub_id, cli_id, maq_id) in enumerate(
-            zip(item_ids, cantidades, ubicacion_ids, cliente_ids, maquina_ids), 1
-        ):
-            cant_str = cant_str.strip()
-            if not item_id and not cant_str:
-                continue
-            if not item_id:
-                errores.append(f'Fila {i}: selecciona un ítem.')
-                continue
-            if not cant_str:
-                errores.append(f'Fila {i}: ingresa una cantidad.')
+        # Recorrer grilla fija: qty_{pk} por cada producto
+        for it in items_producto:
+            qty_str = request.POST.get(f'qty_{it.pk}', '').strip()
+            if not qty_str or qty_str == '0':
                 continue
             try:
-                cantidad = Decimal(cant_str)
+                cantidad = Decimal(qty_str)
                 if cantidad <= 0:
                     raise ValueError
             except (ValueError, Exception):
-                errores.append(f'Fila {i}: cantidad inválida.')
+                errores.append(f'{it.nombre}: cantidad inválida.')
                 continue
-            try:
-                item = Item.objects.get(pk=item_id, activo=True)
-            except Item.DoesNotExist:
-                errores.append(f'Fila {i}: ítem no encontrado.')
-                continue
-            if not ub_id:
-                errores.append(f'Fila {i} ({item.nombre}): selecciona ubicación de origen.')
-                continue
-            try:
-                ubicacion = Ubicacion.objects.get(pk=ub_id)
-            except Ubicacion.DoesNotExist:
-                errores.append(f'Fila {i}: ubicación no encontrada.')
-                continue
-
-            try:
-                stock = Stock.objects.get(item=item, ubicacion=ubicacion)
-                if stock.cantidad_actual < cantidad:
-                    errores.append(
-                        f'Fila {i} ({item.nombre}): stock insuficiente. '
-                        f'Disponible: {stock.cantidad_actual} {item.unidad_medida}.'
-                    )
-                    continue
-            except Stock.DoesNotExist:
-                errores.append(f'Fila {i} ({item.nombre}): no hay stock en esa ubicación.')
-                continue
-
-            cliente = None
-            maquina = None
-            if item.tipo == 'producto':
-                if not cli_id:
-                    errores.append(f'Fila {i} ({item.nombre}): selecciona un cliente.')
-                    continue
-                try:
-                    cliente = Cliente.objects.get(pk=cli_id)
-                except Cliente.DoesNotExist:
-                    errores.append(f'Fila {i}: cliente no encontrado.')
-                    continue
-            elif item.tipo == 'repuesto':
-                if not maq_id:
-                    errores.append(f'Fila {i} ({item.nombre}): selecciona una máquina.')
-                    continue
-                try:
-                    maquina = Maquina.objects.get(pk=maq_id)
-                except Maquina.DoesNotExist:
-                    errores.append(f'Fila {i}: máquina no encontrada.')
-                    continue
-            elif item.tipo == 'consumible' and maq_id:
-                try:
-                    maquina = Maquina.objects.get(pk=maq_id)
-                except Maquina.DoesNotExist:
-                    pass
-
-            filas_validas.append((item, cantidad, ubicacion, cliente, maquina))
+            filas_validas.append((it, cantidad, None, True, None))  # ubicacion se añade tras validar
 
         if not filas_validas and not errores:
-            errores.append('Agrega al menos un ítem con cantidad.')
+            errores.append('Ingresa al menos una cantidad mayor a 0.')
 
         if errores:
             for e in errores:
                 messages.error(request, e)
-            filas_previas = [
-                {'item_id': iid, 'cantidad': cant, 'ub_id': ub,
-                 'cli_id': cli, 'maq_id': maq}
-                for iid, cant, ub, cli, maq
-                in zip(item_ids, cantidades, ubicacion_ids, cliente_ids, maquina_ids)
-                if iid or cant.strip()
-            ]
-            return render(request, 'movimientos/salida.html', {
-                'items_json': items_json,
-                'ubicaciones_json': ubicaciones_json,
-                'clientes_json': clientes_json,
-                'maquinas_json': maquinas_json,
-                'item_id_inicial': item_id_inicial,
-                'motivo_previo': motivo,
-                'fecha_mov_previo': fecha_mov_str,
-                'filas_previas_json': json.dumps(filas_previas),
-            })
+            qty_previas = {str(it.pk): request.POST.get(f'qty_{it.pk}', '')
+                           for it in items_producto}
+            return render(request, 'movimientos/salida.html',
+                          _ctx({'tab_inicial': 'producto_terminado',
+                                'motivo_previo': motivo,
+                                'fecha_mov_previo': fecha_mov_str,
+                                'cliente_previo': cliente_id,
+                                'ub_pt_previo': ub_pt_id,
+                                'qty_previas_json': json.dumps(qty_previas),
+                                'filas_previas_json': '[]'}))
 
+        # Todo OK → guardar
         with transaction.atomic():
             mov = MovimientoInventario.objects.create(
                 tipo_movimiento='salida',
+                tipo_salida='producto_terminado',
                 motivo=motivo,
                 fecha_movimiento=fecha_movimiento,
                 usuario=request.user,
+                cliente=cliente,
             )
-            for item, cantidad, ubicacion, cliente, maquina in filas_validas:
+            pendientes_creados = []
+            for it, cantidad, _, _pendiente, _maq in filas_validas:
+                # Calcular si habrá stock negativo
+                stock_ub = Stock.objects.filter(item=it, ubicacion=ubicacion_pt).first()
+                stock_actual = stock_ub.cantidad_actual if stock_ub else Decimal('0')
+                pendiente = stock_actual < cantidad
+
                 det = DetalleMovimiento.objects.create(
                     movimiento=mov,
-                    item=item,
+                    item=it,
                     cantidad=cantidad,
-                    ubicacion_origen=ubicacion,
+                    ubicacion_origen=ubicacion_pt,
                     cliente=cliente,
-                    maquina=maquina,
+                    pendiente_conciliacion=pendiente,
                 )
                 _aplicar_efecto_detalle(det)
+                if pendiente:
+                    pendientes_creados.append(det)
                 send_event('movement_created', {
-                    'tipo': 'salida', 'item': item.nombre, 'codigo': item.codigo,
-                    'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
+                    'tipo': 'salida', 'item': it.nombre, 'codigo': it.codigo,
+                    'cantidad': str(cantidad), 'ubicacion': ubicacion_pt.nombre,
                     'cliente': cliente.nombre if cliente else None,
+                    'pendiente_conciliacion': pendiente,
                     'usuario': request.user.username,
                 })
-                notify_stock(item, movimiento='salida', usuario=request.user.username)
-        messages.success(
-            request,
-            f'Movimiento #{mov.pk} registrado con {len(filas_validas)} ítem(s).'
-        )
+                notify_stock(it, movimiento='salida', usuario=request.user.username)
+
+            # Notificar pendientes
+            for det in pendientes_creados:
+                send_event('salida_pendiente_conciliacion', {
+                    'movimiento_pk': mov.pk,
+                    'item': det.item.nombre, 'codigo': det.item.codigo,
+                    'cantidad': str(det.cantidad),
+                    'ubicacion': ubicacion_pt.nombre,
+                    'cliente': cliente.nombre,
+                    'usuario': request.user.username,
+                })
+
+        n_pendientes = len(pendientes_creados)
+        msg = f'Movimiento #{mov.pk} registrado con {len(filas_validas)} ítem(s).'
+        if n_pendientes:
+            msg += f' ⚠️ {n_pendientes} línea(s) con stock insuficiente marcada(s) como pendiente(s) de conciliación.'
+        messages.success(request, msg)
         return redirect('movimiento_detalle', pk=mov.pk)
 
-    return render(request, 'movimientos/salida.html', {
-        'items_json': items_json,
-        'ubicaciones_json': ubicaciones_json,
-        'clientes_json': clientes_json,
-        'maquinas_json': maquinas_json,
-        'item_id_inicial': item_id_inicial,
-        'filas_previas_json': '[]',
-    })
+    # ── TABS: Repuestos / Consumibles / Otros (filas dinámicas) ───────────────
+    item_ids      = request.POST.getlist('item[]')
+    cantidades    = request.POST.getlist('cantidad[]')
+    ubicacion_ids = request.POST.getlist('ubicacion_origen[]')
+    maquina_ids   = request.POST.getlist('maquina[]')
+
+    all_items_qs = {str(it.pk): it for it in
+                    Item.objects.filter(activo=True)
+                    .exclude(tipo='producto')}
+
+    for i, (item_id, cant_str, ub_id, maq_id) in enumerate(
+        zip(item_ids, cantidades, ubicacion_ids, maquina_ids), 1
+    ):
+        cant_str = cant_str.strip()
+        if not item_id and not cant_str:
+            continue
+        if not item_id:
+            errores.append(f'Fila {i}: selecciona un ítem.')
+            continue
+        if not cant_str:
+            errores.append(f'Fila {i}: ingresa una cantidad.')
+            continue
+        try:
+            cantidad = Decimal(cant_str)
+            if cantidad <= 0:
+                raise ValueError
+        except (ValueError, Exception):
+            errores.append(f'Fila {i}: cantidad inválida.')
+            continue
+
+        item = all_items_qs.get(str(item_id))
+        if not item:
+            errores.append(f'Fila {i}: ítem no encontrado.')
+            continue
+
+        if not ub_id:
+            errores.append(f'Fila {i} ({item.nombre}): selecciona ubicación de origen.')
+            continue
+        try:
+            ubicacion = Ubicacion.objects.get(pk=ub_id)
+        except Ubicacion.DoesNotExist:
+            errores.append(f'Fila {i}: ubicación no encontrada.')
+            continue
+
+        # Bloquear si stock insuficiente (repuestos/consumibles/otros)
+        try:
+            stock = Stock.objects.get(item=item, ubicacion=ubicacion)
+            if stock.cantidad_actual < cantidad:
+                errores.append(
+                    f'Fila {i} ({item.nombre}): stock insuficiente. '
+                    f'Disponible: {stock.cantidad_actual} {item.unidad_medida}.'
+                )
+                continue
+        except Stock.DoesNotExist:
+            errores.append(f'Fila {i} ({item.nombre}): no hay stock en esa ubicación.')
+            continue
+
+        maquina = None
+        if maq_id:
+            try:
+                maquina = Maquina.objects.get(pk=maq_id)
+            except Maquina.DoesNotExist:
+                pass
+
+        # Repuesto requiere máquina
+        if item.tipo == 'repuesto' and not maquina:
+            errores.append(f'Fila {i} ({item.nombre}): selecciona una máquina.')
+            continue
+
+        filas_validas.append((item, cantidad, ubicacion, False, maquina))
+
+    if not filas_validas and not errores:
+        errores.append('Agrega al menos un ítem con cantidad.')
+
+    if errores:
+        for e in errores:
+            messages.error(request, e)
+        filas_previas = [
+            {'item_id': iid, 'cantidad': cant, 'ub_id': ub, 'maq_id': maq}
+            for iid, cant, ub, maq
+            in zip(item_ids, cantidades, ubicacion_ids, maquina_ids)
+            if iid or cant.strip()
+        ]
+        return render(request, 'movimientos/salida.html',
+                      _ctx({'tab_inicial': tipo_salida,
+                            'motivo_previo': motivo,
+                            'fecha_mov_previo': fecha_mov_str,
+                            'filas_previas_json': json.dumps(filas_previas)}))
+
+    with transaction.atomic():
+        mov = MovimientoInventario.objects.create(
+            tipo_movimiento='salida',
+            tipo_salida=tipo_salida,
+            motivo=motivo,
+            fecha_movimiento=fecha_movimiento,
+            usuario=request.user,
+        )
+        for it, cantidad, ubicacion, _pendiente, maquina in filas_validas:
+            det = DetalleMovimiento.objects.create(
+                movimiento=mov,
+                item=it,
+                cantidad=cantidad,
+                ubicacion_origen=ubicacion,
+                maquina=maquina,
+            )
+            _aplicar_efecto_detalle(det)
+            send_event('movement_created', {
+                'tipo': 'salida', 'item': it.nombre, 'codigo': it.codigo,
+                'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
+                'usuario': request.user.username,
+            })
+            notify_stock(it, movimiento='salida', usuario=request.user.username)
+
+    messages.success(
+        request,
+        f'Movimiento #{mov.pk} registrado con {len(filas_validas)} ítem(s).'
+    )
+    return redirect('movimiento_detalle', pk=mov.pk)
 
 
 @login_required
@@ -1585,6 +1788,7 @@ def conteo_ajustar_detalle(request, pk, det_pk):
             ubicacion_destino=detalle.ubicacion,
         )
         _aplicar_efecto_detalle(det_ajuste)
+        _cerrar_pendientes_conciliacion(detalle.item, detalle.ubicacion)
         ConteoDetalle.objects.filter(pk=detalle.pk).update(ajuste_aplicado=True)
         conteo.refresh_from_db()
         conteo.actualizar_estado()
@@ -1630,6 +1834,7 @@ def conteo_ajustar_todos(request, pk):
                 ubicacion_destino=detalle.ubicacion,
             )
             _aplicar_efecto_detalle(det_ajuste)
+            _cerrar_pendientes_conciliacion(detalle.item, detalle.ubicacion)
             count += 1
         ConteoDetalle.objects.filter(
             conteo=conteo, ajuste_aplicado=False,

@@ -186,6 +186,18 @@
   {% endif %}
 </div>
 
+<!-- Alerta: salidas pendientes de conciliación -->
+{% if total_pendientes_conciliacion %}
+<div class="alert alert-warning d-flex align-items-center gap-3 mb-4" role="alert">
+  <i class="bi bi-exclamation-triangle-fill fs-4 flex-shrink-0"></i>
+  <div>
+    <strong>{{ total_pendientes_conciliacion }} línea(s) de salida pendiente(s) de conciliación.</strong>
+    Estas salidas se registraron con stock insuficiente. Revisalas en
+    <a href="{% url 'movimiento_lista' %}" class="alert-link">Movimientos</a>.
+  </div>
+</div>
+{% endif %}
+
 <!-- Acciones rápidas -->
 <div class="card mb-4">
   <div class="card-header bg-white fw-bold">

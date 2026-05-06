@@ -149,6 +149,13 @@ class MovimientoInventario(models.Model):
         ('transferencia', 'Transferencia'),
     ]
 
+    TIPO_SALIDA_CHOICES = [
+        ('producto_terminado', 'Producto Terminado'),
+        ('repuestos',          'Repuestos'),
+        ('consumibles',        'Consumibles'),
+        ('otros',              'Otros'),
+    ]
+
     fecha = models.DateTimeField(default=timezone.now, verbose_name='Fecha registro')
     # Cuándo ocurrió realmente el movimiento (puede ser anterior a la fecha de registro)
     fecha_movimiento = models.DateTimeField(
@@ -156,8 +163,18 @@ class MovimientoInventario(models.Model):
         verbose_name='Fecha del movimiento',
     )
     tipo_movimiento = models.CharField(max_length=20, choices=TIPO_CHOICES, verbose_name='Tipo')
+    # Subcategoría de salida (solo cuando tipo_movimiento='salida')
+    tipo_salida = models.CharField(
+        max_length=30, choices=TIPO_SALIDA_CHOICES, blank=True, default='',
+        verbose_name='Tipo de salida',
+    )
     motivo = models.TextField(blank=True)
     usuario = models.ForeignKey(User, on_delete=models.PROTECT)
+    # Cliente a nivel de cabecera (para salidas de producto terminado)
+    cliente = models.ForeignKey(
+        'Cliente', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='movimientos_cabecera', verbose_name='Cliente',
+    )
 
     # ── Auditoría de edición ──────────────────────────────────────────────────
     editado = models.BooleanField(default=False)
@@ -231,6 +248,16 @@ class DetalleMovimiento(models.Model):
     maquina = models.ForeignKey(
         Maquina, on_delete=models.SET_NULL, null=True, blank=True,
         verbose_name='Máquina',
+    )
+    # Conciliación: marca que la salida se registró con stock negativo
+    pendiente_conciliacion = models.BooleanField(
+        default=False,
+        verbose_name='Pendiente conciliación',
+        help_text='True cuando la salida se aprobó con stock insuficiente y aún no se ha conciliado.',
+    )
+    fecha_conciliacion = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Fecha de conciliación',
     )
 
     class Meta:

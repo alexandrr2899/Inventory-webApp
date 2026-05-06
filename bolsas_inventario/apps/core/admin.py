@@ -80,10 +80,10 @@ class DetalleMovimientoInline(admin.TabularInline):
 
 @admin.register(MovimientoInventario)
 class MovimientoInventarioAdmin(admin.ModelAdmin):
-    list_display  = ['pk', 'fecha_movimiento', 'tipo_movimiento', 'num_items',
-                     'usuario', 'anulado', 'eliminado']
-    list_filter   = ['tipo_movimiento', 'anulado', 'eliminado', 'fecha_movimiento']
-    search_fields = ['motivo', 'usuario__username']
+    list_display  = ['pk', 'fecha_movimiento', 'tipo_movimiento', 'tipo_salida',
+                     'cliente', 'num_items', 'usuario', 'anulado', 'eliminado']
+    list_filter   = ['tipo_movimiento', 'tipo_salida', 'anulado', 'eliminado', 'fecha_movimiento']
+    search_fields = ['motivo', 'usuario__username', 'cliente__nombre']
     date_hierarchy = 'fecha_movimiento'
     readonly_fields = ['fecha', 'usuario', 'editado', 'fecha_edicion', 'usuario_edicion',
                        'anulado', 'fecha_anulacion', 'usuario_anulacion',
@@ -93,3 +93,11 @@ class MovimientoInventarioAdmin(admin.ModelAdmin):
     @admin.display(description='Ítems')
     def num_items(self, obj):
         return obj.detalles.count()
+
+
+class DetalleMovimientoAdmin(admin.ModelAdmin):
+    list_display  = ['movimiento', 'item', 'cantidad', 'pendiente_conciliacion', 'fecha_conciliacion']
+    list_filter   = ['pendiente_conciliacion']
+    search_fields = ['item__nombre', 'item__codigo']
+
+admin.site.register(DetalleMovimiento, DetalleMovimientoAdmin)

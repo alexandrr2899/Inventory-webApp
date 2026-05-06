@@ -91,6 +91,7 @@
           {% if mov.anulado %}   <span class="badge badge-anulado">Anulado</span>{% endif %}
           {% if mov.eliminado %} <span class="badge badge-eliminado">Eliminado</span>{% endif %}
           {% if mov.editado %}   <span class="badge bg-warning text-dark" style="font-size:.65rem;">Editado</span>{% endif %}
+          {% if mov.num_pendientes %}<span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;"><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ mov.num_pendientes }} pendiente(s)</span>{% endif %}
           <span class="items-pill ms-1">{{ mov.num_detalles }} ítem(s)</span>
         </div>
         <span class="text-muted small">#{{ mov.pk }}</span>
@@ -189,6 +190,7 @@
               {% if mov.anulado %}   <span class="badge badge-anulado">Anulado</span>{% endif %}
               {% if mov.eliminado %} <span class="badge badge-eliminado">Eliminado</span>{% endif %}
               {% if mov.editado %}   <span class="badge bg-warning text-dark" style="font-size:.65rem;">Editado</span>{% endif %}
+              {% if mov.num_pendientes %}<span class="badge bg-warning text-dark" style="font-size:.62rem;"><i class="bi bi-exclamation-triangle-fill"></i> {{ mov.num_pendientes }} pendiente(s)</span>{% endif %}
               <!-- Audit inline -->
               {% if mov.anulado %}
               <div class="text-danger" style="font-size:.65rem;">

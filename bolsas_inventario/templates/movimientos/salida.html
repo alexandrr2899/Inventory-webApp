@@ -4,13 +4,14 @@
 {% block content %}
 <div class="page-header" style="background:linear-gradient(135deg,#dc3545,#842029);">
   <h1><i class="bi bi-arrow-up-circle-fill me-2"></i>Nueva Salida</h1>
-  <small class="opacity-75">Podés registrar varios ítems de una sola vez</small>
+  <small class="opacity-75">Seleccioná el tipo de salida y completá los datos</small>
 </div>
 
 <form method="post" novalidate id="form-salida">
   {% csrf_token %}
+  <input type="hidden" name="tipo_salida" id="tipo_salida_hidden" value="{{ tab_inicial|default:'producto_terminado' }}">
 
-  <!-- Datos generales -->
+  <!-- ── Datos generales ─────────────────────────────────────────────────── -->
   <div class="card mb-3">
     <div class="card-header bg-white fw-bold">Datos generales</div>
     <div class="card-body">
@@ -31,25 +32,173 @@
     </div>
   </div>
 
-  <!-- Lista de ítems -->
-  <div class="card mb-3">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-      <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems a retirar</span>
-      <button type="button" id="btn-agregar" class="btn btn-danger btn-sm">
-        <i class="bi bi-plus-lg me-1"></i>Agregar ítem
+  <!-- ── Tabs ───────────────────────────────────────────────────────────────── -->
+  <ul class="nav nav-tabs mb-3" id="salida-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {% if tab_inicial == 'producto_terminado' or not tab_inicial %}active{% endif %}"
+              id="tab-pt" data-bs-toggle="tab" data-bs-target="#panel-pt"
+              type="button" role="tab" data-tipo="producto_terminado">
+        <i class="bi bi-bag-fill text-danger me-1"></i>Producto Terminado
       </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {% if tab_inicial == 'repuestos' %}active{% endif %}"
+              id="tab-rep" data-bs-toggle="tab" data-bs-target="#panel-rep"
+              type="button" role="tab" data-tipo="repuestos">
+        <i class="bi bi-tools text-warning me-1"></i>Repuestos
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {% if tab_inicial == 'consumibles' %}active{% endif %}"
+              id="tab-con" data-bs-toggle="tab" data-bs-target="#panel-con"
+              type="button" role="tab" data-tipo="consumibles">
+        <i class="bi bi-droplet-fill text-info me-1"></i>Consumibles
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {% if tab_inicial == 'otros' %}active{% endif %}"
+              id="tab-otros" data-bs-toggle="tab" data-bs-target="#panel-otros"
+              type="button" role="tab" data-tipo="otros">
+        <i class="bi bi-three-dots me-1"></i>Otros
+      </button>
+    </li>
+  </ul>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Producto Terminado                                                -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="tab-content">
+  <div class="tab-pane fade {% if tab_inicial == 'producto_terminado' or not tab_inicial %}show active{% endif %}"
+       id="panel-pt" role="tabpanel">
+
+    <div class="card mb-3">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-person-fill text-primary me-2"></i>Cliente y ubicación
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <label class="form-label fw-semibold">Cliente <span class="text-danger">*</span></label>
+            <select name="cliente_header" id="sel-cliente-header" class="form-select form-select-lg">
+              <option value="">-- Seleccionar cliente --</option>
+              {% for c in clientes %}
+              <option value="{{ c.pk }}"
+                {% if cliente_previo == c.pk|stringformat:'s' %}selected{% endif %}>
+                {{ c.nombre }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label fw-semibold">Ubicación de origen <span class="text-danger">*</span></label>
+            <select name="ubicacion_origen_pt" id="sel-ub-pt" class="form-select form-select-lg">
+              <option value="">-- Seleccionar ubicación --</option>
+              {% for u in ubicaciones %}
+              <option value="{{ u.pk }}"
+                {% if ub_pt_previo == u.pk|stringformat:'s' %}selected{% endif %}>
+                {{ u.nombre }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="card-body" id="contenedor-filas">
-      <div class="text-center py-2 text-muted" id="hint-empty">
-        <i class="bi bi-arrow-up-circle me-1"></i>
-        Presioná <strong>Agregar ítem</strong> para comenzar
+
+    <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3" style="font-size:.85rem;">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <span>Si el stock es insuficiente, la salida se registra igual y queda <strong>pendiente de conciliación</strong>.</span>
+    </div>
+
+    <!-- Grilla fija de productos -->
+    <div class="card mb-3">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-table me-2"></i>Productos
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="tabla-grilla-pt">
+          <thead class="table-light">
+            <tr>
+              <th>Producto</th>
+              <th class="text-end" style="min-width:110px">Stock</th>
+              <th class="text-end" style="min-width:130px">Cantidad a retirar</th>
+            </tr>
+          </thead>
+          <tbody id="grilla-pt-body">
+            <!-- Renderizado dinámico por JS con datos de grilla_productos_json -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /panel-pt -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Repuestos                                                         -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade {% if tab_inicial == 'repuestos' %}show active{% endif %}"
+       id="panel-rep" role="tabpanel">
+    <div class="card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems a retirar</span>
+        <button type="button" class="btn btn-danger btn-sm btn-agregar" data-panel="rep">
+          <i class="bi bi-plus-lg me-1"></i>Agregar
+        </button>
+      </div>
+      <div class="card-body" id="contenedor-rep">
+        <div class="text-center py-2 text-muted hint-empty" id="hint-rep">
+          <i class="bi bi-tools me-1"></i>Presioná <strong>Agregar</strong> para comenzar
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="d-flex gap-2 flex-wrap">
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Consumibles                                                       -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade {% if tab_inicial == 'consumibles' %}show active{% endif %}"
+       id="panel-con" role="tabpanel">
+    <div class="card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems a retirar</span>
+        <button type="button" class="btn btn-danger btn-sm btn-agregar" data-panel="con">
+          <i class="bi bi-plus-lg me-1"></i>Agregar
+        </button>
+      </div>
+      <div class="card-body" id="contenedor-con">
+        <div class="text-center py-2 text-muted hint-empty" id="hint-con">
+          <i class="bi bi-droplet me-1"></i>Presioná <strong>Agregar</strong> para comenzar
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Otros                                                             -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade {% if tab_inicial == 'otros' %}show active{% endif %}"
+       id="panel-otros" role="tabpanel">
+    <div class="card mb-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems a retirar</span>
+        <button type="button" class="btn btn-danger btn-sm btn-agregar" data-panel="otros">
+          <i class="bi bi-plus-lg me-1"></i>Agregar
+        </button>
+      </div>
+      <div class="card-body" id="contenedor-otros">
+        <div class="text-center py-2 text-muted hint-empty" id="hint-otros">
+          <i class="bi bi-three-dots me-1"></i>Presioná <strong>Agregar</strong> para comenzar
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /tab-content -->
+
+  <!-- ── Botones ─────────────────────────────────────────────────────────── -->
+  <div class="d-flex gap-2 flex-wrap mt-3">
     <button type="submit" class="btn btn-danger btn-lg flex-fill flex-md-grow-0">
-      <i class="bi bi-check-lg me-2"></i>Registrar <span id="contador-label">salida</span>
+      <i class="bi bi-check-lg me-2"></i>Registrar salida
     </button>
     <a href="{% url 'movimiento_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
   </div>
@@ -58,88 +207,175 @@
 
 {% block extra_js %}
 <script>
-const ITEMS_DATA     = {{ items_json|safe }};
+// ── Datos master ──────────────────────────────────────────────────────────────
+const ITEMS_REPUESTO   = {{ items_repuesto_json|safe }};
+const ITEMS_CONSUMIBLE = {{ items_consumible_json|safe }};
+const ITEMS_OTROS      = {{ items_otros_json|safe }};
 const UBICACIONES_DATA = {{ ubicaciones_json|safe }};
-const CLIENTES_DATA  = {{ clientes_json|safe }};
-const MAQUINAS_DATA  = {{ maquinas_json|safe }};
-const FILAS_PREVIAS  = {{ filas_previas_json|safe }};
-const ITEM_ID_INICIAL = '{{ item_id_inicial }}';
+const MAQUINAS_DATA    = {{ maquinas_json|safe }};
+const STOCKS           = {{ stocks_json|safe }};          // {item_pk: {ub_pk: qty}}
+const GRILLA_PRODUCTOS = {{ grilla_productos_json|safe }}; // [{pk,nombre,codigo,unidad,stock_total}]
+const FILAS_PREVIAS    = {{ filas_previas_json|safe }};
+const TAB_INICIAL      = '{{ tab_inicial|default:"producto_terminado" }}';
 
-const contenedor  = document.getElementById('contenedor-filas');
-const hintEmpty   = document.getElementById('hint-empty');
-const contadorLbl = document.getElementById('contador-label');
-let filaCount = 0;
-
-function actualizarContador() {
-  const n = contenedor.querySelectorAll('.fila-salida').length;
-  hintEmpty.style.display = n === 0 ? '' : 'none';
-  contadorLbl.textContent = n <= 1 ? 'salida' : `${n} salidas`;
-}
-
-function buildTomSelect(el, options, placeholder, preValue) {
-  const ts = new TomSelect(el, {
-    maxOptions: 500,
-    placeholder: placeholder || '-- Seleccionar --',
-    options: options.map(o => ({ value: String(o.pk), text: o.nombre || o.text || '' })),
-    items: preValue ? [String(preValue)] : [],
+// ── Tab → tipo_salida ─────────────────────────────────────────────────────────
+document.querySelectorAll('#salida-tabs button[data-tipo]').forEach(btn => {
+  btn.addEventListener('shown.bs.tab', () => {
+    document.getElementById('tipo_salida_hidden').value = btn.dataset.tipo;
   });
-  return ts;
+});
+// Inicializar el valor correcto al cargar
+(function(){
+  const active = document.querySelector('#salida-tabs button.active');
+  if (active) document.getElementById('tipo_salida_hidden').value = active.dataset.tipo;
+})();
+
+// ── Helpers de stock ──────────────────────────────────────────────────────────
+function stockParaItemUb(itemPk, ubPk) {
+  const byUb = STOCKS[String(itemPk)];
+  if (!byUb) return 0;
+  if (!ubPk) return Object.values(byUb).reduce((a, b) => a + b, 0);
+  return byUb[String(ubPk)] || 0;
 }
 
-function agregarFila(pre = {}) {
-  filaCount++;
-  const idx = filaCount;
+// ── Grilla fija de Producto Terminado ─────────────────────────────────────────
+(function buildGrilla() {
+  const tbody = document.getElementById('grilla-pt-body');
+  const selUb = document.getElementById('sel-ub-pt');
+  const QTY_PREVIAS = {{ qty_previas_json|default:'{}' }};
+
+  function renderRow(prod) {
+    const ubPk = selUb.value;
+    const stockUb = ubPk ? stockParaItemUb(prod.pk, ubPk) : prod.stock_total;
+    const stockStr = stockUb.toLocaleString('es-HN', {maximumFractionDigits: 2});
+    const bajo = stockUb <= 0;
+    const prevQty = QTY_PREVIAS[String(prod.pk)] || '';
+
+    const tr = document.createElement('tr');
+    tr.dataset.prodPk = prod.pk;
+    tr.innerHTML = `
+      <td>
+        <div class="fw-semibold">${prod.nombre}</div>
+        <div class="text-muted small">${prod.codigo}</div>
+      </td>
+      <td class="text-end">
+        <span class="badge ${bajo ? 'bg-danger' : 'bg-success'} stock-badge">
+          ${stockStr} ${prod.unidad}
+        </span>
+      </td>
+      <td class="text-end">
+        <div class="input-group input-group-sm justify-content-end" style="max-width:130px;margin-left:auto;">
+          <input type="number" name="qty_${prod.pk}"
+                 class="form-control text-end qty-input"
+                 min="0" step="0.01" placeholder="0"
+                 value="${prevQty}"
+                 data-prod-pk="${prod.pk}">
+          <span class="input-group-text small text-muted">${prod.unidad}</span>
+        </div>
+      </td>`;
+    return tr;
+  }
+
+  function renderAll() {
+    tbody.innerHTML = '';
+    GRILLA_PRODUCTOS.forEach(p => tbody.appendChild(renderRow(p)));
+  }
+
+  function updateBadges() {
+    const ubPk = selUb.value;
+    tbody.querySelectorAll('tr[data-prod-pk]').forEach(tr => {
+      const pk = tr.dataset.prodPk;
+      const prod = GRILLA_PRODUCTOS.find(p => String(p.pk) === String(pk));
+      if (!prod) return;
+      const stockUb = ubPk ? stockParaItemUb(pk, ubPk) : prod.stock_total;
+      const stockStr = stockUb.toLocaleString('es-HN', {maximumFractionDigits: 2});
+      const bajo = stockUb <= 0;
+      const badge = tr.querySelector('.stock-badge');
+      if (badge) {
+        badge.textContent = `${stockStr} ${prod.unidad}`;
+        badge.className = `badge ${bajo ? 'bg-danger' : 'bg-success'} stock-badge`;
+      }
+    });
+  }
+
+  renderAll();
+  selUb.addEventListener('change', updateBadges);
+
+  // Tom Select para cliente y ubicación PT
+  if (document.getElementById('sel-cliente-header')) {
+    new TomSelect('#sel-cliente-header', { maxOptions: 300, dropdownParent: 'body',
+      placeholder: '-- Seleccionar cliente --' });
+  }
+  if (selUb) {
+    new TomSelect('#sel-ub-pt', { maxOptions: 100, dropdownParent: 'body',
+      placeholder: '-- Ubicación --',
+      onChange: updateBadges });
+  }
+})();
+
+// ── Filas dinámicas (Repuestos / Consumibles / Otros) ─────────────────────────
+const PANEL_ITEMS = {
+  rep:   ITEMS_REPUESTO,
+  con:   ITEMS_CONSUMIBLE,
+  otros: ITEMS_OTROS,
+};
+const filaCounts = { rep: 0, con: 0, otros: 0 };
+
+function agregarFila(panel, pre = {}) {
+  filaCounts[panel]++;
+  const idx = filaCounts[panel];
+  const items = PANEL_ITEMS[panel];
+  const contenedor = document.getElementById(`contenedor-${panel}`);
+  const hint = document.getElementById(`hint-${panel}`);
+
+  const esRepuesto = panel === 'rep';
 
   const wrap = document.createElement('div');
-  wrap.className = 'fila-salida border rounded-3 p-3 mb-3 position-relative';
+  wrap.className = 'fila-dinamica border rounded-3 p-3 mb-3 position-relative';
 
-  // Cabecera
-  const header = document.createElement('div');
-  header.className = 'd-flex justify-content-between align-items-center mb-3';
-  header.innerHTML = `<span class="fw-semibold text-muted small">Ítem #${idx}</span>`;
+  // Header
+  const hdr = document.createElement('div');
+  hdr.className = 'd-flex justify-content-between align-items-center mb-3';
+  hdr.innerHTML = `<span class="fw-semibold text-muted small">Ítem #${idx}</span>`;
   const btnDel = document.createElement('button');
   btnDel.type = 'button';
   btnDel.className = 'btn btn-outline-danger btn-sm';
   btnDel.innerHTML = '<i class="bi bi-trash-fill"></i>';
-  btnDel.addEventListener('click', () => { wrap.remove(); actualizarContador(); });
-  header.appendChild(btnDel);
-  wrap.appendChild(header);
+  btnDel.addEventListener('click', () => { wrap.remove(); actualizarHint(panel); });
+  hdr.appendChild(btnDel);
+  wrap.appendChild(hdr);
 
   const grid = document.createElement('div');
   grid.className = 'row g-3';
   wrap.appendChild(grid);
 
-  // ── Ítem ────────────────────────────────────────────────────────────────────
+  // Ítem
   const colItem = document.createElement('div');
-  colItem.className = 'col-12 col-md-4';
-  const lblItem = document.createElement('label');
-  lblItem.className = 'form-label';
-  lblItem.textContent = 'Ítem *';
+  colItem.className = 'col-12 col-md-5';
   const selItem = document.createElement('select');
   selItem.name = 'item[]';
   selItem.className = 'form-select';
   selItem.required = true;
   selItem.innerHTML = '<option value="">-- Seleccionar ítem --</option>';
-  ITEMS_DATA.forEach(it => {
-    const opt = document.createElement('option');
-    opt.value = it.pk;
-    opt.textContent = `${it.nombre} (${it.codigo})`;
-    selItem.appendChild(opt);
+  items.forEach(it => {
+    const o = document.createElement('option');
+    o.value = it.pk;
+    o.textContent = `${it.nombre} (${it.codigo})`;
+    selItem.appendChild(o);
   });
   const stockDiv = document.createElement('div');
   stockDiv.className = 'text-muted small mt-1 d-none';
   stockDiv.innerHTML = '<i class="bi bi-box-fill me-1"></i>Stock: <span class="stock-val">–</span>';
-  colItem.append(lblItem, selItem, stockDiv);
+  colItem.append(document.createElement('label'), selItem, stockDiv);
+  colItem.querySelector('label').textContent = 'Ítem *';
+  colItem.querySelector('label').className = 'form-label';
   grid.appendChild(colItem);
 
-  // ── Cantidad ─────────────────────────────────────────────────────────────────
+  // Cantidad
   const colCant = document.createElement('div');
   colCant.className = 'col-6 col-md-2';
-  const lblCant = document.createElement('label');
-  lblCant.className = 'form-label';
-  lblCant.textContent = 'Cantidad *';
-  const inputGroup = document.createElement('div');
-  inputGroup.className = 'input-group';
+  const ig = document.createElement('div');
+  ig.className = 'input-group';
   const inputCant = document.createElement('input');
   inputCant.type = 'number';
   inputCant.name = 'cantidad[]';
@@ -149,144 +385,126 @@ function agregarFila(pre = {}) {
   inputCant.min = '0.01';
   inputCant.required = true;
   if (pre.cantidad) inputCant.value = pre.cantidad;
-  const unidadSpan = document.createElement('span');
-  unidadSpan.className = 'input-group-text small text-muted unidad-lbl';
-  unidadSpan.textContent = 'ud';
-  inputGroup.append(inputCant, unidadSpan);
-  colCant.append(lblCant, inputGroup);
+  const unidLbl = document.createElement('span');
+  unidLbl.className = 'input-group-text small text-muted unidad-lbl';
+  unidLbl.textContent = 'ud';
+  ig.append(inputCant, unidLbl);
+  const lblCant = document.createElement('label');
+  lblCant.className = 'form-label';
+  lblCant.textContent = 'Cantidad *';
+  colCant.append(lblCant, ig);
   grid.appendChild(colCant);
 
-  // ── Ubicación origen ─────────────────────────────────────────────────────────
+  // Ubicación origen
   const colUb = document.createElement('div');
   colUb.className = 'col-6 col-md-3';
-  const lblUb = document.createElement('label');
-  lblUb.className = 'form-label';
-  lblUb.textContent = 'Ubicación origen *';
   const selUb = document.createElement('select');
   selUb.name = 'ubicacion_origen[]';
   selUb.className = 'form-select';
   selUb.required = true;
   selUb.innerHTML = '<option value="">-- Ubicación --</option>';
   UBICACIONES_DATA.forEach(u => {
-    const opt = document.createElement('option');
-    opt.value = u.pk;
-    opt.textContent = u.nombre;
-    selUb.appendChild(opt);
+    const o = document.createElement('option');
+    o.value = u.pk;
+    o.textContent = u.nombre;
+    selUb.appendChild(o);
   });
+  const lblUb = document.createElement('label');
+  lblUb.className = 'form-label';
+  lblUb.textContent = 'Ubicación origen *';
   colUb.append(lblUb, selUb);
   grid.appendChild(colUb);
 
-  // ── Cliente (condicional) ────────────────────────────────────────────────────
-  const colCli = document.createElement('div');
-  colCli.className = 'col-12 col-md-3 d-none';
-  const lblCli = document.createElement('label');
-  lblCli.className = 'form-label';
-  lblCli.innerHTML = '<i class="bi bi-person-fill text-primary me-1"></i>Cliente *';
-  const selCli = document.createElement('select');
-  selCli.name = 'cliente[]';
-  selCli.className = 'form-select';
-  selCli.innerHTML = '<option value="">-- Cliente --</option>';
-  CLIENTES_DATA.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c.pk;
-    opt.textContent = c.nombre;
-    selCli.appendChild(opt);
-  });
-  colCli.append(lblCli, selCli);
-  grid.appendChild(colCli);
-
-  // ── Máquina (condicional) ────────────────────────────────────────────────────
+  // Máquina
   const colMaq = document.createElement('div');
-  colMaq.className = 'col-12 col-md-3 d-none';
-  const lblMaq = document.createElement('label');
-  lblMaq.className = 'form-label';
-  lblMaq.innerHTML = '<i class="bi bi-gear-fill text-warning me-1"></i>Máquina';
+  colMaq.className = `col-12 col-md-2${esRepuesto ? '' : ' d-none'}`;
   const selMaq = document.createElement('select');
   selMaq.name = 'maquina[]';
   selMaq.className = 'form-select';
   selMaq.innerHTML = '<option value="">-- Máquina --</option>';
   MAQUINAS_DATA.forEach(m => {
-    const opt = document.createElement('option');
-    opt.value = m.pk;
-    opt.textContent = m.nombre;
-    selMaq.appendChild(opt);
+    const o = document.createElement('option');
+    o.value = m.pk;
+    o.textContent = m.nombre;
+    selMaq.appendChild(o);
   });
+  const lblMaq = document.createElement('label');
+  lblMaq.className = 'form-label';
+  lblMaq.innerHTML = esRepuesto
+    ? '<i class="bi bi-gear-fill text-warning me-1"></i>Máquina *'
+    : '<i class="bi bi-gear-fill text-warning me-1"></i>Máquina <span class="text-muted fw-normal">(opc)</span>';
   colMaq.append(lblMaq, selMaq);
   grid.appendChild(colMaq);
 
-  contenedor.insertBefore(wrap, hintEmpty);
-  actualizarContador();
+  contenedor.insertBefore(wrap, hint);
+  actualizarHint(panel);
 
-  // ── Tom Select (después de agregar al DOM) ───────────────────────────────────
-  const tsItem = new TomSelect(selItem, { maxOptions: 500, dropdownParent: 'body', placeholder: '-- Seleccionar ítem --' });
+  // Tom Select
+  const tsItem = new TomSelect(selItem, { maxOptions: 500, dropdownParent: 'body',
+    placeholder: '-- Seleccionar ítem --' });
   const tsUb   = new TomSelect(selUb,   { maxOptions: 200, dropdownParent: 'body' });
-  const tsCli  = new TomSelect(selCli,  { maxOptions: 200, dropdownParent: 'body' });
   const tsMaq  = new TomSelect(selMaq,  { maxOptions: 200, dropdownParent: 'body' });
 
-  // ── Cambio de ítem ────────────────────────────────────────────────────────────
+  // Ítem → actualizar stock y unidad
   function onItemChange(val) {
-    const it = ITEMS_DATA.find(x => String(x.pk) === String(val));
-    if (!it) {
-      colCli.classList.add('d-none');
-      colMaq.classList.add('d-none');
-      selCli.required = false;
-      selMaq.required = false;
-      stockDiv.classList.add('d-none');
-      unidadSpan.textContent = 'ud';
-      return;
-    }
-    unidadSpan.textContent = it.unidad || 'ud';
-
-    const esProducto  = it.tipo === 'producto';
-    const esRepuesto  = it.tipo === 'repuesto';
-
-    colCli.classList.toggle('d-none', !esProducto);
-    colMaq.classList.toggle('d-none', esProducto);
-    selCli.required = esProducto;
-    selMaq.required = esRepuesto;
-    lblMaq.innerHTML = esRepuesto
-      ? '<i class="bi bi-gear-fill text-warning me-1"></i>Máquina *'
-      : '<i class="bi bi-gear-fill text-warning me-1"></i>Máquina <span class="text-muted fw-normal">(opcional)</span>';
-
-    fetch(`/api/item/${it.pk}/info/`)
-      .then(r => r.json())
-      .then(data => {
-        stockDiv.querySelector('.stock-val').textContent = `${data.stock_total} ${it.unidad}`;
-        stockDiv.classList.remove('d-none');
-      })
-      .catch(() => {});
+    const it = items.find(x => String(x.pk) === String(val));
+    if (!it) { stockDiv.classList.add('d-none'); unidLbl.textContent = 'ud'; return; }
+    unidLbl.textContent = it.unidad || 'ud';
+    const ubVal = tsUb.getValue();
+    const s = stockParaItemUb(it.pk, ubVal);
+    stockDiv.querySelector('.stock-val').textContent = `${s.toLocaleString('es-HN', {maximumFractionDigits:2})} ${it.unidad}`;
+    stockDiv.classList.remove('d-none');
   }
+  tsItem.on('change', val => onItemChange(val));
+  tsUb.on('change', () => {
+    const itmVal = tsItem.getValue();
+    if (itmVal) onItemChange(itmVal);
+  });
 
-  tsItem.on('change', onItemChange);
-
-  // ── Pre-fill si viene con datos ───────────────────────────────────────────────
-  if (pre.item_id) {
-    tsItem.setValue(String(pre.item_id), true);
-    onItemChange(pre.item_id);
-  }
-  if (pre.ub_id)  tsUb.setValue(String(pre.ub_id),  true);
-  if (pre.cli_id) tsCli.setValue(String(pre.cli_id), true);
-  if (pre.maq_id) tsMaq.setValue(String(pre.maq_id), true);
-
+  // Pre-fill
+  if (pre.item_id) { tsItem.setValue(String(pre.item_id), true); onItemChange(pre.item_id); }
+  if (pre.ub_id)   tsUb.setValue(String(pre.ub_id), true);
+  if (pre.maq_id)  tsMaq.setValue(String(pre.maq_id), true);
   if (!pre.item_id) tsItem.focus();
 }
 
-document.getElementById('btn-agregar').addEventListener('click', () => agregarFila());
+function actualizarHint(panel) {
+  const contenedor = document.getElementById(`contenedor-${panel}`);
+  const hint = document.getElementById(`hint-${panel}`);
+  const n = contenedor.querySelectorAll('.fila-dinamica').length;
+  if (hint) hint.style.display = n === 0 ? '' : 'none';
+}
 
+// Botones agregar
+document.querySelectorAll('.btn-agregar').forEach(btn => {
+  btn.addEventListener('click', () => agregarFila(btn.dataset.panel));
+});
+
+// Submit guard
 document.getElementById('form-salida').addEventListener('submit', function(e) {
-  if (contenedor.querySelectorAll('.fila-salida').length === 0) {
-    e.preventDefault();
-    alert('Agrega al menos un ítem antes de enviar.');
+  const tipo = document.getElementById('tipo_salida_hidden').value;
+  if (tipo === 'producto_terminado') {
+    // Verificar que al menos un qty > 0
+    const qtys = Array.from(document.querySelectorAll('#grilla-pt-body input.qty-input'))
+      .map(i => parseFloat(i.value) || 0);
+    if (qtys.every(q => q <= 0)) {
+      e.preventDefault();
+      alert('Ingresá al menos una cantidad mayor a 0 en la grilla de productos.');
+    }
+  } else {
+    const panel = tipo === 'repuestos' ? 'rep' : tipo === 'consumibles' ? 'con' : 'otros';
+    const contenedor = document.getElementById(`contenedor-${panel}`);
+    if (contenedor.querySelectorAll('.fila-dinamica').length === 0) {
+      e.preventDefault();
+      alert('Agrega al menos un ítem antes de enviar.');
+    }
   }
 });
 
-// ── Inicializar ───────────────────────────────────────────────────────────────
-if (FILAS_PREVIAS.length > 0) {
-  FILAS_PREVIAS.forEach(f => agregarFila(f));
-} else if (ITEM_ID_INICIAL) {
-  agregarFila({ item_id: ITEM_ID_INICIAL });
-} else {
-  agregarFila();
+// Restore filas previas (tabs dinámicos)
+if (FILAS_PREVIAS.length > 0 && TAB_INICIAL !== 'producto_terminado') {
+  const panel = TAB_INICIAL === 'repuestos' ? 'rep' : TAB_INICIAL === 'consumibles' ? 'con' : 'otros';
+  FILAS_PREVIAS.forEach(f => agregarFila(panel, f));
 }
 </script>
 {% endblock %}
