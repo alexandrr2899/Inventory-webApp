@@ -69,7 +69,10 @@
   <i class="bi bi-exclamation-triangle-fill text-warning"></i> Stock Bajo
 </a>
 <a href="{% url 'reporte_produccion' %}" class="nav-link {% if request.resolver_match.url_name == 'reporte_produccion' %}active{% endif %}">
-  <i class="bi bi-graph-up-arrow"></i> Producción
+  <i class="bi bi-graph-up-arrow"></i> Producción día
+</a>
+<a href="{% url 'reporte_produccion_avanzado' %}" class="nav-link {% if request.resolver_match.url_name == 'reporte_produccion_avanzado' %}active{% endif %}">
+  <i class="bi bi-bar-chart-line-fill text-success"></i> Producción rango
 </a>
 <a href="{% url 'reporte_consumo_pigmentos' %}" class="nav-link {% if request.resolver_match.url_name == 'reporte_consumo_pigmentos' %}active{% endif %}">
   <i class="bi bi-droplet-half text-info"></i> Consumo Pigmentos

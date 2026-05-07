@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% block title %}Producción rango{% endblock %}
+
+{% block extra_head %}
+<style>
+  .diff-pos { color:#198754; font-weight:700; }
+  .diff-neg { color:#dc3545; font-weight:700; }
+  .diff-zero{ color:#6c757d; }
+  .sin-dato { color:#adb5bd; font-style:italic; }
+  .row-sub  { background:#f8f9fa; font-size:.82rem; }
+  .table-prod th { font-size:.75rem; text-transform:uppercase; color:#6c757d; }
+  .card-metric .fs-2 { line-height:1.1; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<div class="page-header d-flex justify-content-between align-items-center"
+     style="background:linear-gradient(135deg,#198754,#0d6efd);">
+  <div>
+    <h1><i class="bi bi-bar-chart-line-fill me-2"></i>Producción rango</h1>
+    <small class="opacity-75">
+      {{ fecha_inicio|date:"d/m/Y" }} → {{ fecha_fin|date:"d/m/Y" }}
+      &middot; {{ num_dias_rango }} día(s)
+      &middot; {{ dias_con_dato }} con conteo
+    </small>
+  </div>
+  {% if grupos %}
+  <a href="?fecha_inicio={{ fecha_inicio|date:'Y-m-d' }}&fecha_fin={{ fecha_fin|date:'Y-m-d' }}&agrupar_por={{ agrupar_por }}&export=csv"
+     class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-file-earmark-spreadsheet me-1"></i>CSV
+  </a>
+  {% endif %}
+</div>
+
+<!-- ── Filtros ─────────────────────────────────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-body py-2 px-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-6 col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="fecha_inicio" class="form-control"
+               value="{{ fecha_inicio|date:'Y-m-d' }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="fecha_fin" class="form-control"
+               value="{{ fecha_fin|date:'Y-m-d' }}">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">Agrupar por</label>
+        <select name="agrupar_por" class="form-select">
+          <option value="dia"    {% if agrupar_por == 'dia'    %}selected{% endif %}>Día</option>
+          <option value="semana" {% if agrupar_por == 'semana' %}selected{% endif %}>Semana</option>
+          <option value="mes"    {% if agrupar_por == 'mes'    %}selected{% endif %}>Mes</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-3 d-flex gap-2 align-items-end">
+        <button type="submit" class="btn btn-primary flex-fill">
+          <i class="bi bi-search me-1"></i>Consultar
+        </button>
+        <a href="{% url 'reporte_produccion_avanzado' %}" class="btn btn-outline-secondary">
+          <i class="bi bi-x-lg"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Tarjetas resumen ───────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card h-100 text-center card-metric">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-primary">{{ total_prod|floatformat:0 }}</div>
+        <div class="text-muted small">Producción total</div>
+        <div class="text-muted" style="font-size:.72rem;">
+          día: {{ total_prod_dia|floatformat:0 }} · noche: {{ total_prod_noche|floatformat:0 }}
+        </div>
+        <i class="bi bi-box-seam text-primary fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100 text-center card-metric">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-danger">{{ total_salidas|floatformat:0 }}</div>
+        <div class="text-muted small">Salidas PT</div>
+        <i class="bi bi-arrow-up-circle-fill text-danger fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100 text-center card-metric">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold
+          {% if total_diferencia > 0 %}text-success
+          {% elif total_diferencia < 0 %}text-danger
+          {% else %}text-muted{% endif %}">
+          {% if total_diferencia > 0 %}+{% endif %}{{ total_diferencia|floatformat:0 }}
+        </div>
+        <div class="text-muted small">Diferencia</div>
+        <i class="bi bi-arrow-left-right
+          {% if total_diferencia > 0 %}text-success{% elif total_diferencia < 0 %}text-danger{% else %}text-muted{% endif %}
+          fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100 text-center card-metric">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-secondary">{{ dias_con_dato }}</div>
+        <div class="text-muted small">Días con conteo</div>
+        <div class="text-muted" style="font-size:.72rem;">de {{ num_dias_rango }} analizados</div>
+        <i class="bi bi-calendar-check text-secondary fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not grupos %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>
+  No hay datos para el rango seleccionado. Probá otro rango de fechas.
+</div>
+
+{% else %}
+
+<!-- ══ DESKTOP: tabla agrupada ════════════════════════════════════════════ -->
+<div class="card mb-4 d-none d-md-block">
+  <div class="table-responsive">
+    <table class="table table-hover table-sm align-middle mb-0 table-prod">
+      <thead class="table-light">
+        <tr>
+          <th>{{ agrupar_por|capfirst }}</th>
+          <th class="text-end">Prod. día</th>
+          <th class="text-end">Prod. noche</th>
+          <th class="text-end">Prod. total</th>
+          <th class="text-end">Salidas</th>
+          <th class="text-end">Diferencia</th>
+          {% if agrupar_por != 'dia' %}<th class="text-center">Detalle</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in grupos %}
+        <!-- Fila del grupo -->
+        <tr {% if agrupar_por != 'dia' %}class="fw-semibold"{% endif %}>
+          <td>
+            {{ g.label }}
+            {% if agrupar_por != 'dia' %}
+              <span class="text-muted fw-normal small ms-1">
+                ({{ g.dias_con_dato }} día{{ g.dias_con_dato|pluralize }} con conteo)
+              </span>
+            {% else %}
+              {% if not g.fechas.0.tiene_dia and not g.fechas.0.tiene_noche %}
+                <span class="text-muted small ms-1">sin conteo</span>
+              {% elif g.fechas.0.tiene_dia and not g.fechas.0.tiene_noche %}
+                <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">solo día</span>
+              {% elif not g.fechas.0.tiene_dia and g.fechas.0.tiene_noche %}
+                <span class="badge bg-secondary ms-1" style="font-size:.6rem;">solo noche</span>
+              {% endif %}
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if g.prod_dia %}{{ g.prod_dia|floatformat:0 }}{% else %}<span class="sin-dato">–</span>{% endif %}
+          </td>
+          <td class="text-end">
+            {% if g.prod_noche %}{{ g.prod_noche|floatformat:0 }}{% else %}<span class="sin-dato">–</span>{% endif %}
+          </td>
+          <td class="text-end fw-semibold">
+            {% if g.prod_total %}{{ g.prod_total|floatformat:0 }}{% else %}<span class="sin-dato">–</span>{% endif %}
+          </td>
+          <td class="text-end">{{ g.salidas|floatformat:0 }}</td>
+          <td class="text-end
+            {% if g.diferencia > 0 %}diff-pos
+            {% elif g.diferencia < 0 %}diff-neg
+            {% else %}diff-zero{% endif %}">
+            {% if g.diferencia > 0 %}+{% endif %}{{ g.diferencia|floatformat:0 }}
+          </td>
+          {% if agrupar_por != 'dia' %}
+          <td class="text-center">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#grupo-{{ forloop.counter }}"
+                    aria-expanded="false">
+              <i class="bi bi-chevron-down" style="font-size:.7rem;"></i>
+            </button>
+          </td>
+          {% endif %}
+        </tr>
+
+        <!-- Sub-filas diarias (solo si no es agrupación por día) -->
+        {% if agrupar_por != 'dia' %}
+        <tr>
+          <td colspan="7" class="p-0">
+            <div id="grupo-{{ forloop.counter }}" class="collapse">
+              <table class="table table-sm mb-0 row-sub">
+                <tbody>
+                  {% for d in g.fechas %}
+                  <tr>
+                    <td style="padding-left:2rem;">{{ d.fecha|date:"d/m/Y" }}
+                      {% if not d.tiene_dia and not d.tiene_noche %}
+                        <span class="text-muted small">sin conteo</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">{{ d.prod_dia|floatformat:0 }}</td>
+                    <td class="text-end">{{ d.prod_noche|floatformat:0 }}</td>
+                    <td class="text-end fw-semibold">{{ d.prod_total|floatformat:0 }}</td>
+                    <td class="text-end">{{ d.salidas|floatformat:0 }}</td>
+                    <td class="text-end
+                      {% if d.diferencia > 0 %}diff-pos
+                      {% elif d.diferencia < 0 %}diff-neg
+                      {% else %}diff-zero{% endif %}">
+                      {% if d.diferencia > 0 %}+{% endif %}{{ d.diferencia|floatformat:0 }}
+                    </td>
+                    <td></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-bold">
+        <tr>
+          <td>Total ({{ num_dias_rango }} días)</td>
+          <td class="text-end">{{ total_prod_dia|floatformat:0 }}</td>
+          <td class="text-end">{{ total_prod_noche|floatformat:0 }}</td>
+          <td class="text-end">{{ total_prod|floatformat:0 }}</td>
+          <td class="text-end">{{ total_salidas|floatformat:0 }}</td>
+          <td class="text-end
+            {% if total_diferencia > 0 %}diff-pos
+            {% elif total_diferencia < 0 %}diff-neg
+            {% else %}diff-zero{% endif %}">
+            {% if total_diferencia > 0 %}+{% endif %}{{ total_diferencia|floatformat:0 }}
+          </td>
+          {% if agrupar_por != 'dia' %}<td></td>{% endif %}
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- Leyenda -->
+  <div class="card-footer text-muted" style="font-size:.73rem;">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>Producción</strong> = Conteo tarde − Conteo mañana + Salidas entre conteos (Camiseta, activos, no anulados).
+    &nbsp;|&nbsp;
+    <strong>Salidas</strong> = Salidas de PT por <code>fecha_movimiento</code> en el rango.
+    &nbsp;|&nbsp;
+    <strong>Diferencia</strong> = Producción − Salidas.
+  </div>
+</div>
+
+<!-- ══ MOBILE: tarjetas por grupo ════════════════════════════════════════ -->
+<div class="d-md-none mb-4">
+  {% for g in grupos %}
+  <div class="card mb-3">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+          <div class="fw-bold">{{ g.label }}</div>
+          {% if agrupar_por != 'dia' %}
+          <div class="text-muted small">{{ g.dias_con_dato }} día(s) con conteo</div>
+          {% else %}
+            {% if not g.fechas.0.tiene_dia and not g.fechas.0.tiene_noche %}
+              <div class="text-muted small">Sin conteo</div>
+            {% endif %}
+          {% endif %}
+        </div>
+        <span class="badge
+          {% if g.diferencia > 0 %}bg-success
+          {% elif g.diferencia < 0 %}bg-danger
+          {% else %}bg-secondary{% endif %}">
+          {% if g.diferencia > 0 %}+{% endif %}{{ g.diferencia|floatformat:0 }}
+        </span>
+      </div>
+      <div class="row g-1 text-center" style="font-size:.82rem;">
+        <div class="col-3">
+          <div class="text-muted" style="font-size:.65rem;">Prod. día</div>
+          <div class="fw-semibold">{{ g.prod_dia|floatformat:0 }}</div>
+        </div>
+        <div class="col-3">
+          <div class="text-muted" style="font-size:.65rem;">Prod. noche</div>
+          <div class="fw-semibold">{{ g.prod_noche|floatformat:0 }}</div>
+        </div>
+        <div class="col-3">
+          <div class="text-muted" style="font-size:.65rem;">Total</div>
+          <div class="fw-bold text-primary">{{ g.prod_total|floatformat:0 }}</div>
+        </div>
+        <div class="col-3">
+          <div class="text-muted" style="font-size:.65rem;">Salidas</div>
+          <div class="fw-semibold text-danger">{{ g.salidas|floatformat:0 }}</div>
+        </div>
+      </div>
+
+      {% if agrupar_por != 'dia' %}
+      <!-- Detalle diario mobile -->
+      <div class="mt-2">
+        <button class="btn btn-outline-secondary btn-sm w-100 py-0"
+                data-bs-toggle="collapse"
+                data-bs-target="#m-grupo-{{ forloop.counter }}">
+          <i class="bi bi-chevron-down me-1"></i>Ver días
+        </button>
+        <div id="m-grupo-{{ forloop.counter }}" class="collapse mt-2">
+          {% for d in g.fechas %}
+          <div class="d-flex justify-content-between py-1 border-bottom" style="font-size:.78rem;">
+            <div>{{ d.fecha|date:"d/m" }}
+              {% if not d.tiene_dia and not d.tiene_noche %}<span class="text-muted ms-1">–</span>{% endif %}
+            </div>
+            <div class="d-flex gap-3">
+              <span>D:{{ d.prod_dia|floatformat:0 }}</span>
+              <span>N:{{ d.prod_noche|floatformat:0 }}</span>
+              <span class="fw-bold">={{ d.prod_total|floatformat:0 }}</span>
+              <span class="text-danger">↑{{ d.salidas|floatformat:0 }}</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ══ DESGLOSE POR PRODUCTO ═════════════════════════════════════════════ -->
+{% if por_producto %}
+<div class="card mb-3">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-grid-fill me-2"></i>Desglose por producto
+    <span class="badge bg-secondary ms-2">{{ por_producto|length }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover table-sm align-middle mb-0 table-prod">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Producto</th>
+          <th class="text-end">Producción</th>
+          <th class="text-end">Salidas</th>
+          <th class="text-end">Diferencia</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in por_producto %}
+        <tr>
+          <td class="text-muted small">{{ forloop.counter }}</td>
+          <td>
+            <div class="fw-semibold">{{ p.item.nombre }}</div>
+            <div class="text-muted small">{{ p.item.codigo }} · {{ p.item.unidad_medida }}</div>
+          </td>
+          <td class="text-end fw-semibold">{{ p.prod_total|floatformat:0 }}</td>
+          <td class="text-end text-danger">{{ p.salidas|floatformat:0 }}</td>
+          <td class="text-end fw-bold
+            {% if p.diferencia > 0 %}diff-pos
+            {% elif p.diferencia < 0 %}diff-neg
+            {% else %}diff-zero{% endif %}">
+            {% if p.diferencia > 0 %}+{% endif %}{{ p.diferencia|floatformat:0 }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-bold">
+        <tr>
+          <td colspan="2">Total</td>
+          <td class="text-end">{{ total_prod|floatformat:0 }}</td>
+          <td class="text-end text-danger">{{ total_salidas|floatformat:0 }}</td>
+          <td class="text-end
+            {% if total_diferencia > 0 %}diff-pos
+            {% elif total_diferencia < 0 %}diff-neg
+            {% else %}diff-zero{% endif %}">
+            {% if total_diferencia > 0 %}+{% endif %}{{ total_diferencia|floatformat:0 }}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}{# /if grupos #}
+{% endblock %}
