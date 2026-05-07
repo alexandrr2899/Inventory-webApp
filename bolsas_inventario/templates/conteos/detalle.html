@@ -11,10 +11,18 @@
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center"
-     style="background:linear-gradient(135deg,#6610f2,#0d6efd);">
+     style="background:linear-gradient(135deg,{% if conteo.anulado %}#6c757d,#343a40{% else %}#6610f2,#0d6efd{% endif %});">
   <div>
-    <h1><i class="bi bi-clipboard-data-fill me-2"></i>Conteo #{{ conteo.pk }}</h1>
-    <small class="opacity-75">{{ conteo.get_tipo_conteo_display }} · {{ conteo.get_turno_display }} · {{ conteo.fecha|date:"d/m/Y" }}</small>
+    <h1><i class="bi bi-clipboard-data-fill me-2"></i>Conteo #{{ conteo.pk }}
+      {% if conteo.anulado %}
+        <span class="badge bg-danger ms-2" style="font-size:.6em;vertical-align:middle;">
+          <i class="bi bi-slash-circle-fill me-1"></i>Anulado
+        </span>
+      {% endif %}
+    </h1>
+    <small class="opacity-75">
+      {{ conteo.get_tipo_conteo_display }} · {{ conteo.get_turno_display }} · {{ conteo.fecha|date:"d/m/Y" }}
+    </small>
   </div>
   <a href="{% url 'conteo_lista' %}" class="btn btn-light btn-sm">
     <i class="bi bi-arrow-left me-1"></i>Lista
@@ -22,7 +30,7 @@
 </div>
 
 <!-- Encabezado -->
-<div class="card mb-3">
+<div class="card mb-3 {% if conteo.anulado %}border-danger{% endif %}">
   <div class="card-body">
     <div class="row g-2">
       <div class="col-6 col-md-3">
@@ -48,7 +56,9 @@
       </div>
       <div class="col-6 col-md-3">
         <div class="text-muted small">Estado</div>
-        {% if conteo.estado == 'conciliado' %}
+        {% if conteo.anulado %}
+          <span class="badge bg-danger"><i class="bi bi-slash-circle-fill me-1"></i>Anulado</span>
+        {% elif conteo.estado == 'conciliado' %}
           <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Conciliado</span>
         {% elif conteo.estado == 'parcial' %}
           <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Parcial</span>
@@ -74,11 +84,44 @@
   </div>
 </div>
 
-{% if conteo.estado != 'conciliado' %}
-<div class="mb-3">
+<!-- Sección de auditoría de anulación -->
+{% if conteo.anulado %}
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
+  <i class="bi bi-slash-circle-fill flex-shrink-0 mt-1 fs-5"></i>
+  <div>
+    <div class="fw-bold mb-1">Conteo anulado</div>
+    <div class="small">
+      <span class="me-3">
+        <i class="bi bi-calendar2-x me-1"></i>
+        {{ conteo.fecha_anulacion|date:"d/m/Y H:i" }}
+      </span>
+      <span class="me-3">
+        <i class="bi bi-person-fill me-1"></i>
+        {{ conteo.usuario_anulacion.get_full_name|default:conteo.usuario_anulacion.username|default:"–" }}
+      </span>
+    </div>
+    {% if conteo.motivo_anulacion %}
+    <div class="mt-1 fst-italic text-muted small">
+      "{{ conteo.motivo_anulacion }}"
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Acciones -->
+{% if not conteo.anulado %}
+<div class="mb-3 d-flex gap-2 flex-wrap">
+  {% if conteo.estado != 'conciliado' %}
   <a href="{% url 'conteo_conciliar' conteo.pk %}" class="btn btn-primary">
     <i class="bi bi-clipboard-check-fill me-2"></i>Ir a conciliación
   </a>
+  {% endif %}
+  {% if perms.core.anular_conteo or request.user.is_staff %}
+  <a href="{% url 'conteo_anular' conteo.pk %}" class="btn btn-outline-danger">
+    <i class="bi bi-slash-circle-fill me-2"></i>Anular conteo
+  </a>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -88,7 +131,7 @@
     <i class="bi bi-table me-2"></i>Ítems contados ({{ detalles.count }})
   </div>
   <div class="table-responsive">
-    <table class="table table-hover mb-0 align-middle">
+    <table class="table table-hover mb-0 align-middle {% if conteo.anulado %}table-secondary{% endif %}">
       <thead class="table-light">
         <tr>
           <th>Ítem</th>

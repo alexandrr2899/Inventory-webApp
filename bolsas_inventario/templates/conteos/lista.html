@@ -33,9 +33,11 @@
       </thead>
       <tbody>
         {% for c in conteos %}
-        <tr>
+        <tr class="{% if c.anulado %}table-secondary text-muted{% endif %}">
           <td class="text-muted small">{{ c.pk }}</td>
-          <td class="fw-semibold">{{ c.fecha|date:"d/m/Y" }}</td>
+          <td class="fw-semibold {% if c.anulado %}text-decoration-line-through{% endif %}">
+            {{ c.fecha|date:"d/m/Y" }}
+          </td>
           <td>
             <span class="badge {% if c.turno == 'manana' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
               <i class="bi {% if c.turno == 'manana' %}bi-sunrise-fill{% else %}bi-moon-stars-fill{% endif %} me-1"></i>
@@ -56,7 +58,9 @@
           <td class="text-muted small">{{ c.fecha_hora_conteo|date:"H:i" }}</td>
           <td class="text-muted small">{{ c.num_detalles }} ítem(s)</td>
           <td>
-            {% if c.estado == 'conciliado' %}
+            {% if c.anulado %}
+              <span class="badge bg-danger"><i class="bi bi-slash-circle-fill me-1"></i>Anulado</span>
+            {% elif c.estado == 'conciliado' %}
               <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Conciliado</span>
             {% elif c.estado == 'parcial' %}
               <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Parcial</span>
@@ -70,7 +74,7 @@
               <a href="{% url 'conteo_detalle' c.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver detalle">
                 <i class="bi bi-eye-fill"></i>
               </a>
-              {% if c.estado != 'conciliado' %}
+              {% if not c.anulado and c.estado != 'conciliado' %}
               <a href="{% url 'conteo_conciliar' c.pk %}" class="btn btn-outline-primary btn-sm" title="Conciliar">
                 <i class="bi bi-clipboard-check-fill"></i>
               </a>
@@ -87,11 +91,12 @@
 <!-- Mobile -->
 <div class="d-md-none">
   {% for c in conteos %}
-  <div class="card mb-2">
+  <div class="card mb-2 {% if c.anulado %}border-danger opacity-75{% endif %}">
     <div class="card-body py-2 px-3">
       <div class="d-flex justify-content-between align-items-start">
         <div>
-          <div class="fw-semibold">{{ c.fecha|date:"d/m/Y" }}
+          <div class="fw-semibold {% if c.anulado %}text-decoration-line-through text-muted{% endif %}">
+            {{ c.fecha|date:"d/m/Y" }}
             <span class="badge ms-1 {% if c.turno == 'manana' %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
                   style="font-size:.65rem;">{{ c.get_turno_display }}</span>
             {% if c.tipo_conteo == 'camiseta' %}<span class="badge bg-primary ms-1" style="font-size:.65rem;">Camiseta</span>
@@ -105,7 +110,9 @@
           </div>
         </div>
         <div>
-          {% if c.estado == 'conciliado' %}
+          {% if c.anulado %}
+            <span class="badge bg-danger">Anulado</span>
+          {% elif c.estado == 'conciliado' %}
             <span class="badge bg-success">Conciliado</span>
           {% elif c.estado == 'parcial' %}
             <span class="badge bg-warning text-dark">Parcial</span>
@@ -118,7 +125,7 @@
         <a href="{% url 'conteo_detalle' c.pk %}" class="btn btn-outline-secondary btn-sm flex-fill">
           <i class="bi bi-eye-fill me-1"></i>Ver
         </a>
-        {% if c.estado != 'conciliado' %}
+        {% if not c.anulado and c.estado != 'conciliado' %}
         <a href="{% url 'conteo_conciliar' c.pk %}" class="btn btn-outline-primary btn-sm flex-fill">
           <i class="bi bi-clipboard-check-fill me-1"></i>Conciliar
         </a>

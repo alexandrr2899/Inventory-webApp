@@ -301,11 +301,23 @@ class Conteo(models.Model):
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='pendiente')
     creado_en = models.DateTimeField(auto_now_add=True)
 
+    # Anulación lógica
+    anulado = models.BooleanField(default=False)
+    fecha_anulacion = models.DateTimeField(null=True, blank=True)
+    usuario_anulacion = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='conteos_anulados',
+    )
+    motivo_anulacion = models.TextField(blank=True)
+
     class Meta:
         verbose_name = 'Conteo'
         verbose_name_plural = 'Conteos'
         ordering = ['-fecha', 'turno']
         unique_together = ['fecha', 'turno', 'tipo_conteo']
+        permissions = [
+            ('anular_conteo', 'Puede anular conteos'),
+        ]
 
     def __str__(self):
         return f'Conteo {self.get_tipo_conteo_display()} - {self.get_turno_display()} - {self.fecha}'

@@ -283,7 +283,7 @@ def _calcular_produccion(fecha):
     """
     from datetime import timedelta as _td
 
-    qs_camiseta = Conteo.objects.filter(tipo_conteo='camiseta')
+    qs_camiseta = Conteo.objects.filter(tipo_conteo='camiseta', anulado=False)
 
     # Conteo mañana: el más temprano del día (fecha_hora_conteo asc)
     conteo_manana = (
@@ -1493,6 +1493,87 @@ def movimiento_eliminar(request, pk):
 # ─── CONTEOS ──────────────────────────────────────────────────────────────────
 
 @login_required
+def conteo_anular(request, pk):
+    """
+    Anulación lógica de un conteo: revierte en stock todos los ajustes de
+    conciliación generados por este conteo, marca cada movimiento de ajuste
+    como anulado, y finalmente marca el conteo como anulado.
+    No elimina ningún registro.
+    """
+    if not (request.user.has_perm(_perm('anular_conteo')) or request.user.is_staff):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied
+
+    conteo = get_object_or_404(
+        Conteo.objects.select_related('usuario'),
+        pk=pk,
+    )
+
+    if conteo.anulado:
+        messages.warning(request, 'Este conteo ya estaba anulado.')
+        return redirect('conteo_detalle', pk=pk)
+
+    # Movimientos de ajuste vinculados a este conteo (por motivo)
+    ajustes_qs = (
+        MovimientoInventario.objects
+        .filter(
+            tipo_movimiento='ajuste',
+            motivo__contains=f'Conteo #{conteo.pk}',
+            anulado=False,
+            eliminado=False,
+        )
+        .prefetch_related(
+            'detalles__item',
+            'detalles__ubicacion_origen',
+            'detalles__ubicacion_destino',
+        )
+    )
+    ajustes = list(ajustes_qs)
+
+    if request.method == 'POST':
+        motivo = request.POST.get('motivo_anulacion', '').strip()
+        if not motivo:
+            messages.error(request, 'El motivo de anulación es obligatorio.')
+        else:
+            ahora = timezone.now()
+            with transaction.atomic():
+                for mov_ajuste in ajustes:
+                    _revertir_todos_los_detalles(mov_ajuste)
+                    mov_ajuste.anulado           = True
+                    mov_ajuste.fecha_anulacion   = ahora
+                    mov_ajuste.usuario_anulacion = request.user
+                    mov_ajuste.motivo_anulacion  = f'Anulación de Conteo #{conteo.pk} — {motivo}'
+                    mov_ajuste.save(update_fields=[
+                        'anulado', 'fecha_anulacion', 'usuario_anulacion', 'motivo_anulacion',
+                    ])
+                    for det in mov_ajuste.detalles.select_related('item').all():
+                        notify_stock(det.item, movimiento='anulacion', usuario=request.user.username)
+
+                conteo.anulado           = True
+                conteo.fecha_anulacion   = ahora
+                conteo.usuario_anulacion = request.user
+                conteo.motivo_anulacion  = motivo
+                conteo.save(update_fields=[
+                    'anulado', 'fecha_anulacion', 'usuario_anulacion', 'motivo_anulacion',
+                ])
+
+            security_log.info(
+                'Conteo #%s ANULADO por %s — %s ajuste(s) revertido(s) — %s',
+                conteo.pk, request.user.username, len(ajustes), motivo,
+            )
+            messages.success(
+                request,
+                f'Conteo #{conteo.pk} anulado. {len(ajustes)} ajuste(s) de conciliación revertido(s).'
+            )
+            return redirect('conteo_lista')
+
+    return render(request, 'conteos/anular.html', {
+        'conteo': conteo,
+        'ajustes': ajustes,
+    })
+
+
+@login_required
 @permission_required(_perm('registrar_conteo'), raise_exception=True)
 def conteo_lista(request):
     qs = (
@@ -1601,7 +1682,7 @@ def conteo_nuevo(request):
         turno = form.cleaned_data['turno']
         tipo_conteo = form.cleaned_data['tipo_conteo']
 
-        if Conteo.objects.filter(fecha=fecha, turno=turno, tipo_conteo=tipo_conteo).exists():
+        if Conteo.objects.filter(fecha=fecha, turno=turno, tipo_conteo=tipo_conteo, anulado=False).exists():
             label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(tipo_conteo, tipo_conteo)
             label_turno = dict(Conteo.TURNO_CHOICES).get(turno, turno)
             messages.error(
@@ -1715,6 +1796,9 @@ def conteo_detalle(request, pk):
 @permission_required(_perm('aplicar_conciliacion'), raise_exception=True)
 def conteo_conciliar(request, pk):
     conteo = get_object_or_404(Conteo, pk=pk)
+    if conteo.anulado:
+        messages.error(request, 'Este conteo está anulado y no puede conciliarse.')
+        return redirect('conteo_detalle', pk=pk)
     detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__orden', 'item__nombre')
 
     plan = []
@@ -1771,6 +1855,9 @@ def conteo_ajustar_detalle(request, pk, det_pk):
         return redirect('conteo_conciliar', pk=pk)
 
     conteo = get_object_or_404(Conteo, pk=pk)
+    if conteo.anulado:
+        messages.error(request, 'Este conteo está anulado.')
+        return redirect('conteo_detalle', pk=pk)
     detalle = get_object_or_404(ConteoDetalle, pk=det_pk, conteo=conteo)
 
     if detalle.ajuste_aplicado:
@@ -1820,6 +1907,9 @@ def conteo_ajustar_todos(request, pk):
         return redirect('conteo_conciliar', pk=pk)
 
     conteo = get_object_or_404(Conteo, pk=pk)
+    if conteo.anulado:
+        messages.error(request, 'Este conteo está anulado.')
+        return redirect('conteo_detalle', pk=pk)
     detalles = conteo.detalles.filter(
         ajuste_aplicado=False,
         diferencia_final__isnull=False,
@@ -1868,6 +1958,9 @@ def conteo_marcar_conciliado(request, pk):
         return redirect('conteo_conciliar', pk=pk)
 
     conteo = get_object_or_404(Conteo, pk=pk)
+    if conteo.anulado:
+        messages.error(request, 'Este conteo está anulado.')
+        return redirect('conteo_detalle', pk=pk)
 
     # Verificar que no queden diferencias sin ajustar
     pendientes = conteo.detalles.filter(
@@ -2051,7 +2144,7 @@ def reporte_produccion(request):
     if produccion['tiene_manana']:
         conteo_m = (
             Conteo.objects
-            .filter(fecha=fecha, turno='manana', tipo_conteo='camiseta')
+            .filter(fecha=fecha, turno='manana', tipo_conteo='camiseta', anulado=False)
             .order_by('fecha_hora_conteo')
             .first()
         )
@@ -2065,7 +2158,7 @@ def reporte_produccion(request):
     if produccion['tiene_tarde']:
         conteo_t = (
             Conteo.objects
-            .filter(fecha=fecha, turno='tarde', tipo_conteo='camiseta')
+            .filter(fecha=fecha, turno='tarde', tipo_conteo='camiseta', anulado=False)
             .order_by('-fecha_hora_conteo')
             .first()
         )
@@ -2083,7 +2176,7 @@ def reporte_produccion(request):
         fecha_sig = fecha + _td(days=1)
         conteo_ms = (
             Conteo.objects
-            .filter(fecha=fecha_sig, turno='manana', tipo_conteo='camiseta')
+            .filter(fecha=fecha_sig, turno='manana', tipo_conteo='camiseta', anulado=False)
             .order_by('fecha_hora_conteo')
             .first()
         )

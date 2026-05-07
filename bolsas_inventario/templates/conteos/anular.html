@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Anular conteo #{{ conteo.pk }}{% endblock %}
+
+{% block content %}
+<div class="page-header" style="background:linear-gradient(135deg,#6c757d,#343a40);">
+  <div class="d-flex justify-content-between align-items-start">
+    <div>
+      <h1 style="font-size:1.2rem;">
+        <i class="bi bi-slash-circle-fill me-2"></i>Anular conteo #{{ conteo.pk }}
+      </h1>
+      <small class="opacity-75">
+        {{ conteo.get_tipo_conteo_display }} · {{ conteo.get_turno_display }}
+        · {{ conteo.fecha|date:"d/m/Y" }}
+      </small>
+    </div>
+    <a href="{% url 'conteo_detalle' conteo.pk %}" class="btn btn-light btn-sm">Cancelar</a>
+  </div>
+</div>
+
+{% if ajustes %}
+<!-- Ajustes de conciliación que serán revertidos -->
+<div class="card mb-3">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-arrow-counterclockwise me-2"></i>
+    Ajustes de conciliación que serán revertidos ({{ ajustes|length }})
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Mov. #</th>
+          <th>Ítem</th>
+          <th class="text-end">Cantidad ajustada</th>
+          <th>Ubicación</th>
+          <th>Efecto al anular</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for aj in ajustes %}
+          {% for det in aj.detalles.all %}
+          <tr>
+            <td class="text-muted small">#{{ aj.pk }}</td>
+            <td>
+              <div class="fw-semibold">{{ det.item.nombre }}</div>
+              <div class="text-muted small">{{ det.item.codigo }}</div>
+            </td>
+            <td class="text-end fw-bold
+              {% if det.cantidad > 0 %}text-success{% elif det.cantidad < 0 %}text-danger{% endif %}">
+              {% if det.cantidad > 0 %}+{% endif %}{{ det.cantidad }} {{ det.item.unidad_medida }}
+            </td>
+            <td class="text-muted small">
+              {{ det.ubicacion_destino.nombre|default:det.ubicacion_origen.nombre|default:"–" }}
+            </td>
+            <td>
+              {% if det.cantidad > 0 %}
+                <span class="badge bg-danger">–{{ det.cantidad }} {{ det.item.unidad_medida }}</span>
+              {% elif det.cantidad < 0 %}
+                {% with abs_cant=det.cantidad|stringformat:".2f" %}
+                <span class="badge bg-success">+{{ abs_cant|slice:"1:" }} {{ det.item.unidad_medida }}</span>
+                {% endwith %}
+              {% else %}
+                <span class="badge bg-secondary">Sin cambio</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info mb-3">
+  <i class="bi bi-info-circle me-2"></i>
+  Este conteo no tiene ajustes de conciliación aplicados. Solo se marcará como anulado.
+</div>
+{% endif %}
+
+<!-- Alerta de impacto -->
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
+  <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+  <div>
+    <strong>Impacto:</strong>
+    {% if ajustes %}
+      Se revertirán <strong>{{ ajustes|length }} movimiento(s) de ajuste</strong> vinculados a este conteo.
+    {% endif %}
+    El conteo quedará visible con badge
+    <span class="badge bg-danger ms-1">Anulado</span> y no podrá conciliarse.
+    <br><strong>Esta acción no se puede deshacer.</strong>
+  </div>
+</div>
+
+<!-- Formulario de confirmación -->
+<form method="post" novalidate>
+  {% csrf_token %}
+  <div class="card mb-3 border-danger">
+    <div class="card-header bg-danger bg-opacity-10 fw-bold">
+      <i class="bi bi-shield-exclamation me-2"></i>Confirmar anulación
+    </div>
+    <div class="card-body">
+      <label class="form-label">Motivo de anulación <span class="text-danger">*</span></label>
+      <textarea name="motivo_anulacion" class="form-control" rows="3" required
+                placeholder="Explica por qué se anula este conteo…"></textarea>
+      <div class="form-text text-danger">
+        <i class="bi bi-eye-fill me-1"></i>Campo obligatorio. Queda permanentemente registrado.
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 flex-wrap">
+    <button type="submit" class="btn btn-danger btn-lg">
+      <i class="bi bi-slash-circle-fill me-1"></i>Confirmar anulación
+    </button>
+    <a href="{% url 'conteo_detalle' conteo.pk %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
