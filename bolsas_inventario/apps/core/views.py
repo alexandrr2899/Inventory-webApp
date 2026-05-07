@@ -163,6 +163,48 @@ def _revertir_todos_los_detalles(mov):
         _revertir_efecto_detalle(det)
 
 
+def _stock_en_momento(item, ubicacion, fecha_hora):
+    """
+    Stock teórico de un ítem/ubicación en un momento dado, usando
+    fecha_movimiento como timestamp oficial de cada movimiento.
+
+    Algoritmo:
+      1. Parte del stock actual (incluye TODOS los movimientos aplicados).
+      2. Resta el efecto neto de los movimientos con fecha_movimiento > fecha_hora
+         (ocurrieron después del momento de interés → deben excluirse).
+
+    Esto es correcto independientemente de cuándo se registró cada movimiento
+    en el sistema: lo que importa es su fecha_movimiento.
+    """
+    stock_obj = Stock.objects.filter(item=item, ubicacion=ubicacion).first()
+    stock_actual = stock_obj.cantidad_actual if stock_obj else Decimal('0')
+
+    # Movimientos cuya fecha_movimiento es POSTERIOR al momento del conteo.
+    # Estos ya están aplicados al stock actual pero no debían estarlo al conteo.
+    post_movs = (
+        DetalleMovimiento.objects
+        .filter(
+            item=item,
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__gt=fecha_hora,
+        )
+        .filter(Q(ubicacion_destino=ubicacion) | Q(ubicacion_origen=ubicacion))
+        .only('cantidad', 'ubicacion_origen_id', 'ubicacion_destino_id')
+    )
+
+    # Efecto neto de esos movimientos post-conteo sobre esta ubicación
+    net_post = Decimal('0')
+    for pm in post_movs:
+        if pm.ubicacion_destino_id == ubicacion.pk:
+            net_post += pm.cantidad   # entró a esta ubicación
+        if pm.ubicacion_origen_id == ubicacion.pk:
+            net_post -= pm.cantidad   # salió de esta ubicación
+
+    # Stock al momento del conteo = stock actual − efecto de post-conteo
+    return stock_actual - net_post
+
+
 def _movimiento_editable(mov):
     """Retorna True si el movimiento puede ser editado/anulado."""
     return not mov.anulado and not mov.eliminado
@@ -1804,42 +1846,49 @@ def conteo_conciliar(request, pk):
     plan = []
     with transaction.atomic():
         for detalle in detalles:
-            # Movimientos atrasados: registrados DESPUÉS del conteo, pero con fecha_movimiento
-            # ANTERIOR al momento del conteo → debían haber sido parte del stock al contar
-            late_movs = DetalleMovimiento.objects.filter(
-                item=detalle.item,
-                movimiento__fecha__gt=conteo.fecha_hora_conteo,
-                movimiento__fecha_movimiento__lte=conteo.fecha_hora_conteo,
-                movimiento__eliminado=False,
-            ).filter(
-                Q(ubicacion_destino=detalle.ubicacion) | Q(ubicacion_origen=detalle.ubicacion)
-            ).select_related('movimiento', 'movimiento__usuario', 'ubicacion_origen', 'ubicacion_destino')
-
-            late_entradas = late_movs.filter(
-                movimiento__tipo_movimiento='entrada',
-                ubicacion_destino=detalle.ubicacion,
-            ).aggregate(s=Sum('cantidad'))['s'] or Decimal('0')
-
-            late_salidas = late_movs.filter(
-                movimiento__tipo_movimiento='salida',
-                ubicacion_origen=detalle.ubicacion,
-            ).aggregate(s=Sum('cantidad'))['s'] or Decimal('0')
-
-            stock_teorico = detalle.cantidad_sistema_al_conteo + late_entradas - late_salidas
+            # Stock teórico al momento del conteo usando fecha_movimiento como
+            # timestamp oficial. No depende de cuándo se registró el movimiento.
+            stock_teorico = _stock_en_momento(
+                detalle.item, detalle.ubicacion, conteo.fecha_hora_conteo
+            )
             diferencia_final = detalle.cantidad_contada - stock_teorico
 
-            # Guardar diferencia_final calculada si cambió
+            # Persistir diferencia_final si cambió
             if detalle.diferencia_final != diferencia_final:
                 detalle.diferencia_final = diferencia_final
-                ConteoDetalle.objects.filter(pk=detalle.pk).update(diferencia_final=diferencia_final)
+                ConteoDetalle.objects.filter(pk=detalle.pk).update(
+                    diferencia_final=diferencia_final
+                )
+
+            # Movimientos registrados DESPUÉS del conteo pero con fecha_movimiento
+            # ANTES del conteo. Se muestran para transparencia: ya están
+            # correctamente incluidos en stock_teorico (no son "atrasados" — son
+            # movimientos reales anteriores al conteo, solo ingresados tarde).
+            movs_tardios = (
+                DetalleMovimiento.objects
+                .filter(
+                    item=detalle.item,
+                    movimiento__anulado=False,
+                    movimiento__eliminado=False,
+                    movimiento__fecha__gt=conteo.fecha_hora_conteo,
+                    movimiento__fecha_movimiento__lte=conteo.fecha_hora_conteo,
+                )
+                .filter(
+                    Q(ubicacion_destino=detalle.ubicacion)
+                    | Q(ubicacion_origen=detalle.ubicacion)
+                )
+                .select_related(
+                    'movimiento', 'movimiento__usuario',
+                    'ubicacion_origen', 'ubicacion_destino',
+                )
+                .order_by('movimiento__fecha_movimiento')
+            )
 
             plan.append({
                 'detalle': detalle,
-                'late_movimientos': late_movs,
-                'late_entradas': late_entradas,
-                'late_salidas': late_salidas,
                 'stock_teorico': stock_teorico,
                 'diferencia_final': diferencia_final,
+                'movs_tardios': movs_tardios,   # solo informativos
             })
 
     return render(request, 'conteos/conciliar.html', {
