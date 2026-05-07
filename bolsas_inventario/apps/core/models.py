@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal
@@ -314,7 +315,13 @@ class Conteo(models.Model):
         verbose_name = 'Conteo'
         verbose_name_plural = 'Conteos'
         ordering = ['-fecha', 'turno']
-        unique_together = ['fecha', 'turno', 'tipo_conteo']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['fecha', 'turno', 'tipo_conteo'],
+                condition=Q(anulado=False),
+                name='conteo_activo_unico',
+            )
+        ]
         permissions = [
             ('anular_conteo', 'Puede anular conteos'),
         ]
