@@ -607,6 +607,141 @@ def _calcular_produccion_rango(fecha_inicio, fecha_fin):
     return result
 
 
+def _calcular_tramos(fecha_inicio, fecha_fin):
+    """
+    Calcula producción por tramos entre pares de conteos consecutivos
+    tipo Camiseta activos.
+
+    Para cada par (c_ini, c_fin) donde c_fin.fecha ∈ [fecha_inicio, fecha_fin]:
+
+        produccion = total_fin − total_ini + salidas_entre_conteos
+
+    Tipos de tramo
+    ──────────────
+    'dia'       mañana → tarde  (mismo día)
+    'noche'     tarde  → mañana (día siguiente)
+    'extendido' cualquier otro (fines de semana, días sin conteo, etc.)
+
+    Devuelve lista de dicts:
+        conteo_ini, conteo_fin, tipo, duracion_h,
+        produccion, salidas, por_item,
+        fecha_asignada (= c_fin.fecha),
+        label_rango   (ej. "Sáb 10/05 11:00 → Lun 12/05 08:00")
+    """
+    # Buscar 3 días antes para capturar el conteo inicial del primer tramo
+    fecha_fetch_ini = fecha_inicio - timedelta(days=3)
+    fecha_fetch_fin = fecha_fin + timedelta(days=1)
+
+    conteos = list(
+        Conteo.objects
+        .filter(tipo_conteo='camiseta', anulado=False,
+                fecha__range=[fecha_fetch_ini, fecha_fetch_fin])
+        .order_by('fecha_hora_conteo')
+    )
+
+    if len(conteos) < 2:
+        return []
+
+    # ── Batch: ConteoDetalle ────────────────────────────────────────────────────
+    conteo_ids = [c.pk for c in conteos]
+    detalles_x_conteo: dict = {}
+    for cd in (
+        ConteoDetalle.objects
+        .filter(conteo_id__in=conteo_ids, item__tipo='producto')
+        .select_related('item')
+    ):
+        detalles_x_conteo.setdefault(cd.conteo_id, {})[cd.item_id] = cd.cantidad_contada
+
+    # ── Batch: salidas en el rango temporal de los conteos ─────────────────────
+    t_min = conteos[0].fecha_hora_conteo
+    t_max = conteos[-1].fecha_hora_conteo
+    salidas_list: list = []  # [(fecha_movimiento, item_pk, qty)]
+    for det in (
+        DetalleMovimiento.objects
+        .filter(
+            movimiento__tipo_movimiento='salida',
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__gt=t_min,
+            movimiento__fecha_movimiento__lt=t_max,
+            item__tipo='producto',
+        )
+        .select_related('movimiento')
+        .only('item_id', 'cantidad', 'movimiento__fecha_movimiento')
+    ):
+        salidas_list.append((det.movimiento.fecha_movimiento, det.item_id, det.cantidad))
+
+    # ── Auxiliares ──────────────────────────────────────────────────────────────
+    def _items(conteo_pk):
+        return detalles_x_conteo.get(conteo_pk, {})
+
+    def _salidas_entre(t0, t1):
+        r: dict = {}
+        for t, pk, qty in salidas_list:
+            if t0 < t < t1:
+                r[pk] = r.get(pk, Decimal('0')) + qty
+        return r
+
+    DIAS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+    def _fmt_dt(dt):
+        return f"{DIAS_ES[dt.weekday()]} {dt.strftime('%d/%m %H:%M')}"
+
+    def _tipo_tramo(c_ini, c_fin):
+        if (c_ini.turno == 'manana' and c_fin.turno == 'tarde'
+                and c_ini.fecha == c_fin.fecha):
+            return 'dia'
+        if (c_ini.turno == 'tarde' and c_fin.turno == 'manana'
+                and (c_fin.fecha - c_ini.fecha).days == 1):
+            return 'noche'
+        return 'extendido'
+
+    # ── Construir tramos ────────────────────────────────────────────────────────
+    tramos = []
+    for i in range(len(conteos) - 1):
+        c_ini = conteos[i]
+        c_fin = conteos[i + 1]
+
+        # Solo tramos cuyo cierre cae dentro del rango pedido
+        if c_fin.fecha < fecha_inicio or c_fin.fecha > fecha_fin:
+            continue
+
+        items_ini = _items(c_ini.pk)
+        items_fin = _items(c_fin.pk)
+        sal_items = _salidas_entre(c_ini.fecha_hora_conteo, c_fin.fecha_hora_conteo)
+
+        total_ini = sum(items_ini.values(), Decimal('0'))
+        total_fin = sum(items_fin.values(), Decimal('0'))
+        total_sal = sum(sal_items.values(), Decimal('0'))
+        produccion = total_fin - total_ini + total_sal
+
+        por_item: dict = {}
+        for pk in set(items_ini) | set(items_fin):
+            por_item[pk] = (
+                items_fin.get(pk, Decimal('0'))
+                - items_ini.get(pk, Decimal('0'))
+                + sal_items.get(pk, Decimal('0'))
+            )
+
+        duracion_h = round(
+            (c_fin.fecha_hora_conteo - c_ini.fecha_hora_conteo).total_seconds() / 3600, 1
+        )
+
+        tramos.append({
+            'conteo_ini':     c_ini,
+            'conteo_fin':     c_fin,
+            'tipo':           _tipo_tramo(c_ini, c_fin),
+            'duracion_h':     duracion_h,
+            'produccion':     produccion,
+            'salidas':        total_sal,
+            'por_item':       por_item,
+            'fecha_asignada': c_fin.fecha,
+            'label_rango':    f"{_fmt_dt(c_ini.fecha_hora_conteo)} → {_fmt_dt(c_fin.fecha_hora_conteo)}",
+        })
+
+    return tramos
+
+
 # ─── INVENTARIO ───────────────────────────────────────────────────────────────
 
 @login_required
@@ -2440,8 +2575,11 @@ def reporte_produccion(request):
 @permission_required(_perm('ver_reportes'), raise_exception=True)
 def reporte_produccion_avanzado(request):
     """
-    Reporte de producción + salidas de PT para un rango de fechas.
-    Agrupa por día / semana / mes y muestra desglose por producto.
+    Reporte de producción + salidas PT usando lógica de tramos entre
+    conteos consecutivos (soporta fines de semana y rangos sin conteos).
+
+    Un tramo = par (conteo_ini, conteo_fin) consecutivos tipo Camiseta.
+    Producción = total_fin − total_ini + salidas entre conteos.
     """
     from datetime import datetime as _dt
 
@@ -2460,7 +2598,6 @@ def reporte_produccion_avanzado(request):
     fecha_inicio = _parse_date('fecha_inicio', fecha_fin - timedelta(days=6))
     if fecha_fin < fecha_inicio:
         fecha_fin = fecha_inicio
-    # Máximo 365 días
     if (fecha_fin - fecha_inicio).days > 364:
         fecha_inicio = fecha_fin - timedelta(days=364)
 
@@ -2470,10 +2607,10 @@ def reporte_produccion_avanzado(request):
 
     export = request.GET.get('export', '')
 
-    # ── Producción batch ────────────────────────────────────────────────────────
-    prod_rango = _calcular_produccion_rango(fecha_inicio, fecha_fin)
+    # ── Tramos de producción ────────────────────────────────────────────────────
+    tramos = _calcular_tramos(fecha_inicio, fecha_fin)
 
-    # ── Salidas de PT por fecha_movimiento.date() ────────────────────────────────
+    # ── Salidas de PT por fecha_movimiento.date() (KPI y desglose por producto) ─
     salidas_qs = (
         DetalleMovimiento.objects
         .filter(
@@ -2490,42 +2627,28 @@ def reporte_produccion_avanzado(request):
             'movimiento__fecha_movimiento',
         )
     )
-
-    sal_x_fecha: dict = {}    # date → total
-    sal_x_item:  dict = {}    # item_pk → {'item': obj, 'total': qty}
+    sal_x_item: dict = {}       # item_pk → {'item': obj, 'total': qty}
+    total_salidas_rango = Decimal('0')
     for det in salidas_qs:
-        fd = det.movimiento.fecha_movimiento.date()
-        sal_x_fecha[fd] = sal_x_fecha.get(fd, Decimal('0')) + det.cantidad
         pk = det.item_id
         if pk not in sal_x_item:
             sal_x_item[pk] = {'item': det.item, 'total': Decimal('0')}
         sal_x_item[pk]['total'] += det.cantidad
+        total_salidas_rango += det.cantidad
 
-    # ── Datos diarios ───────────────────────────────────────────────────────────
-    dias_data = []
-    cur = fecha_inicio
-    while cur <= fecha_fin:
-        p        = prod_rango.get(cur, {})
-        pd       = p.get('prod_dia',   Decimal('0'))
-        pn       = p.get('prod_noche', Decimal('0'))
-        pt       = pd + pn
-        sal      = sal_x_fecha.get(cur, Decimal('0'))
-        dias_data.append({
-            'fecha':      cur,
-            'prod_dia':   pd,
-            'prod_noche': pn,
-            'prod_total': pt,
-            'salidas':    sal,
-            'diferencia': pt - sal,
-            'tiene_dia':  p.get('tiene_dia',   False),
-            'tiene_noche': p.get('tiene_noche', False),
-            'por_item':   p.get('por_item',     {}),
-        })
-        cur += timedelta(days=1)
+    # ── Totales globales ────────────────────────────────────────────────────────
+    total_prod           = sum(t['produccion'] for t in tramos)
+    total_salidas_formula= sum(t['salidas']    for t in tramos)
+    total_diferencia     = total_prod - total_salidas_rango
+    num_tramos           = len(tramos)
+    num_dias_rango       = (fecha_fin - fecha_inicio).days + 1
+    n_dia       = sum(1 for t in tramos if t['tipo'] == 'dia')
+    n_noche     = sum(1 for t in tramos if t['tipo'] == 'noche')
+    n_extendido = sum(1 for t in tramos if t['tipo'] == 'extendido')
 
     # ── Agrupación ──────────────────────────────────────────────────────────────
-    def _gkey(d):
-        f = d['fecha']
+    def _gkey(tramo):
+        f = tramo['fecha_asignada']
         if agrupar_por == 'dia':    return f
         if agrupar_por == 'semana': iso = f.isocalendar(); return (iso[0], iso[1])
         return (f.year, f.month)
@@ -2539,8 +2662,8 @@ def reporte_produccion_avanzado(request):
 
     grupos = []
     cur_key = cur_g = None
-    for d in dias_data:
-        k = _gkey(d)
+    for t in tramos:
+        k = _gkey(t)
         if k != cur_key:
             if cur_g:
                 cur_g['diferencia'] = cur_g['prod_total'] - cur_g['salidas']
@@ -2548,38 +2671,27 @@ def reporte_produccion_avanzado(request):
             cur_key = k
             cur_g = {
                 'key': k, 'label': _glabel(k),
-                'prod_dia': Decimal('0'), 'prod_noche': Decimal('0'),
-                'prod_total': Decimal('0'), 'salidas': Decimal('0'),
-                'diferencia': Decimal('0'),
-                'num_dias': 0, 'dias_con_dato': 0,
-                'fechas': [],
+                'prod_total':      Decimal('0'),
+                'salidas':         Decimal('0'),
+                'diferencia':      Decimal('0'),
+                'num_tramos':      0,
+                'tramos':          [],
             }
-        cur_g['prod_dia']   += d['prod_dia']
-        cur_g['prod_noche'] += d['prod_noche']
-        cur_g['prod_total'] += d['prod_total']
-        cur_g['salidas']    += d['salidas']
-        cur_g['num_dias']   += 1
-        if d['tiene_dia'] or d['tiene_noche']:
-            cur_g['dias_con_dato'] += 1
-        cur_g['fechas'].append(d)
+        cur_g['prod_total'] += t['produccion']
+        cur_g['salidas']    += t['salidas']
+        cur_g['num_tramos'] += 1
+        cur_g['tramos'].append(t)
     if cur_g:
         cur_g['diferencia'] = cur_g['prod_total'] - cur_g['salidas']
         grupos.append(cur_g)
 
-    # ── Totales generales ───────────────────────────────────────────────────────
-    total_prod_dia   = sum(d['prod_dia']   for d in dias_data)
-    total_prod_noche = sum(d['prod_noche'] for d in dias_data)
-    total_prod       = total_prod_dia + total_prod_noche
-    total_salidas    = sum(d['salidas']    for d in dias_data)
-    total_diferencia = total_prod - total_salidas
-    num_dias_rango   = (fecha_fin - fecha_inicio).days + 1
-    dias_con_dato    = sum(1 for d in dias_data if d['tiene_dia'] or d['tiene_noche'])
-
     # ── Por producto ────────────────────────────────────────────────────────────
-    all_pks = set(sal_x_item.keys())
-    for d in dias_data:
-        all_pks.update(d['por_item'].keys())
+    prod_x_item: dict = {}   # item_pk → Decimal
+    for t in tramos:
+        for pk, qty in t['por_item'].items():
+            prod_x_item[pk] = prod_x_item.get(pk, Decimal('0')) + qty
 
+    all_pks = set(prod_x_item.keys()) | set(sal_x_item.keys())
     items_pt = (
         Item.objects
         .filter(pk__in=all_pks, tipo='producto', activo=True)
@@ -2587,12 +2699,8 @@ def reporte_produccion_avanzado(request):
     )
     por_producto = []
     for item in items_pt:
-        prod_item = sum(
-            d['por_item'].get(item.pk, {}).get('dia',   Decimal('0'))
-            + d['por_item'].get(item.pk, {}).get('noche', Decimal('0'))
-            for d in dias_data
-        )
-        sal_item = sal_x_item.get(item.pk, {}).get('total', Decimal('0'))
+        prod_item = prod_x_item.get(item.pk, Decimal('0'))
+        sal_item  = sal_x_item.get(item.pk, {}).get('total', Decimal('0'))
         por_producto.append({
             'item':       item,
             'prod_total': prod_item,
@@ -2606,29 +2714,41 @@ def reporte_produccion_avanzado(request):
         fname = f'produccion_{fecha_inicio}_{fecha_fin}_{agrupar_por}.csv'
         resp['Content-Disposition'] = f'attachment; filename="{fname}"'
         w = csv.writer(resp)
-        w.writerow(['Período', 'Prod. día', 'Prod. noche', 'Prod. total', 'Salidas', 'Diferencia'])
+        w.writerow(['Período', 'Tipo', 'Tramo', 'Duración (h)', 'Producción', 'Salidas (fórmula)', 'Diferencia'])
+        tipo_labels = {'dia': 'Día', 'noche': 'Noche', 'extendido': 'Extendido'}
         for g in grupos:
-            w.writerow([g['label'], g['prod_dia'], g['prod_noche'],
-                        g['prod_total'], g['salidas'], g['diferencia']])
+            for t in g['tramos']:
+                w.writerow([
+                    g['label'],
+                    tipo_labels.get(t['tipo'], t['tipo']),
+                    t['label_rango'],
+                    t['duracion_h'],
+                    t['produccion'],
+                    t['salidas'],
+                    t['produccion'] - t['salidas'],
+                ])
         w.writerow([])
-        w.writerow(['Producto', 'Producción total', 'Salidas', 'Diferencia'])
+        w.writerow(['Producto', 'Producción', 'Salidas (rango)', 'Diferencia'])
         for p in por_producto:
             w.writerow([p['item'].nombre, p['prod_total'], p['salidas'], p['diferencia']])
         return resp
 
     return render(request, 'reportes/produccion_avanzado.html', {
-        'fecha_inicio':      fecha_inicio,
-        'fecha_fin':         fecha_fin,
-        'agrupar_por':       agrupar_por,
-        'grupos':            grupos,
-        'por_producto':      por_producto,
-        'total_prod_dia':    total_prod_dia,
-        'total_prod_noche':  total_prod_noche,
-        'total_prod':        total_prod,
-        'total_salidas':     total_salidas,
-        'total_diferencia':  total_diferencia,
-        'num_dias_rango':    num_dias_rango,
-        'dias_con_dato':     dias_con_dato,
+        'fecha_inicio':           fecha_inicio,
+        'fecha_fin':              fecha_fin,
+        'agrupar_por':            agrupar_por,
+        'grupos':                 grupos,
+        'tramos':                 tramos,
+        'por_producto':           por_producto,
+        'total_prod':             total_prod,
+        'total_salidas':          total_salidas_rango,
+        'total_salidas_formula':  total_salidas_formula,
+        'total_diferencia':       total_diferencia,
+        'num_tramos':             num_tramos,
+        'num_dias_rango':         num_dias_rango,
+        'n_dia':                  n_dia,
+        'n_noche':                n_noche,
+        'n_extendido':            n_extendido,
     })
 
 

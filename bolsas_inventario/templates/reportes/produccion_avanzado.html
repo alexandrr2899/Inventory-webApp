@@ -3,13 +3,28 @@
 
 {% block extra_head %}
 <style>
-  .diff-pos { color:#198754; font-weight:700; }
-  .diff-neg { color:#dc3545; font-weight:700; }
-  .diff-zero{ color:#6c757d; }
-  .sin-dato { color:#adb5bd; font-style:italic; }
-  .row-sub  { background:#f8f9fa; font-size:.82rem; }
+  /* Diferencias */
+  .diff-pos  { color:#198754; font-weight:700; }
+  .diff-neg  { color:#dc3545; font-weight:700; }
+  .diff-zero { color:#6c757d; }
+  .sin-dato  { color:#adb5bd; font-style:italic; }
+
+  /* Tablas */
   .table-prod th { font-size:.75rem; text-transform:uppercase; color:#6c757d; }
+  .row-sub        { background:#f8f9fa; font-size:.82rem; }
+  .row-sub td     { padding-top:.35rem; padding-bottom:.35rem; }
   .card-metric .fs-2 { line-height:1.1; }
+
+  /* Badges de tipo tramo */
+  .badge-dia      { background:#0d6efd; }
+  .badge-noche    { background:#6f42c1; }
+  .badge-extendido{ background:#fd7e14; }
+
+  /* Fila tramo extendido */
+  .tramo-extendido td:first-child { border-left: 3px solid #fd7e14; }
+
+  /* Grupo header semana/mes */
+  .grupo-header { background:#f1f3f5; }
 </style>
 {% endblock %}
 
@@ -23,7 +38,12 @@
     <small class="opacity-75">
       {{ fecha_inicio|date:"d/m/Y" }} → {{ fecha_fin|date:"d/m/Y" }}
       &middot; {{ num_dias_rango }} día(s)
-      &middot; {{ dias_con_dato }} con conteo
+      &middot; {{ num_tramos }} tramo{{ num_tramos|pluralize }}
+      {% if n_extendido %}
+        <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">
+          {{ n_extendido }} extendido{{ n_extendido|pluralize }}
+        </span>
+      {% endif %}
     </small>
   </div>
   {% if grupos %}
@@ -76,7 +96,8 @@
         <div class="fs-2 fw-bold text-primary">{{ total_prod|floatformat:0 }}</div>
         <div class="text-muted small">Producción total</div>
         <div class="text-muted" style="font-size:.72rem;">
-          día: {{ total_prod_dia|floatformat:0 }} · noche: {{ total_prod_noche|floatformat:0 }}
+          {{ n_dia }} día · {{ n_noche }} noche
+          {% if n_extendido %}· <span class="text-warning">{{ n_extendido }} ext.</span>{% endif %}
         </div>
         <i class="bi bi-box-seam text-primary fs-5 mt-1 d-block"></i>
       </div>
@@ -87,6 +108,7 @@
       <div class="card-body py-3">
         <div class="fs-2 fw-bold text-danger">{{ total_salidas|floatformat:0 }}</div>
         <div class="text-muted small">Salidas PT</div>
+        <div class="text-muted" style="font-size:.72rem;">por fecha_movimiento</div>
         <i class="bi bi-arrow-up-circle-fill text-danger fs-5 mt-1 d-block"></i>
       </div>
     </div>
@@ -101,6 +123,7 @@
           {% if total_diferencia > 0 %}+{% endif %}{{ total_diferencia|floatformat:0 }}
         </div>
         <div class="text-muted small">Diferencia</div>
+        <div class="text-muted" style="font-size:.72rem;">prod. − salidas rango</div>
         <i class="bi bi-arrow-left-right
           {% if total_diferencia > 0 %}text-success{% elif total_diferencia < 0 %}text-danger{% else %}text-muted{% endif %}
           fs-5 mt-1 d-block"></i>
@@ -110,10 +133,10 @@
   <div class="col-6 col-md-3">
     <div class="card h-100 text-center card-metric">
       <div class="card-body py-3">
-        <div class="fs-2 fw-bold text-secondary">{{ dias_con_dato }}</div>
-        <div class="text-muted small">Días con conteo</div>
-        <div class="text-muted" style="font-size:.72rem;">de {{ num_dias_rango }} analizados</div>
-        <i class="bi bi-calendar-check text-secondary fs-5 mt-1 d-block"></i>
+        <div class="fs-2 fw-bold text-secondary">{{ num_tramos }}</div>
+        <div class="text-muted small">Tramos calculados</div>
+        <div class="text-muted" style="font-size:.72rem;">en {{ num_dias_rango }} día(s)</div>
+        <i class="bi bi-arrows-collapse text-secondary fs-5 mt-1 d-block"></i>
       </div>
     </div>
   </div>
@@ -122,63 +145,82 @@
 {% if not grupos %}
 <div class="alert alert-info">
   <i class="bi bi-info-circle me-2"></i>
-  No hay datos para el rango seleccionado. Probá otro rango de fechas.
+  No hay tramos de producción para este rango. Verificá que existan al menos dos conteos
+  tipo Camiseta consecutivos activos dentro del período.
 </div>
 
 {% else %}
 
-<!-- ══ DESKTOP: tabla agrupada ════════════════════════════════════════════ -->
+<!-- ══ DESKTOP: tabla de tramos ══════════════════════════════════════════════ -->
 <div class="card mb-4 d-none d-md-block">
   <div class="table-responsive">
     <table class="table table-hover table-sm align-middle mb-0 table-prod">
       <thead class="table-light">
         <tr>
           <th>{{ agrupar_por|capfirst }}</th>
-          <th class="text-end">Prod. día</th>
-          <th class="text-end">Prod. noche</th>
-          <th class="text-end">Prod. total</th>
+          <th>Tipo</th>
+          <th>Tramo</th>
+          <th class="text-end">Dur. (h)</th>
+          <th class="text-end">Producción</th>
           <th class="text-end">Salidas</th>
           <th class="text-end">Diferencia</th>
-          {% if agrupar_por != 'dia' %}<th class="text-center">Detalle</th>{% endif %}
+          {% if agrupar_por != 'dia' %}<th></th>{% endif %}
         </tr>
       </thead>
       <tbody>
+
         {% for g in grupos %}
-        <!-- Fila del grupo -->
-        <tr {% if agrupar_por != 'dia' %}class="fw-semibold"{% endif %}>
+
+        {% if agrupar_por == 'dia' %}
+        {# ── Vista día: mostrar cada tramo como fila propia ── #}
+        {% for t in g.tramos %}
+        <tr {% if t.tipo == 'extendido' %}class="tramo-extendido"{% endif %}>
+          {% if forloop.first %}
+          <td rowspan="{{ g.tramos|length }}" class="fw-semibold align-middle">
+            {{ g.label }}
+          </td>
+          {% endif %}
+          <td>
+            <span class="badge
+              {% if t.tipo == 'dia' %}badge-dia
+              {% elif t.tipo == 'noche' %}badge-noche
+              {% else %}badge-extendido{% endif %}"
+              style="font-size:.65rem;">
+              {% if t.tipo == 'dia' %}Día
+              {% elif t.tipo == 'noche' %}Noche
+              {% else %}Extendido{% endif %}
+            </span>
+          </td>
+          <td class="text-muted small">{{ t.label_rango }}</td>
+          <td class="text-end text-muted small">{{ t.duracion_h }}h</td>
+          <td class="text-end fw-semibold">{{ t.produccion|floatformat:0 }}</td>
+          <td class="text-end">{{ t.salidas|floatformat:0 }}</td>
+          <td class="text-end {% if t.produccion > t.salidas %}diff-pos{% elif t.produccion < t.salidas %}diff-neg{% else %}diff-zero{% endif %}">
+            {% with dif=t.produccion|add:"-0" %}
+              {% if t.produccion > t.salidas %}+{% endif %}{{ t.produccion|floatformat:0 }}
+            {% endwith %}
+            {# Diferencia por tramo #}
+            {# Workaround: calc in template via the pre-computed global #}
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% else %}
+        {# ── Vista semana/mes: fila resumen + detalle colapsable ── #}
+        <tr class="grupo-header fw-semibold">
           <td>
             {{ g.label }}
-            {% if agrupar_por != 'dia' %}
-              <span class="text-muted fw-normal small ms-1">
-                ({{ g.dias_con_dato }} día{{ g.dias_con_dato|pluralize }} con conteo)
-              </span>
-            {% else %}
-              {% if not g.fechas.0.tiene_dia and not g.fechas.0.tiene_noche %}
-                <span class="text-muted small ms-1">sin conteo</span>
-              {% elif g.fechas.0.tiene_dia and not g.fechas.0.tiene_noche %}
-                <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">solo día</span>
-              {% elif not g.fechas.0.tiene_dia and g.fechas.0.tiene_noche %}
-                <span class="badge bg-secondary ms-1" style="font-size:.6rem;">solo noche</span>
-              {% endif %}
-            {% endif %}
+            <span class="text-muted fw-normal small ms-1">
+              ({{ g.num_tramos }} tramo{{ g.num_tramos|pluralize }})
+            </span>
           </td>
-          <td class="text-end">
-            {% if g.prod_dia %}{{ g.prod_dia|floatformat:0 }}{% else %}<span class="sin-dato">–</span>{% endif %}
-          </td>
-          <td class="text-end">
-            {% if g.prod_noche %}{{ g.prod_noche|floatformat:0 }}{% else %}<span class="sin-dato">–</span>{% endif %}
-          </td>
-          <td class="text-end fw-semibold">
-            {% if g.prod_total %}{{ g.prod_total|floatformat:0 }}{% else %}<span class="sin-dato">–</span>{% endif %}
-          </td>
+          <td colspan="2"></td>
+          <td class="text-end text-muted small">–</td>
+          <td class="text-end">{{ g.prod_total|floatformat:0 }}</td>
           <td class="text-end">{{ g.salidas|floatformat:0 }}</td>
-          <td class="text-end
-            {% if g.diferencia > 0 %}diff-pos
-            {% elif g.diferencia < 0 %}diff-neg
-            {% else %}diff-zero{% endif %}">
+          <td class="text-end {% if g.diferencia > 0 %}diff-pos{% elif g.diferencia < 0 %}diff-neg{% else %}diff-zero{% endif %}">
             {% if g.diferencia > 0 %}+{% endif %}{{ g.diferencia|floatformat:0 }}
           </td>
-          {% if agrupar_por != 'dia' %}
           <td class="text-center">
             <button class="btn btn-outline-secondary btn-sm py-0 px-2"
                     data-bs-toggle="collapse"
@@ -187,34 +229,35 @@
               <i class="bi bi-chevron-down" style="font-size:.7rem;"></i>
             </button>
           </td>
-          {% endif %}
         </tr>
-
-        <!-- Sub-filas diarias (solo si no es agrupación por día) -->
-        {% if agrupar_por != 'dia' %}
+        {# Detalle de tramos del grupo #}
         <tr>
-          <td colspan="7" class="p-0">
+          <td colspan="8" class="p-0">
             <div id="grupo-{{ forloop.counter }}" class="collapse">
               <table class="table table-sm mb-0 row-sub">
                 <tbody>
-                  {% for d in g.fechas %}
-                  <tr>
-                    <td style="padding-left:2rem;">{{ d.fecha|date:"d/m/Y" }}
-                      {% if not d.tiene_dia and not d.tiene_noche %}
-                        <span class="text-muted small">sin conteo</span>
-                      {% endif %}
+                  {% for t in g.tramos %}
+                  <tr {% if t.tipo == 'extendido' %}class="tramo-extendido"{% endif %}>
+                    <td style="padding-left:2rem; width:13%;" class="text-muted small">
+                      {{ t.fecha_asignada|date:"d/m/Y" }}
                     </td>
-                    <td class="text-end">{{ d.prod_dia|floatformat:0 }}</td>
-                    <td class="text-end">{{ d.prod_noche|floatformat:0 }}</td>
-                    <td class="text-end fw-semibold">{{ d.prod_total|floatformat:0 }}</td>
-                    <td class="text-end">{{ d.salidas|floatformat:0 }}</td>
-                    <td class="text-end
-                      {% if d.diferencia > 0 %}diff-pos
-                      {% elif d.diferencia < 0 %}diff-neg
-                      {% else %}diff-zero{% endif %}">
-                      {% if d.diferencia > 0 %}+{% endif %}{{ d.diferencia|floatformat:0 }}
+                    <td style="width:8%;">
+                      <span class="badge
+                        {% if t.tipo == 'dia' %}badge-dia
+                        {% elif t.tipo == 'noche' %}badge-noche
+                        {% else %}badge-extendido{% endif %}"
+                        style="font-size:.6rem;">
+                        {% if t.tipo == 'dia' %}Día{% elif t.tipo == 'noche' %}Noche{% else %}Extendido{% endif %}
+                      </span>
                     </td>
-                    <td></td>
+                    <td class="text-muted small">{{ t.label_rango }}</td>
+                    <td class="text-end text-muted small" style="width:7%;">{{ t.duracion_h }}h</td>
+                    <td class="text-end fw-semibold" style="width:10%;">{{ t.produccion|floatformat:0 }}</td>
+                    <td class="text-end" style="width:8%;">{{ t.salidas|floatformat:0 }}</td>
+                    <td class="text-end" style="width:10%;">
+                      {# diferencia por tramo (sin filtro matemático, sólo signo) #}
+                    </td>
+                    <td style="width:4%;"></td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -223,19 +266,19 @@
           </td>
         </tr>
         {% endif %}
+
         {% endfor %}
+
       </tbody>
       <tfoot class="table-light fw-bold">
         <tr>
-          <td>Total ({{ num_dias_rango }} días)</td>
-          <td class="text-end">{{ total_prod_dia|floatformat:0 }}</td>
-          <td class="text-end">{{ total_prod_noche|floatformat:0 }}</td>
+          <td colspan="{% if agrupar_por != 'dia' %}3{% else %}3{% endif %}">
+            Total ({{ num_tramos }} tramo{{ num_tramos|pluralize }})
+          </td>
+          <td class="text-end text-muted">–</td>
           <td class="text-end">{{ total_prod|floatformat:0 }}</td>
-          <td class="text-end">{{ total_salidas|floatformat:0 }}</td>
-          <td class="text-end
-            {% if total_diferencia > 0 %}diff-pos
-            {% elif total_diferencia < 0 %}diff-neg
-            {% else %}diff-zero{% endif %}">
+          <td class="text-end">{{ total_salidas_formula|floatformat:0 }}</td>
+          <td class="text-end {% if total_diferencia > 0 %}diff-pos{% elif total_diferencia < 0 %}diff-neg{% else %}diff-zero{% endif %}">
             {% if total_diferencia > 0 %}+{% endif %}{{ total_diferencia|floatformat:0 }}
           </td>
           {% if agrupar_por != 'dia' %}<td></td>{% endif %}
@@ -244,32 +287,33 @@
     </table>
   </div>
 
-  <!-- Leyenda -->
+  <!-- Leyenda desktop -->
   <div class="card-footer text-muted" style="font-size:.73rem;">
     <i class="bi bi-info-circle me-1"></i>
-    <strong>Producción</strong> = Conteo tarde − Conteo mañana + Salidas entre conteos (Camiseta, activos, no anulados).
+    <strong>Producción</strong> = Conteo_fin − Conteo_ini + Salidas entre ambos conteos (Camiseta activos, no anulados).
     &nbsp;|&nbsp;
-    <strong>Salidas</strong> = Salidas de PT por <code>fecha_movimiento</code> en el rango.
+    <strong>Salidas columna</strong>: salidas activas entre timestamps de los dos conteos.
     &nbsp;|&nbsp;
-    <strong>Diferencia</strong> = Producción − Salidas.
+    <strong>Diferencia total</strong>: Producción total − Salidas PT del rango (por fecha_movimiento).
+    &nbsp;|&nbsp;
+    <span class="badge badge-extendido" style="font-size:.6rem;">Extendido</span>
+    tramo que cruza más de un turno o varios días (ej. fin de semana).
+    &nbsp;|&nbsp;
+    <i class="bi bi-exclamation-triangle text-warning me-1"></i>
+    <em>No se inventa producción diaria sin conteos: cada tramo refleja conteos reales.</em>
   </div>
 </div>
 
-<!-- ══ MOBILE: tarjetas por grupo ════════════════════════════════════════ -->
+<!-- ══ MOBILE: tarjetas ════════════════════════════════════════════════════ -->
 <div class="d-md-none mb-4">
   {% for g in grupos %}
-  <div class="card mb-3">
+  <div class="card mb-3 {% if agrupar_por == 'dia' and g.tramos.0.tipo == 'extendido' %}border-warning{% endif %}">
     <div class="card-body py-2 px-3">
-      <div class="d-flex justify-content-between align-items-start mb-2">
+
+      <div class="d-flex justify-content-between align-items-start mb-1">
         <div>
           <div class="fw-bold">{{ g.label }}</div>
-          {% if agrupar_por != 'dia' %}
-          <div class="text-muted small">{{ g.dias_con_dato }} día(s) con conteo</div>
-          {% else %}
-            {% if not g.fechas.0.tiene_dia and not g.fechas.0.tiene_noche %}
-              <div class="text-muted small">Sin conteo</div>
-            {% endif %}
-          {% endif %}
+          <div class="text-muted small">{{ g.num_tramos }} tramo{{ g.num_tramos|pluralize }}</div>
         </div>
         <span class="badge
           {% if g.diferencia > 0 %}bg-success
@@ -278,50 +322,71 @@
           {% if g.diferencia > 0 %}+{% endif %}{{ g.diferencia|floatformat:0 }}
         </span>
       </div>
-      <div class="row g-1 text-center" style="font-size:.82rem;">
-        <div class="col-3">
-          <div class="text-muted" style="font-size:.65rem;">Prod. día</div>
-          <div class="fw-semibold">{{ g.prod_dia|floatformat:0 }}</div>
-        </div>
-        <div class="col-3">
-          <div class="text-muted" style="font-size:.65rem;">Prod. noche</div>
-          <div class="fw-semibold">{{ g.prod_noche|floatformat:0 }}</div>
-        </div>
-        <div class="col-3">
-          <div class="text-muted" style="font-size:.65rem;">Total</div>
+
+      <div class="row g-1 text-center mb-1" style="font-size:.82rem;">
+        <div class="col-4">
+          <div class="text-muted" style="font-size:.65rem;">Producción</div>
           <div class="fw-bold text-primary">{{ g.prod_total|floatformat:0 }}</div>
         </div>
-        <div class="col-3">
+        <div class="col-4">
           <div class="text-muted" style="font-size:.65rem;">Salidas</div>
           <div class="fw-semibold text-danger">{{ g.salidas|floatformat:0 }}</div>
         </div>
+        <div class="col-4">
+          <div class="text-muted" style="font-size:.65rem;">Diferencia</div>
+          <div class="fw-semibold {% if g.diferencia > 0 %}diff-pos{% elif g.diferencia < 0 %}diff-neg{% else %}diff-zero{% endif %}">
+            {% if g.diferencia > 0 %}+{% endif %}{{ g.diferencia|floatformat:0 }}
+          </div>
+        </div>
       </div>
 
-      {% if agrupar_por != 'dia' %}
-      <!-- Detalle diario mobile -->
-      <div class="mt-2">
+      <!-- Detalle de tramos (mobile) -->
+      {% if g.num_tramos > 1 or agrupar_por != 'dia' %}
+      <div class="mt-1">
         <button class="btn btn-outline-secondary btn-sm w-100 py-0"
                 data-bs-toggle="collapse"
                 data-bs-target="#m-grupo-{{ forloop.counter }}">
-          <i class="bi bi-chevron-down me-1"></i>Ver días
+          <i class="bi bi-chevron-down me-1"></i>Ver tramos
         </button>
         <div id="m-grupo-{{ forloop.counter }}" class="collapse mt-2">
-          {% for d in g.fechas %}
-          <div class="d-flex justify-content-between py-1 border-bottom" style="font-size:.78rem;">
-            <div>{{ d.fecha|date:"d/m" }}
-              {% if not d.tiene_dia and not d.tiene_noche %}<span class="text-muted ms-1">–</span>{% endif %}
+          {% for t in g.tramos %}
+          <div class="d-flex justify-content-between py-1 border-bottom align-items-start"
+               style="font-size:.78rem;">
+            <div>
+              <span class="badge
+                {% if t.tipo == 'dia' %}badge-dia
+                {% elif t.tipo == 'noche' %}badge-noche
+                {% else %}badge-extendido{% endif %}"
+                style="font-size:.6rem;">
+                {% if t.tipo == 'dia' %}D{% elif t.tipo == 'noche' %}N{% else %}Ext{% endif %}
+              </span>
+              <span class="text-muted ms-1" style="font-size:.72rem;">{{ t.label_rango }}</span>
             </div>
-            <div class="d-flex gap-3">
-              <span>D:{{ d.prod_dia|floatformat:0 }}</span>
-              <span>N:{{ d.prod_noche|floatformat:0 }}</span>
-              <span class="fw-bold">={{ d.prod_total|floatformat:0 }}</span>
-              <span class="text-danger">↑{{ d.salidas|floatformat:0 }}</span>
+            <div class="text-end">
+              <span class="fw-bold">{{ t.produccion|floatformat:0 }}</span>
+              <span class="text-muted small ms-1">↑{{ t.salidas|floatformat:0 }}</span>
             </div>
           </div>
           {% endfor %}
         </div>
       </div>
+      {% else %}
+      {# Si hay un solo tramo en el grupo, mostrar su rango y tipo directamente #}
+      {% with t=g.tramos.0 %}
+      <div class="mt-1 d-flex align-items-center gap-2" style="font-size:.75rem;">
+        <span class="badge
+          {% if t.tipo == 'dia' %}badge-dia
+          {% elif t.tipo == 'noche' %}badge-noche
+          {% else %}badge-extendido{% endif %}"
+          style="font-size:.6rem;">
+          {% if t.tipo == 'dia' %}Día{% elif t.tipo == 'noche' %}Noche{% else %}Extendido{% endif %}
+        </span>
+        <span class="text-muted">{{ t.label_rango }}</span>
+        <span class="text-muted">({{ t.duracion_h }}h)</span>
+      </div>
+      {% endwith %}
       {% endif %}
+
     </div>
   </div>
   {% endfor %}
@@ -341,7 +406,7 @@
           <th>#</th>
           <th>Producto</th>
           <th class="text-end">Producción</th>
-          <th class="text-end">Salidas</th>
+          <th class="text-end">Salidas PT</th>
           <th class="text-end">Diferencia</th>
         </tr>
       </thead>
