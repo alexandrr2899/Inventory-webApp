@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Alertas{% endblock %}
+
+{% block extra_head %}
+<style>
+  .alerta-card { border-left: 4px solid #adb5bd; }
+  .alerta-critica { border-left-color: #dc3545; }
+  .alerta-alta { border-left-color: #fd7e14; }
+  .alerta-media { border-left-color: #ffc107; }
+  .alerta-baja { border-left-color: #6c757d; }
+  .metric-link { text-decoration: none; color: inherit; }
+  .metric-link:hover .card { border-color: #0d6efd; }
+  @media (max-width: 767px) {
+    .alerta-card .card-body { padding: .85rem; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div>
+    <h1><i class="bi bi-bell-fill me-2"></i>Centro de Alertas</h1>
+    <small class="opacity-75">{{ total_alertas }} alerta(s) operativa(s)</small>
+  </div>
+  <a href="{% url 'dashboard' %}" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-house-fill me-1"></i>Dashboard
+  </a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <a class="metric-link" href="{% url 'reporte_stock_bajo' %}">
+      <div class="card h-100">
+        <div class="card-body text-center py-3">
+          <div class="fs-2 fw-bold text-danger">{{ total_stock }}</div>
+          <div class="small text-muted">Stock bajo/cero</div>
+          <div class="small text-danger">{{ total_stock_cero }} en cero</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100">
+      <div class="card-body text-center py-3">
+        <div class="fs-2 fw-bold text-info">{{ total_pigmentos }}</div>
+        <div class="small text-muted">Pigmentos críticos</div>
+        <div class="small text-info">agrupados</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a class="metric-link" href="{% url 'conteo_lista' %}">
+      <div class="card h-100">
+        <div class="card-body text-center py-3">
+          <div class="fs-2 fw-bold text-warning">{{ total_conteos }}</div>
+          <div class="small text-muted">Conteos abiertos</div>
+          <div class="small text-warning">pendientes</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a class="metric-link" href="{% url 'movimiento_lista' %}">
+      <div class="card h-100">
+        <div class="card-body text-center py-3">
+          <div class="fs-2 fw-bold text-secondary">{{ total_auditados }}</div>
+          <div class="small text-muted">Auditados recientes</div>
+          <div class="small text-secondary">anulados/eliminados</div>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+
+{% if total_pendientes_stock %}
+<div class="alert alert-warning d-flex align-items-start gap-2">
+  <i class="bi bi-arrow-repeat fs-4"></i>
+  <div>
+    <strong>{{ total_pendientes_stock }} línea(s) pendiente(s) de conciliación.</strong>
+    Revisá primero estas salidas: pueden explicar diferencias de stock.
+  </div>
+</div>
+{% endif %}
+
+{% if pigmentos_panel %}
+<div class="card mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="fw-bold"><i class="bi bi-droplet-half text-info me-2"></i>Panel de pigmentos</span>
+    <a href="{% url 'reporte_consumo_pigmentos' %}" class="btn btn-sm btn-outline-info">Ver reporte</a>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="px-3">Pigmento</th>
+            <th class="text-end">Stock</th>
+            <th class="text-end">Consumo 30d</th>
+            <th class="text-end">Cobertura</th>
+            <th class="text-end px-3">Sugerido</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pig in pigmentos_panel %}
+          <tr>
+            <td class="px-3">
+              <a href="{% url 'item_detalle' pig.item.pk %}" class="fw-semibold text-decoration-none">
+                {{ pig.item.nombre }}
+              </a>
+              <div class="small text-muted">{{ pig.item.codigo }} · {{ pig.estado }}</div>
+            </td>
+            <td class="text-end">{{ pig.stock|floatformat:"-2" }}</td>
+            <td class="text-end">{{ pig.consumo_30|floatformat:"-2" }}</td>
+            <td class="text-end">
+              {% if pig.dias_cobertura is not None %}
+                {{ pig.dias_cobertura }} días
+              {% else %}
+                <span class="text-muted">Sin dato</span>
+              {% endif %}
+            </td>
+            <td class="text-end px-3">{{ pig.pedido|floatformat:"-2" }} {{ pig.item.unidad_medida }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h2 class="h6 mb-0 text-muted text-uppercase">Alertas recientes</h2>
+  <small class="text-muted">Cache operativo: 60 segundos</small>
+</div>
+
+<div class="row g-3">
+  {% for alerta in alertas %}
+  <div class="col-12 col-xl-6">
+    <div class="card alerta-card alerta-{{ alerta.severidad }} h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between gap-3">
+          <div class="d-flex gap-3">
+            <div class="fs-4
+              {% if alerta.severidad == 'critica' %}text-danger
+              {% elif alerta.severidad == 'alta' %}text-warning
+              {% elif alerta.severidad == 'media' %}text-warning
+              {% else %}text-secondary{% endif %}">
+              <i class="bi {{ alerta.icono }}"></i>
+            </div>
+            <div>
+              <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                <span class="badge
+                  {% if alerta.severidad == 'critica' %}bg-danger
+                  {% elif alerta.severidad == 'alta' %}bg-warning text-dark
+                  {% elif alerta.severidad == 'media' %}bg-info text-dark
+                  {% else %}bg-secondary{% endif %}">
+                  {{ alerta.severidad|title }}
+                </span>
+                <span class="badge bg-light text-dark border">{{ alerta.tipo }}</span>
+                <span class="small text-muted">{{ alerta.referencia }}</span>
+              </div>
+              <div class="fw-bold">{{ alerta.titulo }}</div>
+              <div class="small text-muted">{{ alerta.detalle }}</div>
+              <div class="small text-muted mt-1">
+                <i class="bi bi-clock me-1"></i>{{ alerta.fecha|date:"d/m/Y H:i" }}
+              </div>
+            </div>
+          </div>
+          <div class="flex-shrink-0">
+            <a href="{{ alerta.url }}" class="btn btn-sm btn-outline-primary">
+              {{ alerta.accion }}
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body text-center py-5">
+        <i class="bi bi-check-circle-fill text-success fs-1 d-block mb-2"></i>
+        <h2 class="h5">Sin alertas pendientes</h2>
+        <p class="text-muted mb-0">No hay stock crítico, conteos abiertos ni movimientos auditados recientes.</p>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

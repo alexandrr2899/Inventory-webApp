@@ -42,15 +42,15 @@
 </div>
 
 <!-- Buscador -->
-<div class="input-group mb-3 shadow-sm">
+<form method="get" class="input-group mb-3 shadow-sm">
   <span class="input-group-text bg-white border-end-0">
     <i class="bi bi-search text-muted"></i>
   </span>
-  <input id="buscador" type="text" class="form-control border-start-0 form-control-lg"
+  <input id="buscador" name="q" type="text" class="form-control border-start-0 form-control-lg"
          placeholder="Buscar por nombre o código..." value="{{ q }}" autocomplete="off">
   <button id="btn-limpiar" class="btn btn-outline-secondary {% if not q %}d-none{% endif %}"
           type="button"><i class="bi bi-x-lg"></i></button>
-</div>
+</form>
 
 <!-- Tabs -->
 <div class="tabs-scroll mb-3">
@@ -241,6 +241,8 @@
     <i class="bi bi-file-earmark-spreadsheet me-1"></i>Exportar stock bajo
   </a>
 </div>
+
+{% include "includes/pagination.html" %}
 {% endblock %}
 
 {% block extra_js %}
@@ -345,6 +347,10 @@ buscador.addEventListener('input', function() {
 });
 
 btnLimpiar.addEventListener('click', function() {
+  if (window.location.search.includes('q=')) {
+    window.location.href = window.location.pathname;
+    return;
+  }
   buscador.value = '';
   busquedaActual = '';
   this.classList.add('d-none');

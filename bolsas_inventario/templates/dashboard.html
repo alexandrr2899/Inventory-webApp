@@ -224,9 +224,9 @@
         </a>
       </div>
       <div class="col-6 col-md-3">
-        <a href="{% url 'inventario_lista' %}" class="quick-action bg-info bg-opacity-10 text-info">
-          <i class="bi bi-box-fill"></i>
-          <span class="small fw-semibold">Ver Inventario</span>
+        <a href="{% url 'alertas_centro' %}" class="quick-action bg-warning bg-opacity-10 text-warning">
+          <i class="bi bi-bell-fill"></i>
+          <span class="small fw-semibold">Alertas</span>
         </a>
       </div>
     </div>
@@ -250,7 +250,7 @@
               <div class="text-muted" style="font-size:.75rem">{{ item.codigo }}</div>
             </div>
             <div class="text-end">
-              <span class="badge bg-danger">{{ item.stock_total }} {{ item.unidad_medida }}</span>
+              <span class="badge bg-danger">{{ item.stock_calc }} {{ item.unidad_medida }}</span>
               <div class="text-muted" style="font-size:.7rem">mín: {{ item.stock_minimo }}</div>
             </div>
           </li>

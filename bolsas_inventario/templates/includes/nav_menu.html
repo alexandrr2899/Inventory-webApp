@@ -3,6 +3,11 @@
 <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
   <i class="bi bi-house-fill"></i> Dashboard
 </a>
+{% if perms.core.ver_inventario %}
+<a href="{% url 'alertas_centro' %}" class="nav-link {% if request.resolver_match.url_name == 'alertas_centro' %}active{% endif %}">
+  <i class="bi bi-bell-fill text-warning"></i> Alertas
+</a>
+{% endif %}
 
 {% if perms.core.ver_inventario %}
 <span class="sidebar-section">Inventario</span>

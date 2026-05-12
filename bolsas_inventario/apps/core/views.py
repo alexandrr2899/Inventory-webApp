@@ -1,4 +1,6 @@
 import logging
+import time
+from functools import wraps
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
@@ -7,9 +9,11 @@ from django.views.decorators.http import require_POST
 from django.db.models import Sum, Q, Count, F, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.db import transaction
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.core.paginator import Paginator
+from django.core.cache import cache
+from django.urls import reverse
 from datetime import date, timedelta
 from decimal import Decimal
 import csv
@@ -17,6 +21,7 @@ import io
 import json
 
 security_log = logging.getLogger('security')
+perf_log = logging.getLogger('performance')
 
 # Shared annotation for total stock per item
 _STOCK_ANN = Coalesce(
@@ -63,6 +68,22 @@ def _get_client_ip(request):
     if forwarded:
         return forwarded.split(',')[0].strip()
     return request.META.get('REMOTE_ADDR', 'unknown')
+
+
+def _timed_view(name):
+    """Log elapsed time for high-traffic views without changing responses."""
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            start = time.monotonic()
+            try:
+                return view_func(request, *args, **kwargs)
+            finally:
+                elapsed = time.monotonic() - start
+                user = request.user.username if request.user.is_authenticated else 'anon'
+                perf_log.info('%s %.3fs user=%s path=%s', name, elapsed, user, request.get_full_path())
+        return wrapper
+    return decorator
 
 
 # ─── HELPERS DE STOCK PARA MOVIMIENTOS ────────────────────────────────────────
@@ -251,8 +272,13 @@ def _cerrar_pendientes_conciliacion(item, ubicacion):
 # ─── DASHBOARD ────────────────────────────────────────────────────────────────
 
 @login_required
+@_timed_view('dashboard')
 def dashboard(request):
     hoy = date.today()
+    cache_key = f'dashboard:data:{hoy.isoformat()}'
+    cached = cache.get(cache_key)
+    if cached:
+        return render(request, 'dashboard.html', cached)
 
     # Single query: annotate stock total, filter bajo_stock in DB (no N+1)
     items_bajo_stock = list(
@@ -315,7 +341,9 @@ def dashboard(request):
         'total_items': Item.objects.filter(activo=True).count(),
         'total_bajo_stock': total_bajo_stock,
         'total_pendientes_conciliacion': total_pendientes_conciliacion,
+        'total_alertas': total_bajo_stock + total_pendientes_conciliacion,
     }
+    cache.set(cache_key, context, 45)
     return render(request, 'dashboard.html', context)
 
 
@@ -757,10 +785,194 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
     return tramos
 
 
+# ─── ALERTAS OPERATIVAS ──────────────────────────────────────────────────────
+
+@login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
+@_timed_view('alertas_centro')
+def alertas_centro(request):
+    cache_key = 'alertas:centro:v1'
+    cached = cache.get(cache_key)
+    if cached:
+        return render(request, 'alertas/centro.html', cached)
+
+    now = timezone.now()
+    alertas = []
+
+    items_bajo = list(
+        Item.objects
+        .filter(activo=True)
+        .select_related('categoria')
+        .annotate(stock_calc=_STOCK_ANN)
+        .filter(stock_calc__lte=F('stock_minimo'))
+        .order_by('stock_calc', 'orden', 'nombre')[:60]
+    )
+    for item in items_bajo:
+        stock = item.stock_calc or Decimal('0')
+        severidad = 'critica' if stock <= 0 else 'alta'
+        alertas.append({
+            'tipo': 'Stock',
+            'severidad': severidad,
+            'icono': 'bi-exclamation-octagon-fill' if severidad == 'critica' else 'bi-exclamation-triangle-fill',
+            'titulo': f'{item.nombre} sin stock' if stock <= 0 else f'{item.nombre} bajo mínimo',
+            'detalle': f'{stock} {item.unidad_medida} disponible · mínimo {item.stock_minimo}',
+            'fecha': now,
+            'referencia': item.codigo,
+            'url': reverse('item_detalle', args=[item.pk]),
+            'accion': 'Revisar ítem',
+        })
+
+    pigmentos_criticos = [
+        item for item in items_bajo
+        if item.tipo == 'consumible'
+        and item.categoria
+        and item.categoria.nombre.lower().strip() == 'pigmentos'
+    ]
+    fecha_inicio_pig = (now.date() - timedelta(days=30))
+    pigmentos_qs = list(
+        Item.objects
+        .filter(activo=True, tipo='consumible', categoria__nombre__iexact='Pigmentos')
+        .select_related('categoria')
+        .annotate(stock_calc=_STOCK_ANN)
+        .order_by('orden', 'nombre')[:40]
+    )
+    consumo_pigmentos = {
+        row['item_id']: abs(row['total'])
+        for row in (
+            DetalleMovimiento.objects
+            .filter(
+                movimiento__tipo_movimiento='ajuste',
+                movimiento__anulado=False,
+                movimiento__eliminado=False,
+                movimiento__fecha_movimiento__date__gte=fecha_inicio_pig,
+                movimiento__fecha_movimiento__date__lte=now.date(),
+                item__tipo='consumible',
+                item__categoria__nombre__iexact='Pigmentos',
+                cantidad__lt=0,
+            )
+            .values('item_id')
+            .annotate(total=Sum('cantidad'))
+        )
+    }
+    pigmentos_panel = []
+    for pig in pigmentos_qs:
+        consumo_30 = consumo_pigmentos.get(pig.pk, Decimal('0'))
+        stock = pig.stock_calc or Decimal('0')
+        promedio = consumo_30 / Decimal('30') if consumo_30 > 0 else Decimal('0')
+        dias_cobertura = (stock / promedio) if promedio > 0 else None
+        pedido = max(Decimal('0'), promedio * Decimal('14') - stock) if promedio > 0 else Decimal('0')
+        if dias_cobertura is None:
+            estado = 'Sin dato'
+        elif dias_cobertura < 3:
+            estado = 'Crítico'
+        elif dias_cobertura <= 7:
+            estado = 'Bajo'
+        else:
+            estado = 'OK'
+        pigmentos_panel.append({
+            'item': pig,
+            'stock': stock,
+            'consumo_30': consumo_30,
+            'dias_cobertura': round(dias_cobertura, 1) if dias_cobertura is not None else None,
+            'pedido': round(pedido, 2),
+            'estado': estado,
+        })
+
+    conteos_pendientes = list(
+        Conteo.objects
+        .filter(anulado=False)
+        .exclude(estado='conciliado')
+        .select_related('usuario')
+        .annotate(num_detalles=Count('detalles'))
+        .order_by('-fecha', 'turno')[:25]
+    )
+    for conteo in conteos_pendientes:
+        alertas.append({
+            'tipo': 'Conteo',
+            'severidad': 'media',
+            'icono': 'bi-clipboard-data-fill',
+            'titulo': f'Conteo {conteo.get_tipo_conteo_display()} pendiente',
+            'detalle': f'{conteo.get_turno_display()} · {conteo.num_detalles} línea(s)',
+            'fecha': conteo.fecha_hora_conteo,
+            'referencia': conteo.fecha.strftime('%d/%m/%Y'),
+            'url': reverse('conteo_detalle', args=[conteo.pk]),
+            'accion': 'Revisar conteo',
+        })
+
+    pendientes_stock = list(
+        DetalleMovimiento.objects
+        .filter(
+            pendiente_conciliacion=True,
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+        )
+        .select_related('item', 'ubicacion_origen', 'movimiento', 'movimiento__usuario')
+        .order_by('-movimiento__fecha_movimiento')[:40]
+    )
+    for det in pendientes_stock:
+        alertas.append({
+            'tipo': 'Conciliación',
+            'severidad': 'alta',
+            'icono': 'bi-arrow-repeat',
+            'titulo': f'Salida pendiente de conciliación: {det.item.nombre}',
+            'detalle': f'{det.cantidad} {det.item.unidad_medida} · {det.ubicacion_origen.nombre if det.ubicacion_origen else "Sin ubicación"}',
+            'fecha': det.movimiento.fecha_movimiento,
+            'referencia': f'Op. #{det.movimiento_id}',
+            'url': reverse('movimiento_detalle', args=[det.movimiento_id]),
+            'accion': 'Ver movimiento',
+        })
+
+    movimientos_auditados = list(
+        MovimientoInventario.objects
+        .filter(Q(anulado=True) | Q(eliminado=True))
+        .select_related('usuario', 'usuario_anulacion', 'usuario_eliminacion')
+        .prefetch_related('detalles__item')
+        .order_by('-fecha_movimiento')[:25]
+    )
+    for mov in movimientos_auditados:
+        if mov.eliminado:
+            titulo = f'Movimiento eliminado #{mov.pk}'
+            fecha = mov.fecha_eliminacion or mov.fecha_movimiento
+            detalle = mov.motivo_eliminacion or 'Eliminación lógica registrada'
+            severidad = 'media'
+        else:
+            titulo = f'Movimiento anulado #{mov.pk}'
+            fecha = mov.fecha_anulacion or mov.fecha_movimiento
+            detalle = mov.motivo_anulacion or 'Anulación registrada'
+            severidad = 'baja'
+        alertas.append({
+            'tipo': 'Auditoría',
+            'severidad': severidad,
+            'icono': 'bi-shield-exclamation',
+            'titulo': titulo,
+            'detalle': detalle,
+            'fecha': fecha,
+            'referencia': mov.get_tipo_movimiento_display(),
+            'url': reverse('movimiento_detalle', args=[mov.pk]),
+            'accion': 'Ver auditoría',
+        })
+
+    alertas.sort(key=lambda a: a['fecha'] or now, reverse=True)
+    context = {
+        'alertas': alertas[:120],
+        'total_alertas': len(alertas),
+        'total_stock': len(items_bajo),
+        'total_stock_cero': sum(1 for item in items_bajo if (item.stock_calc or Decimal('0')) <= 0),
+        'total_pigmentos': len(pigmentos_criticos),
+        'total_conteos': len(conteos_pendientes),
+        'total_pendientes_stock': len(pendientes_stock),
+        'total_auditados': len(movimientos_auditados),
+        'pigmentos_panel': pigmentos_panel[:12],
+    }
+    cache.set(cache_key, context, 60)
+    return render(request, 'alertas/centro.html', context)
+
+
 # ─── INVENTARIO ───────────────────────────────────────────────────────────────
 
 @login_required
 @permission_required(_perm('ver_inventario'), raise_exception=True)
+@_timed_view('inventario_lista')
 def inventario_lista(request):
     q = request.GET.get('q', '').strip()
 
@@ -774,10 +986,14 @@ def inventario_lista(request):
     if q:
         qs = qs.filter(Q(nombre__icontains=q) | Q(codigo__icontains=q))
 
+    paginator = Paginator(qs, 100)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    page_items = list(page_obj.object_list)
+
     # Second query: principal location per item (max stock)
     stocks_raw = (
         Stock.objects
-        .filter(item__in=qs)
+        .filter(item__in=page_items)
         .values('item_id', 'ubicacion__nombre', 'cantidad_actual')
     )
     ub_map: dict = {}
@@ -793,10 +1009,10 @@ def inventario_lista(request):
             'bajo': item.stock_calc <= item.stock_minimo,
             'ub_principal': ub_map.get(item.pk, (None, '–'))[1],
         }
-        for item in qs
+        for item in page_items
     ]
 
-    context = {'items_data': items_data, 'q': q}
+    context = {'items_data': items_data, 'q': q, 'page_obj': page_obj}
     return render(request, 'inventario/lista.html', context)
 
 
@@ -1006,6 +1222,7 @@ def ubicacion_editar(request, pk):
 
 @login_required
 @permission_required(_perm('ver_inventario'), raise_exception=True)
+@_timed_view('movimiento_lista')
 def movimiento_lista(request):
     form = FiltroMovimientosForm(request.GET or None)
     movimientos = (
@@ -1058,27 +1275,39 @@ def movimiento_lista(request):
 
 def _exportar_movimientos_csv(movimientos):
     """Exporta cada LÍNEA (DetalleMovimiento) como una fila CSV, con datos del cabecera."""
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="movimientos.csv"'
-    response.write('﻿')  # BOM para Excel
-    writer = csv.writer(response)
-    writer.writerow([
-        'Movimiento #', 'Fecha Movimiento', 'Fecha Registro', 'Tipo',
-        'Ítem', 'Código', 'Cantidad', 'Unidad',
-        'Origen', 'Destino', 'Cliente', 'Máquina', 'Motivo', 'Usuario',
-        'Estado',
-    ])
-    for mov in movimientos:
-        estado = ('Anulado' if mov.anulado else
-                  'Eliminado' if mov.eliminado else
-                  'Editado' if mov.editado else 'Activo')
-        for det in mov.detalles.select_related(
-            'item', 'ubicacion_origen', 'ubicacion_destino', 'cliente', 'maquina'
-        ).all():
-            writer.writerow([
+    class Echo:
+        def write(self, value):
+            return value
+
+    writer = csv.writer(Echo())
+
+    def rows():
+        yield '﻿'
+        yield writer.writerow([
+            'Movimiento #', 'Fecha Movimiento', 'Fecha Registro', 'Tipo',
+            'Ítem', 'Código', 'Cantidad', 'Unidad',
+            'Origen', 'Destino', 'Cliente', 'Máquina', 'Motivo', 'Usuario',
+            'Estado',
+        ])
+        detalles = (
+            DetalleMovimiento.objects
+            .filter(movimiento__in=movimientos.values('pk'))
+            .select_related(
+                'movimiento', 'movimiento__usuario',
+                'item', 'ubicacion_origen', 'ubicacion_destino', 'cliente', 'maquina',
+            )
+            .order_by('-movimiento__fecha_movimiento', 'movimiento_id', 'id')
+            .iterator(chunk_size=500)
+        )
+        for det in detalles:
+            mov = det.movimiento
+            estado = ('Anulado' if mov.anulado else
+                      'Eliminado' if mov.eliminado else
+                      'Editado' if mov.editado else 'Activo')
+            yield writer.writerow([
                 mov.pk,
-                mov.fecha_movimiento.strftime('%Y-%m-%d %H:%M'),
-                mov.fecha.strftime('%Y-%m-%d %H:%M'),
+                timezone.localtime(mov.fecha_movimiento).strftime('%Y-%m-%d %H:%M'),
+                timezone.localtime(mov.fecha).strftime('%Y-%m-%d %H:%M'),
                 mov.get_tipo_movimiento_display(),
                 det.item.nombre,
                 det.item.codigo,
@@ -1092,6 +1321,9 @@ def _exportar_movimientos_csv(movimientos):
                 mov.usuario.get_full_name() or mov.usuario.username,
                 estado,
             ])
+
+    response = StreamingHttpResponse(rows(), content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="movimientos.csv"'
     return response
 
 
@@ -1920,6 +2152,7 @@ def conteo_anular(request, pk):
 
 @login_required
 @permission_required(_perm('registrar_conteo'), raise_exception=True)
+@_timed_view('conteo_lista')
 def conteo_lista(request):
     qs = (
         Conteo.objects
@@ -2445,6 +2678,7 @@ def cliente_toggle_activo(request, pk):
 
 @login_required
 @permission_required(_perm('ver_reportes'), raise_exception=True)
+@_timed_view('reporte_stock_bajo')
 def reporte_stock_bajo(request):
     items_bajo = [
         {'item': i, 'stock': i.stock_calc, 'deficit': i.stock_minimo - i.stock_calc}
@@ -2479,6 +2713,7 @@ def reporte_stock_bajo(request):
 
 @login_required
 @permission_required(_perm('ver_reportes'), raise_exception=True)
+@_timed_view('reporte_produccion')
 def reporte_produccion(request):
     fecha_str = request.GET.get('fecha', '')
     if fecha_str:
@@ -2591,6 +2826,7 @@ def reporte_produccion(request):
 
 @login_required
 @permission_required(_perm('ver_reportes'), raise_exception=True)
+@_timed_view('reporte_produccion_avanzado')
 def reporte_produccion_avanzado(request):
     """
     Reporte de producción + salidas PT usando lógica de tramos entre
@@ -2616,8 +2852,9 @@ def reporte_produccion_avanzado(request):
     fecha_inicio = _parse_date('fecha_inicio', fecha_fin - timedelta(days=6))
     if fecha_fin < fecha_inicio:
         fecha_fin = fecha_inicio
-    if (fecha_fin - fecha_inicio).days > 364:
-        fecha_inicio = fecha_fin - timedelta(days=364)
+    if (fecha_fin - fecha_inicio).days > 120:
+        fecha_inicio = fecha_fin - timedelta(days=120)
+        messages.warning(request, 'El reporte avanzado se limitó a 120 días para mantener tiempos de respuesta estables.')
 
     agrupar_por = request.GET.get('agrupar_por', 'dia')
     if agrupar_por not in ('dia', 'semana', 'mes'):
@@ -3152,6 +3389,7 @@ def usuario_editar(request, pk):
 
 @login_required
 @permission_required(_perm('ver_reportes'), raise_exception=True)
+@_timed_view('reporte_consumo_pigmentos')
 def reporte_consumo_pigmentos(request):
     """
     Reporte de consumo de pigmentos en un rango de fechas.

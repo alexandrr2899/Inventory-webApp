@@ -265,6 +265,12 @@ class DetalleMovimiento(models.Model):
         verbose_name = 'Línea de movimiento'
         verbose_name_plural = 'Líneas de movimiento'
         ordering = ['id']
+        indexes = [
+            models.Index(fields=['item', 'movimiento'], name='det_item_mov_idx'),
+            models.Index(fields=['ubicacion_origen'], name='det_ub_orig_idx'),
+            models.Index(fields=['ubicacion_destino'], name='det_ub_dest_idx'),
+            models.Index(fields=['pendiente_conciliacion'], name='det_pend_conc_idx'),
+        ]
 
     def __str__(self):
         return f'{self.item.nombre} × {self.cantidad}'
@@ -315,6 +321,10 @@ class Conteo(models.Model):
         verbose_name = 'Conteo'
         verbose_name_plural = 'Conteos'
         ordering = ['-fecha', 'turno']
+        indexes = [
+            models.Index(fields=['fecha', 'turno', 'tipo_conteo', 'anulado'], name='conteo_fecha_tipo_idx'),
+            models.Index(fields=['estado', 'anulado'], name='conteo_estado_idx'),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=['fecha', 'turno', 'tipo_conteo'],

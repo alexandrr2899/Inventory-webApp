@@ -231,6 +231,12 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        # Métricas ligeras de vistas pesadas
+        'performance': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
         # Intentos fallidos y bloqueos de django-axes
         'axes': {
             'handlers': ['security_console'],
