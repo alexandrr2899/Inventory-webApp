@@ -1,4 +1,5 @@
 import logging
+import os
 
 from django.contrib import admin
 from django.urls import path, include
@@ -9,8 +10,19 @@ from django.template.loader import render_to_string
 from decouple import config
 
 # URL del panel admin leída del entorno — nunca exponer la ruta real en código.
-# En .env: ADMIN_URL=mi-ruta-secreta/  (con barra final, sin /)
-_ADMIN_URL = config('ADMIN_URL', default='gestion-interna/')
+# En Portainer: ADMIN_URL=mi-ruta-secreta/  (sin / inicial, con / final)
+def _normalize_admin_url(value):
+    value = (value or 'gestion-interna/').strip().lstrip('/')
+    if not value:
+        value = 'gestion-interna/'
+    if not value.endswith('/'):
+        value = f'{value}/'
+    return value
+
+
+_ADMIN_URL = _normalize_admin_url(
+    os.environ.get('ADMIN_URL') or config('ADMIN_URL', default='gestion-interna/')
+)
 
 security_log = logging.getLogger('security')
 

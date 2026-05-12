@@ -71,9 +71,12 @@
                 <a href="{% url 'cliente_editar' c.pk %}" class="btn btn-sm btn-outline-secondary">
                   <i class="bi bi-pencil-fill"></i>
                 </a>
-                <a href="{% url 'cliente_toggle_activo' c.pk %}" class="btn btn-sm btn-outline-{% if c.activo %}danger{% else %}success{% endif %}">
-                  <i class="bi bi-{% if c.activo %}pause-fill{% else %}play-fill{% endif %}"></i>
-                </a>
+                <form method="post" action="{% url 'cliente_toggle_activo' c.pk %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-{% if c.activo %}danger{% else %}success{% endif %}">
+                    <i class="bi bi-{% if c.activo %}pause-fill{% else %}play-fill{% endif %}"></i>
+                  </button>
+                </form>
               </div>
             </td>
           </tr>

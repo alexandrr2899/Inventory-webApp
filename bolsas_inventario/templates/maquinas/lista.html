@@ -65,9 +65,12 @@
                 <a href="{% url 'maquina_editar' m.pk %}" class="btn btn-sm btn-outline-secondary">
                   <i class="bi bi-pencil-fill"></i>
                 </a>
-                <a href="{% url 'maquina_toggle_activo' m.pk %}" class="btn btn-sm btn-outline-{% if m.activo %}danger{% else %}success{% endif %}">
-                  <i class="bi bi-{% if m.activo %}pause-fill{% else %}play-fill{% endif %}"></i>
-                </a>
+                <form method="post" action="{% url 'maquina_toggle_activo' m.pk %}" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-{% if m.activo %}danger{% else %}success{% endif %}">
+                    <i class="bi bi-{% if m.activo %}pause-fill{% else %}play-fill{% endif %}"></i>
+                  </button>
+                </form>
               </div>
             </td>
           </tr>

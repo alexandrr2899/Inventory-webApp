@@ -195,12 +195,8 @@
           <td class="text-end text-muted small">{{ t.duracion_h }}h</td>
           <td class="text-end fw-semibold">{{ t.produccion|floatformat:0 }}</td>
           <td class="text-end">{{ t.salidas|floatformat:0 }}</td>
-          <td class="text-end {% if t.produccion > t.salidas %}diff-pos{% elif t.produccion < t.salidas %}diff-neg{% else %}diff-zero{% endif %}">
-            {% with dif=t.produccion|add:"-0" %}
-              {% if t.produccion > t.salidas %}+{% endif %}{{ t.produccion|floatformat:0 }}
-            {% endwith %}
-            {# Diferencia por tramo #}
-            {# Workaround: calc in template via the pre-computed global #}
+          <td class="text-end {% if t.diferencia > 0 %}diff-pos{% elif t.diferencia < 0 %}diff-neg{% else %}diff-zero{% endif %}">
+            {% if t.diferencia > 0 %}+{% endif %}{{ t.diferencia|floatformat:0 }}
           </td>
         </tr>
         {% endfor %}
@@ -272,14 +268,12 @@
       </tbody>
       <tfoot class="table-light fw-bold">
         <tr>
-          <td colspan="{% if agrupar_por != 'dia' %}3{% else %}3{% endif %}">
-            Total ({{ num_tramos }} tramo{{ num_tramos|pluralize }})
-          </td>
+          <td colspan="3">Total ({{ num_tramos }} tramo{{ num_tramos|pluralize }})</td>
           <td class="text-end text-muted">–</td>
           <td class="text-end">{{ total_prod|floatformat:0 }}</td>
           <td class="text-end">{{ total_salidas_formula|floatformat:0 }}</td>
-          <td class="text-end {% if total_diferencia > 0 %}diff-pos{% elif total_diferencia < 0 %}diff-neg{% else %}diff-zero{% endif %}">
-            {% if total_diferencia > 0 %}+{% endif %}{{ total_diferencia|floatformat:0 }}
+          <td class="text-end {% if total_diferencia_formula > 0 %}diff-pos{% elif total_diferencia_formula < 0 %}diff-neg{% else %}diff-zero{% endif %}">
+            {% if total_diferencia_formula > 0 %}+{% endif %}{{ total_diferencia_formula|floatformat:0 }}
           </td>
           {% if agrupar_por != 'dia' %}<td></td>{% endif %}
         </tr>

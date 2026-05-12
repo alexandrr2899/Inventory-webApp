@@ -10,15 +10,6 @@ const CACHE_APP    = 'bolsas-app-v1';
 const CACHE_STATIC = 'bolsas-static-v1';
 const CACHE_CDN    = 'bolsas-cdn-v1';
 
-// Páginas que se pre-cachean al instalar el SW
-const PRECACHE_PAGES = [
-  '/',
-  '/inventario/',
-  '/movimientos/',
-  '/conteos/',
-  '/reportes/stock-bajo/',
-];
-
 // Assets CDN que se cachean al instalar
 const PRECACHE_CDN = [
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css',
@@ -30,12 +21,6 @@ const PRECACHE_CDN = [
 self.addEventListener('install', event => {
   event.waitUntil(
     Promise.allSettled([
-      // Pre-cachear páginas principales
-      caches.open(CACHE_APP).then(cache =>
-        Promise.allSettled(PRECACHE_PAGES.map(url =>
-          cache.add(new Request(url, { credentials: 'include' })).catch(() => null)
-        ))
-      ),
       // Pre-cachear CDN
       caches.open(CACHE_CDN).then(cache =>
         Promise.allSettled(PRECACHE_CDN.map(url =>
@@ -105,25 +90,10 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // ── Admin y API: siempre red, sin cache ──────────────────────────────
-  if (url.pathname.startsWith('/admin/') || url.pathname.startsWith('/api/')) return;
-
-  // ── Páginas de la app: Network First, fallback a cache ───────────────
+  // ── Páginas Django autenticadas: siempre red, sin cache de HTML ──────
   event.respondWith(
     fetch(req, { credentials: 'include' })
-      .then(res => {
-        // Solo cachear respuestas OK (no redirects de login, etc.)
-        if (res.ok && res.status === 200) {
-          const clone = res.clone();
-          caches.open(CACHE_APP).then(c => c.put(req, clone));
-        }
-        return res;
-      })
-      .catch(() =>
-        caches.match(req).then(cached =>
-          cached || caches.match('/').then(root => root || offlinePage())
-        )
-      )
+      .catch(() => offlinePage())
   );
 });
 

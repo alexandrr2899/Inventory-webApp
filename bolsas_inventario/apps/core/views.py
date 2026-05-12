@@ -3,6 +3,7 @@ import logging
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib import messages
+from django.views.decorators.http import require_POST
 from django.db.models import Sum, Q, Count, F, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.db import transaction
@@ -41,6 +42,19 @@ from .services.notifications import notify_stock, send_event, send_security_even
 def _perm(codename):
     """Shorthand permission string for core app."""
     return f'core.{codename}'
+
+
+def _json_safe(data):
+    """
+    JSON seguro para incrustar dentro de <script>.
+    Evita que valores con </script>, <, > o & rompan el bloque JS.
+    """
+    return (
+        json.dumps(data)
+        .replace('&', '\\u0026')
+        .replace('<', '\\u003C')
+        .replace('>', '\\u003E')
+    )
 
 
 def _get_client_ip(request):
@@ -734,6 +748,7 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
             'duracion_h':     duracion_h,
             'produccion':     produccion,
             'salidas':        total_sal,
+            'diferencia':     produccion - total_sal,
             'por_item':       por_item,
             'fecha_asignada': c_fin.fecha,
             'label_rango':    f"{_fmt_dt(c_ini.fecha_hora_conteo)} → {_fmt_dt(c_fin.fecha_hora_conteo)}",
@@ -937,6 +952,7 @@ def item_editar(request, pk):
 
 @login_required
 @permission_required(_perm('editar_item'), raise_exception=True)
+@require_POST
 def item_toggle_activo(request, pk):
     item = get_object_or_404(Item, pk=pk)
     item.activo = not item.activo
@@ -1086,11 +1102,11 @@ def movimiento_entrada(request):
     ubicaciones = Ubicacion.objects.all()
     item_id_inicial = request.GET.get('item', '')
 
-    items_json = json.dumps([
+    items_json = _json_safe([
         {'pk': it.pk, 'nombre': it.nombre, 'codigo': it.codigo, 'unidad': it.unidad_medida}
         for it in items
     ])
-    ubicaciones_json = json.dumps([
+    ubicaciones_json = _json_safe([
         {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
         for u in ubicaciones
     ])
@@ -1163,7 +1179,7 @@ def movimiento_entrada(request):
                 'ub_destino_previo': ubicacion_destino_id,
                 'motivo_previo': motivo,
                 'fecha_mov_previo': fecha_mov_str,
-                'filas_previas_json': json.dumps(filas_previas),
+                'filas_previas_json': _json_safe(filas_previas),
             })
 
         with transaction.atomic():
@@ -1242,23 +1258,23 @@ def movimiento_salida(request):
 
     # ── JSON para JavaScript ──────────────────────────────────────────────────
     def _items_json(lst):
-        return json.dumps([
+        return _json_safe([
             {'pk': it.pk, 'nombre': it.nombre, 'codigo': it.codigo,
              'tipo': it.tipo, 'unidad': it.unidad_medida}
             for it in lst
         ])
 
-    ubicaciones_json = json.dumps([
+    ubicaciones_json = _json_safe([
         {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
         for u in ubicaciones
     ])
-    clientes_json = json.dumps([
+    clientes_json = _json_safe([
         {'pk': c.pk, 'nombre': c.nombre} for c in clientes
     ])
-    maquinas_json = json.dumps([
+    maquinas_json = _json_safe([
         {'pk': m.pk, 'nombre': m.nombre} for m in maquinas
     ])
-    stocks_json = json.dumps(stocks_por_item)
+    stocks_json = _json_safe(stocks_por_item)
 
     def _parse_fecha(fecha_str):
         if not fecha_str:
@@ -1378,7 +1394,7 @@ def movimiento_salida(request):
                                 'fecha_mov_previo': fecha_mov_str,
                                 'cliente_previo': cliente_id,
                                 'ub_pt_previo': ub_pt_id,
-                                'filas_pt_previas_json': json.dumps(filas_pt_previas),
+                                'filas_pt_previas_json': _json_safe(filas_pt_previas),
                                 'filas_previas_json': '[]'}))
 
         # Todo OK → guardar
@@ -1523,7 +1539,7 @@ def movimiento_salida(request):
                       _ctx({'tab_inicial': tipo_salida,
                             'motivo_previo': motivo,
                             'fecha_mov_previo': fecha_mov_str,
-                            'filas_previas_json': json.dumps(filas_previas)}))
+                            'filas_previas_json': _json_safe(filas_previas)}))
 
     with transaction.atomic():
         mov = MovimientoInventario.objects.create(
@@ -1829,7 +1845,7 @@ def conteo_anular(request, pk):
     como anulado, y finalmente marca el conteo como anulado.
     No elimina ningún registro.
     """
-    if not (request.user.has_perm(_perm('anular_conteo')) or request.user.is_staff):
+    if not (request.user.has_perm(_perm('anular_conteo')) or request.user.is_superuser):
         from django.core.exceptions import PermissionDenied
         raise PermissionDenied
 
@@ -1969,9 +1985,9 @@ def conteo_nuevo(request):
     for item in all_items:
         items_por_tipo[_clasificar(item)].append(_build_item_dict(item))
 
-    items_por_tipo_json = json.dumps(items_por_tipo)
-    all_items_json = json.dumps([_build_item_dict(item) for item in all_items])
-    ubicaciones_json = json.dumps([
+    items_por_tipo_json = _json_safe(items_por_tipo)
+    all_items_json = _json_safe([_build_item_dict(item) for item in all_items])
+    ubicaciones_json = _json_safe([
         {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
         for u in ubicaciones
     ])
@@ -1989,7 +2005,7 @@ def conteo_nuevo(request):
             for iid, uid, cant in zip(item_ids, ubicacion_ids, cantidades)
             if cant.strip()
         ]
-        filas_previas_json = json.dumps(filas_previas)
+        filas_previas_json = _json_safe(filas_previas)
         tipo_conteo_previo = request.POST.get('tipo_conteo', 'camiseta')
 
         def _render_error(f):
@@ -2362,6 +2378,7 @@ def maquina_editar(request, pk):
 
 @login_required
 @permission_required(_perm('editar_item'), raise_exception=True)
+@require_POST
 def maquina_toggle_activo(request, pk):
     maquina = get_object_or_404(Maquina, pk=pk)
     maquina.activo = not maquina.activo
@@ -2415,6 +2432,7 @@ def cliente_editar(request, pk):
 
 @login_required
 @permission_required(_perm('editar_item'), raise_exception=True)
+@require_POST
 def cliente_toggle_activo(request, pk):
     cliente = get_object_or_404(Cliente, pk=pk)
     cliente.activo = not cliente.activo
@@ -2637,9 +2655,10 @@ def reporte_produccion_avanzado(request):
         total_salidas_rango += det.cantidad
 
     # ── Totales globales ────────────────────────────────────────────────────────
-    total_prod           = sum(t['produccion'] for t in tramos)
-    total_salidas_formula= sum(t['salidas']    for t in tramos)
-    total_diferencia     = total_prod - total_salidas_rango
+    total_prod              = sum(t['produccion'] for t in tramos)
+    total_salidas_formula   = sum(t['salidas']    for t in tramos)
+    total_diferencia_formula= total_prod - total_salidas_formula   # consistente con tabla
+    total_diferencia        = total_prod - total_salidas_rango     # para tarjeta resumen
     num_tramos           = len(tramos)
     num_dias_rango       = (fecha_fin - fecha_inicio).days + 1
     n_dia       = sum(1 for t in tramos if t['tipo'] == 'dia')
@@ -2741,9 +2760,10 @@ def reporte_produccion_avanzado(request):
         'tramos':                 tramos,
         'por_producto':           por_producto,
         'total_prod':             total_prod,
-        'total_salidas':          total_salidas_rango,
-        'total_salidas_formula':  total_salidas_formula,
-        'total_diferencia':       total_diferencia,
+        'total_salidas':              total_salidas_rango,
+        'total_salidas_formula':      total_salidas_formula,
+        'total_diferencia':           total_diferencia,            # prod - salidas rango (tarjeta)
+        'total_diferencia_formula':   total_diferencia_formula,    # prod - salidas fórmula (tabla)
         'num_tramos':             num_tramos,
         'num_dias_rango':         num_dias_rango,
         'n_dia':                  n_dia,
@@ -2755,6 +2775,8 @@ def reporte_produccion_avanzado(request):
 # ─── API ──────────────────────────────────────────────────────────────────────
 
 @login_required
+@permission_required(_perm('editar_item'), raise_exception=True)
+@require_POST
 def api_categoria_nueva(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -3006,15 +3028,15 @@ def descargar_plantilla(request):
 
 # ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
-def _staff_required(view_func):
-    """Restrict view to staff/superusers only; log denied attempts."""
+def _superuser_required(view_func):
+    """Restrict view to superusers only; log denied attempts."""
     from functools import wraps
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
         if not request.user.is_authenticated:
             from django.contrib.auth.views import redirect_to_login
             return redirect_to_login(request.get_full_path())
-        if not (request.user.is_staff or request.user.is_superuser):
+        if not request.user.is_superuser:
             ip = _get_client_ip(request)
             send_security_event(
                 'forbidden_403',
@@ -3023,7 +3045,7 @@ def _staff_required(view_func):
                 ip       = ip,
                 path     = request.path,
                 user_agent = request.META.get('HTTP_USER_AGENT', '')[:200],
-                message  = f'Usuario "{request.user.username}" sin permisos de staff intentó acceder a {request.path}',
+                message  = f'Usuario "{request.user.username}" sin superuser intentó acceder a {request.path}',
             )
             from django.core.exceptions import PermissionDenied
             raise PermissionDenied
@@ -3036,7 +3058,7 @@ def _get_grupo(user):
 
 
 @login_required
-@_staff_required
+@_superuser_required
 def usuario_lista(request):
     usuarios = (
         User.objects.prefetch_related('groups')
@@ -3050,7 +3072,7 @@ def usuario_lista(request):
 
 
 @login_required
-@_staff_required
+@_superuser_required
 def usuario_crear(request):
     if request.method == 'POST':
         form = UsuarioCrearForm(request.POST)
@@ -3079,7 +3101,7 @@ def usuario_crear(request):
 
 
 @login_required
-@_staff_required
+@_superuser_required
 def usuario_editar(request, pk):
     usuario = get_object_or_404(User, pk=pk)
 

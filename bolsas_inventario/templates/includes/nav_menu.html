@@ -79,14 +79,14 @@
 </a>
 {% endif %}
 
-{% if perms.core.importar_excel or user.is_staff %}
+{% if perms.core.importar_excel or user.is_superuser %}
 <span class="sidebar-section">Administración</span>
 {% if perms.core.importar_excel %}
 <a href="{% url 'importar_items' %}" class="nav-link {% if request.resolver_match.url_name == 'importar_items' %}active{% endif %}">
   <i class="bi bi-file-earmark-excel-fill text-success"></i> Importar Excel
 </a>
 {% endif %}
-{% if user.is_staff %}
+{% if user.is_superuser %}
 <a href="{% url 'usuario_lista' %}" class="nav-link {% if 'usuario' in request.resolver_match.url_name %}active{% endif %}">
   <i class="bi bi-person-gear text-primary"></i> Usuarios
 </a>

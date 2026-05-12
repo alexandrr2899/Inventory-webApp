@@ -295,8 +295,13 @@ function renderTablaFija(tipo) {
 
     // ── Ítem (display + hidden input) ─────────────────────────────────────────
     const tdItem = document.createElement('td');
-    tdItem.innerHTML = `<div class="item-nombre">${item.nombre}</div>
-                        <div class="item-codigo">${item.codigo}</div>`;
+    const nombreDiv = document.createElement('div');
+    nombreDiv.className = 'item-nombre';
+    nombreDiv.textContent = item.nombre;
+    const codigoDiv = document.createElement('div');
+    codigoDiv.className = 'item-codigo';
+    codigoDiv.textContent = item.codigo;
+    tdItem.append(nombreDiv, codigoDiv);
     const hiddenItem = document.createElement('input');
     hiddenItem.type = 'hidden';
     hiddenItem.name = 'item[]';

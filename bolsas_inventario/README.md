@@ -41,17 +41,18 @@ cd bolsas_inventario
 cp .env.example .env
 ```
 
-Edita `.env` y cambia al menos `SECRET_KEY` en producción:
+Edita `.env` y define valores seguros antes de levantar producción:
 
 ```env
-DEBUG=True
-SECRET_KEY=cambia-esto-por-una-clave-segura
+DEBUG=False
+SECRET_KEY=generar-una-clave-larga-y-aleatoria
 DB_HOST=db
 DB_NAME=bolsas_inventario
 DB_USER=bolsas_user
-DB_PASSWORD=bolsas_pass
+DB_PASSWORD=generar-una-contrasena-fuerte
 DB_PORT=5432
 ALLOWED_HOSTS=localhost,127.0.0.1
+ADMIN_URL=mi-ruta-admin-secreta/
 ```
 
 ### 3. Construir y levantar los contenedores
@@ -60,12 +61,10 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 docker-compose up --build
 ```
 
-La primera vez tarda unos minutos. Verás en la consola:
+La primera vez tarda unos minutos. Cuando la app esté arriba, crea el superusuario manualmente:
 
-```
-web_1  | Esperando base de datos...
-web_1  | Base de datos lista.
-web_1  | Superusuario admin creado (password: admin123)
+```bash
+docker compose exec web python manage.py createsuperuser
 ```
 
 ### 4. Abrir en el navegador
@@ -74,9 +73,7 @@ web_1  | Superusuario admin creado (password: admin123)
 http://localhost:8000
 ```
 
-**Usuario por defecto:** `admin` / **Contraseña:** `admin123`
-
-> ⚠️ Cambia la contraseña del admin en `/admin/` antes de usar en producción.
+No hay usuario por defecto por seguridad.
 
 ### 5. Detener
 
@@ -102,7 +99,7 @@ pip install -r requirements.txt
 
 ```bash
 psql -U postgres -c "CREATE DATABASE bolsas_inventario;"
-psql -U postgres -c "CREATE USER bolsas_user WITH PASSWORD 'bolsas_pass';"
+psql -U postgres -c "CREATE USER bolsas_user WITH PASSWORD '<contrasena-fuerte>';"
 psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE bolsas_inventario TO bolsas_user;"
 ```
 
@@ -210,14 +207,15 @@ La fórmula es: `Producción = Conteo Tarde − Conteo Mañana + Salidas del dí
 
 | Variable | Descripción | Default |
 |---|---|---|
-| `DEBUG` | Modo debug (False en producción) | `True` |
+| `DEBUG` | Modo debug (False en producción) | `False` |
 | `SECRET_KEY` | Clave secreta Django | — |
 | `DB_HOST` | Host PostgreSQL | `localhost` |
 | `DB_NAME` | Nombre de la base de datos | `bolsas_inventario` |
 | `DB_USER` | Usuario PostgreSQL | `bolsas_user` |
-| `DB_PASSWORD` | Contraseña PostgreSQL | `bolsas_pass` |
+| `DB_PASSWORD` | Contraseña PostgreSQL | — |
 | `DB_PORT` | Puerto PostgreSQL | `5432` |
 | `ALLOWED_HOSTS` | Hosts permitidos (separados por coma) | `localhost,127.0.0.1` |
+| `ADMIN_URL` | Ruta privada del admin, con `/` final | `gestion-interna/` |
 
 ---
 
