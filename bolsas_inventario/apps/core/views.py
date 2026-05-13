@@ -654,7 +654,7 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
     Calcula producción por tramos entre pares de conteos consecutivos
     tipo Camiseta activos.
 
-    Para cada par (c_ini, c_fin) donde c_fin.fecha ∈ [fecha_inicio, fecha_fin]:
+    Para cada par (c_ini, c_fin) asignado a una fecha dentro de [fecha_inicio, fecha_fin]:
 
         produccion = total_fin − total_ini + salidas_entre_conteos
 
@@ -667,7 +667,7 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
     Devuelve lista de dicts:
         conteo_ini, conteo_fin, tipo, duracion_h,
         produccion, salidas, por_item,
-        fecha_asignada (= c_fin.fecha),
+        fecha_asignada (= c_ini.fecha),
         label_rango   (ej. "Sáb 10/05 11:00 → Lun 12/05 08:00")
     """
     # Buscar 3 días antes para capturar el conteo inicial del primer tramo
@@ -743,9 +743,12 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
     for i in range(len(conteos) - 1):
         c_ini = conteos[i]
         c_fin = conteos[i + 1]
+        tipo_tramo = _tipo_tramo(c_ini, c_fin)
+        fecha_asignada = c_ini.fecha
 
-        # Solo tramos cuyo cierre cae dentro del rango pedido
-        if c_fin.fecha < fecha_inicio or c_fin.fecha > fecha_fin:
+        # La producción se agrupa por el día operativo donde inicia el tramo:
+        # día: mañana → tarde; noche/extendido: tarde o conteo inicial → siguiente cierre.
+        if fecha_asignada < fecha_inicio or fecha_asignada > fecha_fin:
             continue
 
         items_ini = _items(c_ini.pk)
@@ -772,13 +775,13 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
         tramos.append({
             'conteo_ini':     c_ini,
             'conteo_fin':     c_fin,
-            'tipo':           _tipo_tramo(c_ini, c_fin),
+            'tipo':           tipo_tramo,
             'duracion_h':     duracion_h,
             'produccion':     produccion,
             'salidas':        total_sal,
             'diferencia':     produccion - total_sal,
             'por_item':       por_item,
-            'fecha_asignada': c_fin.fecha,
+            'fecha_asignada': fecha_asignada,
             'label_rango':    f"{_fmt_dt(c_ini.fecha_hora_conteo)} → {_fmt_dt(c_fin.fecha_hora_conteo)}",
         })
 

@@ -1,11 +1,14 @@
 from decimal import Decimal
+from datetime import date, datetime
 
 from django.contrib.auth.models import Permission, User
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from .models import Categoria, Item, Stock, Ubicacion
+from .models import Categoria, Conteo, ConteoDetalle, Item, Stock, Ubicacion
+from .views import _calcular_tramos
 
 
 @override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
@@ -62,3 +65,46 @@ class VistasOperativasTests(TestCase):
         self.client.force_login(user)
         response = self.client.get(reverse('alertas_centro'))
         self.assertEqual(response.status_code, 403)
+
+    def test_tramo_noche_se_asigna_a_fecha_inicial(self):
+        def aware(year, month, day, hour, minute):
+            return timezone.make_aware(datetime(year, month, day, hour, minute))
+
+        c_manana = Conteo.objects.create(
+            fecha=date(2026, 5, 12),
+            turno='manana',
+            tipo_conteo='camiseta',
+            fecha_hora_conteo=aware(2026, 5, 12, 8, 0),
+            usuario=self.user,
+        )
+        c_tarde = Conteo.objects.create(
+            fecha=date(2026, 5, 12),
+            turno='tarde',
+            tipo_conteo='camiseta',
+            fecha_hora_conteo=aware(2026, 5, 12, 22, 59),
+            usuario=self.user,
+        )
+        c_manana_sig = Conteo.objects.create(
+            fecha=date(2026, 5, 13),
+            turno='manana',
+            tipo_conteo='camiseta',
+            fecha_hora_conteo=aware(2026, 5, 13, 16, 25),
+            usuario=self.user,
+        )
+        for conteo, cantidad in (
+            (c_manana, Decimal('0')),
+            (c_tarde, Decimal('5')),
+            (c_manana_sig, Decimal('9')),
+        ):
+            ConteoDetalle.objects.create(
+                conteo=conteo,
+                item=self.item,
+                ubicacion=Stock.objects.get(item=self.item).ubicacion,
+                cantidad_contada=cantidad,
+                cantidad_sistema_al_conteo=Decimal('0'),
+            )
+
+        tramos = _calcular_tramos(date(2026, 5, 12), date(2026, 5, 12))
+        noche = [t for t in tramos if t['tipo'] == 'noche'][0]
+
+        self.assertEqual(noche['fecha_asignada'], date(2026, 5, 12))
