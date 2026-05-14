@@ -108,3 +108,5 @@ class VistasOperativasTests(TestCase):
         noche = [t for t in tramos if t['tipo'] == 'noche'][0]
 
         self.assertEqual(noche['fecha_asignada'], date(2026, 5, 12))
+        self.assertIn('22:59', noche['label_rango'])
+        self.assertIn('16:25', noche['label_rango'])

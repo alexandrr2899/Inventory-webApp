@@ -727,7 +727,8 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
     DIAS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
     def _fmt_dt(dt):
-        return f"{DIAS_ES[dt.weekday()]} {dt.strftime('%d/%m %H:%M')}"
+        dt_local = timezone.localtime(dt)
+        return f"{DIAS_ES[dt_local.weekday()]} {dt_local.strftime('%d/%m %H:%M')}"
 
     def _tipo_tramo(c_ini, c_fin):
         if (c_ini.turno == 'manana' and c_fin.turno == 'tarde'

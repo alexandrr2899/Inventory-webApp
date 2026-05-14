@@ -221,7 +221,8 @@ class MovimientoInventario(models.Model):
 
     def __str__(self):
         n = self.detalles.count() if self.pk else 0
-        return f'{self.get_tipo_movimiento_display()} #{self.pk} ({n} ítem(s)) · {self.fecha_movimiento.strftime("%d/%m/%Y")}'
+        fecha_local = timezone.localtime(self.fecha_movimiento)
+        return f'{self.get_tipo_movimiento_display()} #{self.pk} ({n} ítem(s)) · {fecha_local.strftime("%d/%m/%Y")}'
 
 
 class DetalleMovimiento(models.Model):

@@ -14,7 +14,6 @@ Estructura de cada POST:
 """
 
 import logging
-from datetime import datetime
 from decimal import Decimal
 
 import requests
@@ -65,7 +64,7 @@ def send_event(event_type: str, payload: dict) -> bool:
     body = {
         'event_type': event_type,
         'source': 'inventory_app',
-        'timestamp': timezone.now().isoformat(),
+        'timestamp': timezone.localtime(timezone.now()).isoformat(),
         'payload': payload,
     }
 
@@ -219,7 +218,7 @@ def generar_resumen_pigmentos() -> dict:
         .order_by('orden', 'nombre')
     )
 
-    ahora    = timezone.now()
+    ahora    = timezone.localtime(timezone.now())
     bajos    = []
     resumen  = []
 
