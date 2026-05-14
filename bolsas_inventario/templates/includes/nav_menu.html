@@ -82,6 +82,9 @@
 <a href="{% url 'reporte_consumo_pigmentos' %}" class="nav-link {% if request.resolver_match.url_name == 'reporte_consumo_pigmentos' %}active{% endif %}">
   <i class="bi bi-droplet-half text-info"></i> Consumo Pigmentos
 </a>
+<a href="{% url 'notificaciones_panel' %}" class="nav-link {% if request.resolver_match.url_name == 'notificaciones_panel' %}active{% endif %}">
+  <i class="bi bi-send-fill text-primary"></i> Notificaciones
+</a>
 {% endif %}
 
 {% if perms.core.importar_excel or user.is_superuser %}

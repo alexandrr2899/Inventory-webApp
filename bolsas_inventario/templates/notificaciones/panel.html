@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Notificaciones{% endblock %}
+
+{% block extra_head %}
+<style>
+  .notif-card { border-left: 4px solid #0d6efd; }
+  .notif-icon {
+    width: 42px; height: 42px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(13,110,253,.1);
+  }
+  @media (max-width: 767px) {
+    .notif-card .card-body { padding: .9rem; }
+    .notif-card .btn { width: 100%; min-height: 44px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div>
+    <h1><i class="bi bi-send-fill me-2"></i>Notificaciones</h1>
+    <small class="opacity-75">Envíos manuales por webhook/n8n</small>
+  </div>
+  <a href="{% url 'alertas_centro' %}" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-bell-fill me-1"></i>Alertas
+  </a>
+</div>
+
+{% if not webhook_configurado %}
+<div class="alert alert-warning d-flex gap-2 align-items-start">
+  <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+  <div>
+    <strong>N8N_WEBHOOK_URL no está configurado.</strong>
+    Podés abrir esta pantalla, pero los reportes no saldrán hasta configurar el webhook en Portainer.
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  {% for reporte in reportes %}
+  <div class="col-12 col-lg-6">
+    <div class="card h-100 notif-card">
+      <div class="card-body">
+        <div class="d-flex gap-3 align-items-start">
+          <div class="notif-icon text-{{ reporte.color }} flex-shrink-0">
+            <i class="bi {{ reporte.icono }} fs-4"></i>
+          </div>
+          <div class="flex-fill">
+            <h2 class="h6 fw-bold mb-1">{{ reporte.titulo }}</h2>
+            <p class="text-muted small mb-3">{{ reporte.descripcion }}</p>
+            <form method="post" class="m-0">
+              {% csrf_token %}
+              <input type="hidden" name="tipo" value="{{ reporte.key }}">
+              <button type="submit" class="btn btn-{{ reporte.color }}">
+                <i class="bi bi-telegram me-1"></i>Enviar Telegram
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

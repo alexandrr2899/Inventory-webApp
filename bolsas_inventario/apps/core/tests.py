@@ -1,7 +1,7 @@
 from decimal import Decimal
 from datetime import date, datetime
 
-from django.contrib.auth.models import Permission, User
+from django.contrib.auth.models import Group, Permission, User
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -16,6 +16,7 @@ class VistasOperativasTests(TestCase):
     def setUp(self):
         cache.clear()
         self.user = User.objects.create_user(username='operador', password='pass12345')
+        self.supervisor_group = Group.objects.create(name='Supervisor')
         for codename in ('ver_inventario', 'ver_reportes'):
             self.user.user_permissions.add(Permission.objects.get(codename=codename))
 
@@ -65,6 +66,21 @@ class VistasOperativasTests(TestCase):
         self.client.force_login(user)
         response = self.client.get(reverse('alertas_centro'))
         self.assertEqual(response.status_code, 403)
+
+    def test_notificaciones_panel_requiere_supervisor_o_admin(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('notificaciones_panel'))
+        self.assertEqual(response.status_code, 403)
+
+        self.user.groups.add(self.supervisor_group)
+        response = self.client.get(reverse('notificaciones_panel'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_notificacion_manual_stock_bajo_sin_webhook_no_falla(self):
+        self.user.groups.add(self.supervisor_group)
+        self.client.force_login(self.user)
+        response = self.client.post(reverse('notificaciones_panel'), {'tipo': 'stock_bajo'})
+        self.assertRedirects(response, reverse('notificaciones_panel'))
 
     def test_tramo_noche_se_asigna_a_fecha_inicial(self):
         def aware(year, month, day, hour, minute):

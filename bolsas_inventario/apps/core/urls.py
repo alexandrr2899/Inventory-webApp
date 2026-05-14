@@ -5,6 +5,7 @@ urlpatterns = [
     # Dashboard
     path('', views.dashboard, name='dashboard'),
     path('alertas/', views.alertas_centro, name='alertas_centro'),
+    path('notificaciones/', views.notificaciones_panel, name='notificaciones_panel'),
 
     # Inventario - Items
     path('inventario/', views.inventario_lista, name='inventario_lista'),

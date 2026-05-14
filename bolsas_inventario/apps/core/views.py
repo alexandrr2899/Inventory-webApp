@@ -5,6 +5,8 @@ from functools import wraps
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib import messages
+from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST
 from django.db.models import Sum, Q, Count, F, Value, DecimalField
 from django.db.models.functions import Coalesce
@@ -22,6 +24,7 @@ import json
 
 security_log = logging.getLogger('security')
 perf_log = logging.getLogger('performance')
+event_log = logging.getLogger('events')
 
 # Shared annotation for total stock per item
 _STOCK_ANN = Coalesce(
@@ -970,6 +973,270 @@ def alertas_centro(request):
     }
     cache.set(cache_key, context, 60)
     return render(request, 'alertas/centro.html', context)
+
+
+# ─── NOTIFICACIONES MANUALES ─────────────────────────────────────────────────
+
+def _puede_enviar_notificaciones(user):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return user.groups.filter(name__in=['Administrador', 'Supervisor']).exists()
+
+
+def _decimal_payload(value):
+    if value is None:
+        return None
+    return float(value)
+
+
+def _fecha_hora_payload():
+    ahora = timezone.localtime(timezone.now())
+    return ahora.strftime('%d/%m/%Y'), ahora.strftime('%H:%M')
+
+
+def _payload_inventario_camiseta():
+    fecha, hora = _fecha_hora_payload()
+    orden_operativo = [
+        'Bolsa Camiseta Grande',
+        'Bolsa Camiseta Mediana',
+        'Bolsa Camiseta Pequeña',
+        'Bolsa Camiseta Grande Negra',
+        'Bolsa Camiseta Mediana Negra',
+        'Bolsa Camiseta Pequeña Negra',
+    ]
+    orden_map = {nombre.lower(): idx for idx, nombre in enumerate(orden_operativo)}
+    items = list(
+        Item.objects
+        .filter(activo=True, tipo='producto')
+        .filter(Q(nombre__icontains='camiseta') | Q(categoria__nombre__icontains='camiseta'))
+        .select_related('categoria')
+        .annotate(stock_calc=_STOCK_ANN)
+    )
+    items.sort(key=lambda item: (orden_map.get(item.nombre.lower(), 999), item.orden, item.nombre))
+
+    return {
+        'titulo': 'Inventario actual de Camiseta',
+        'fecha': fecha,
+        'hora': hora,
+        'items': [
+            {
+                'nombre': item.nombre,
+                'codigo': item.codigo,
+                'stock_actual': _decimal_payload(item.stock_calc),
+                'unidad': item.unidad_medida,
+            }
+            for item in items
+        ],
+    }
+
+
+def _payload_inventario_pigmentos():
+    from .services.notifications import generar_resumen_pigmentos
+    payload = generar_resumen_pigmentos()
+    payload['titulo'] = 'Inventario actual de Pigmentos'
+    return payload
+
+
+def _payload_stock_bajo():
+    fecha, hora = _fecha_hora_payload()
+    items = (
+        Item.objects
+        .filter(activo=True)
+        .select_related('categoria')
+        .annotate(stock_calc=_STOCK_ANN)
+        .filter(stock_calc__lte=F('stock_minimo'))
+        .order_by('stock_calc', 'orden', 'nombre')
+    )
+    bajo = []
+    cero = []
+    for item in items:
+        fila = {
+            'nombre': item.nombre,
+            'codigo': item.codigo,
+            'tipo': item.tipo,
+            'categoria': item.categoria.nombre if item.categoria else '',
+            'stock_actual': _decimal_payload(item.stock_calc),
+            'stock_minimo': _decimal_payload(item.stock_minimo),
+            'unidad': item.unidad_medida,
+        }
+        if item.stock_calc <= 0:
+            cero.append(fila)
+        else:
+            bajo.append(fila)
+    return {
+        'titulo': 'Reporte de stock bajo',
+        'fecha': fecha,
+        'hora': hora,
+        'total': len(bajo) + len(cero),
+        'total_bajo': len(bajo),
+        'total_cero': len(cero),
+        'stock_bajo': bajo,
+        'stock_cero': cero,
+    }
+
+
+def _payload_produccion_dia():
+    fecha_operativa = date.today()
+    fecha, hora = _fecha_hora_payload()
+    produccion = _calcular_produccion(fecha_operativa)
+
+    def _dt(dt):
+        return timezone.localtime(dt).strftime('%d/%m/%Y %H:%M') if dt else None
+
+    return {
+        'titulo': 'Reporte de producción del día',
+        'fecha': fecha,
+        'hora': hora,
+        'fecha_operativa': fecha_operativa.isoformat(),
+        'produccion_dia': _decimal_payload(produccion['produccion_dia']),
+        'produccion_noche': _decimal_payload(produccion['produccion_noche']),
+        'produccion_total': _decimal_payload(produccion['produccion_total']),
+        'salidas_dia': _decimal_payload(produccion['salidas_dia']),
+        'salidas_noche': _decimal_payload(produccion['salidas_noche']),
+        'conteos_usados': {
+            'manana': _dt(produccion['hora_manana']),
+            'tarde': _dt(produccion['hora_tarde']),
+            'manana_siguiente': _dt(produccion['hora_manana_sig']),
+        },
+        'faltantes': {
+            'dia': produccion['falta_dia'],
+            'noche': produccion['falta_noche'],
+        },
+    }
+
+
+def _payload_salidas_dia():
+    fecha_operativa = date.today()
+    fecha, hora = _fecha_hora_payload()
+    detalles = (
+        DetalleMovimiento.objects
+        .filter(
+            movimiento__tipo_movimiento='salida',
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__date=fecha_operativa,
+            item__tipo='producto',
+        )
+        .select_related('movimiento', 'item', 'cliente', 'movimiento__cliente')
+        .order_by('cliente__nombre', 'movimiento__cliente__nombre', 'item__orden', 'item__nombre')
+    )
+
+    grupos = {}
+    total = Decimal('0')
+    for det in detalles:
+        cliente = det.cliente or det.movimiento.cliente
+        cliente_nombre = cliente.nombre if cliente else 'Sin cliente'
+        grupo = grupos.setdefault(cliente_nombre, {'cliente': cliente_nombre, 'total': Decimal('0'), 'items': []})
+        grupo['total'] += det.cantidad
+        total += det.cantidad
+        grupo['items'].append({
+            'movimiento_id': det.movimiento_id,
+            'hora': timezone.localtime(det.movimiento.fecha_movimiento).strftime('%H:%M'),
+            'nombre': det.item.nombre,
+            'codigo': det.item.codigo,
+            'cantidad': _decimal_payload(det.cantidad),
+            'unidad': det.item.unidad_medida,
+        })
+
+    salidas = []
+    for grupo in grupos.values():
+        salidas.append({
+            'cliente': grupo['cliente'],
+            'total': _decimal_payload(grupo['total']),
+            'items': grupo['items'],
+        })
+
+    return {
+        'titulo': 'Reporte de salidas del día',
+        'fecha': fecha,
+        'hora': hora,
+        'fecha_operativa': fecha_operativa.isoformat(),
+        'total_salidas': _decimal_payload(total),
+        'clientes': salidas,
+    }
+
+
+_REPORTES_MANUALES = {
+    'inventario_camiseta': {
+        'titulo': 'Inventario Camiseta',
+        'descripcion': 'Stock actual de productos Camiseta en orden operativo.',
+        'event_type': 'inventario_camiseta_actual',
+        'builder': _payload_inventario_camiseta,
+        'icono': 'bi-bag-check-fill',
+        'color': 'primary',
+    },
+    'inventario_pigmentos': {
+        'titulo': 'Inventario Pigmentos',
+        'descripcion': 'Stock, mínimo y estado de pigmentos.',
+        'event_type': 'inventario_pigmentos_actual',
+        'builder': _payload_inventario_pigmentos,
+        'icono': 'bi-droplet-half',
+        'color': 'info',
+    },
+    'stock_bajo': {
+        'titulo': 'Stock bajo',
+        'descripcion': 'Ítems activos separados entre bajo y cero.',
+        'event_type': 'reporte_stock_bajo',
+        'builder': _payload_stock_bajo,
+        'icono': 'bi-exclamation-triangle-fill',
+        'color': 'warning',
+    },
+    'produccion_dia': {
+        'titulo': 'Producción del día',
+        'descripcion': 'Producción día/noche con conteos usados y salidas incluidas.',
+        'event_type': 'reporte_produccion_dia',
+        'builder': _payload_produccion_dia,
+        'icono': 'bi-graph-up-arrow',
+        'color': 'success',
+    },
+    'salidas_dia': {
+        'titulo': 'Salidas del día',
+        'descripcion': 'Salidas activas de producto terminado agrupadas por cliente.',
+        'event_type': 'reporte_salidas_dia',
+        'builder': _payload_salidas_dia,
+        'icono': 'bi-arrow-up-circle-fill',
+        'color': 'danger',
+    },
+}
+
+
+@login_required
+@_timed_view('notificaciones_panel')
+def notificaciones_panel(request):
+    if not _puede_enviar_notificaciones(request.user):
+        raise PermissionDenied
+
+    reportes = [
+        {'key': key, **{k: v for k, v in cfg.items() if k not in ('builder', 'event_type')}}
+        for key, cfg in _REPORTES_MANUALES.items()
+    ]
+
+    if request.method == 'POST':
+        tipo = request.POST.get('tipo', '').strip()
+        cfg = _REPORTES_MANUALES.get(tipo)
+        if not cfg:
+            messages.error(request, 'Reporte no válido.')
+            return redirect('notificaciones_panel')
+
+        payload = cfg['builder']()
+        payload['enviado_por'] = request.user.username
+        ok = send_event(cfg['event_type'], payload)
+        event_log.info('[EVENT] reporte_manual_enviado user=%s tipo=%s ok=%s', request.user.username, tipo, ok)
+
+        if ok:
+            messages.success(request, f'Reporte enviado: {cfg["titulo"]}.')
+        elif not getattr(settings, 'N8N_WEBHOOK_URL', ''):
+            messages.warning(request, 'N8N_WEBHOOK_URL no está configurado. El reporte se generó, pero no se envió.')
+        else:
+            messages.warning(request, 'No se pudo enviar el reporte al webhook. Revisá logs o n8n.')
+        return redirect('notificaciones_panel')
+
+    return render(request, 'notificaciones/panel.html', {
+        'reportes': reportes,
+        'webhook_configurado': bool(getattr(settings, 'N8N_WEBHOOK_URL', '')),
+    })
 
 
 # ─── INVENTARIO ───────────────────────────────────────────────────────────────
