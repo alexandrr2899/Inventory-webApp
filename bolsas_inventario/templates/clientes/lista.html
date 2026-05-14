@@ -37,6 +37,11 @@
           <span class="badge {% if c.activo %}bg-success{% else %}bg-secondary{% endif %}">
             {% if c.activo %}Activo{% else %}Inactivo{% endif %}
           </span>
+          {% if c.activo %}
+          <a href="{% url 'cliente_salidas' c.pk %}" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Salidas
+          </a>
+          {% endif %}
           <a href="{% url 'cliente_editar' c.pk %}" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-pencil-fill"></i>
           </a>
@@ -68,6 +73,11 @@
             <td><span class="badge {% if c.activo %}bg-success{% else %}bg-secondary{% endif %}">{% if c.activo %}Activo{% else %}Inactivo{% endif %}</span></td>
             <td>
               <div class="d-flex gap-1">
+                {% if c.activo %}
+                <a href="{% url 'cliente_salidas' c.pk %}" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-box-arrow-up-right me-1"></i>Salidas
+                </a>
+                {% endif %}
                 <a href="{% url 'cliente_editar' c.pk %}" class="btn btn-sm btn-outline-secondary">
                   <i class="bi bi-pencil-fill"></i>
                 </a>

@@ -7,7 +7,10 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Categoria, Conteo, ConteoDetalle, Item, Stock, Ubicacion
+from .models import (
+    Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
+    Item, MovimientoInventario, Stock, Ubicacion,
+)
 from .views import _calcular_tramos
 
 
@@ -126,3 +129,30 @@ class VistasOperativasTests(TestCase):
         self.assertEqual(noche['fecha_asignada'], date(2026, 5, 12))
         self.assertIn('22:59', noche['label_rango'])
         self.assertIn('16:25', noche['label_rango'])
+
+    def test_cliente_salidas_usa_fecha_movimiento_y_detalles(self):
+        cliente = Cliente.objects.create(nombre='Renato', activo=True)
+        mov = MovimientoInventario.objects.create(
+            tipo_movimiento='salida',
+            fecha_movimiento=timezone.make_aware(datetime(2026, 5, 5, 10, 30)),
+            motivo='Venta',
+            usuario=self.user,
+            cliente=cliente,
+        )
+        DetalleMovimiento.objects.create(
+            movimiento=mov,
+            item=self.item,
+            cantidad=Decimal('10'),
+            ubicacion_origen=Stock.objects.get(item=self.item).ubicacion,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('cliente_salidas', args=[cliente.pk]), {
+            'fecha_inicio': '2026-05-01',
+            'fecha_fin': '2026-05-13',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Renato')
+        self.assertContains(response, 'Bolsa Camiseta Grande')
+        self.assertContains(response, '10')

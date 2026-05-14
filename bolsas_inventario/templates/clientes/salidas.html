@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Salidas de {{ cliente.nombre }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .table-salidas th { font-size: .75rem; text-transform: uppercase; color: #6c757d; }
+  .metric-card .fs-2 { line-height: 1.1; }
+  .grupo-card { border-left: 4px solid #0d6efd; }
+  @media (max-width: 767px) {
+    .filters-card .btn, .filters-card .form-control, .filters-card .form-select { min-height: 44px; }
+    .mov-card { border-left: 4px solid #dc3545; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center" style="background:linear-gradient(135deg,#0d6efd,#198754);">
+  <div>
+    <h1><i class="bi bi-person-lines-fill me-2"></i>{{ cliente.nombre }}</h1>
+    <small class="opacity-75">
+      Salidas por fecha de movimiento · {{ fecha_inicio|date:"d/m/Y" }} → {{ fecha_fin|date:"d/m/Y" }}
+    </small>
+  </div>
+  <a href="{% url 'cliente_lista' %}" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-arrow-left me-1"></i>Clientes
+  </a>
+</div>
+
+<div class="card mb-4 filters-card">
+  <div class="card-body py-2 px-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-6 col-md-2">
+        <label class="form-label">Desde</label>
+        <input type="date" name="fecha_inicio" class="form-control" value="{{ fecha_inicio|date:'Y-m-d' }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="fecha_fin" class="form-control" value="{{ fecha_fin|date:'Y-m-d' }}">
+      </div>
+      <div class="col-12 col-md-2">
+        <label class="form-label">Agrupar</label>
+        <select name="agrupar_por" class="form-select">
+          <option value="dia" {% if agrupar_por == 'dia' %}selected{% endif %}>Día</option>
+          <option value="semana" {% if agrupar_por == 'semana' %}selected{% endif %}>Semana</option>
+          <option value="mes" {% if agrupar_por == 'mes' %}selected{% endif %}>Mes</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">Producto</label>
+        <select name="producto" class="form-select">
+          <option value="">Todos los productos</option>
+          {% for p in productos %}
+          <option value="{{ p.pk }}" {% if producto_id == p.pk %}selected{% endif %}>
+            {{ p.codigo }} · {{ p.nombre }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-3 d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill">
+          <i class="bi bi-search me-1"></i>Consultar
+        </button>
+        <a href="?fecha_inicio={{ fecha_inicio|date:'Y-m-d' }}&fecha_fin={{ fecha_fin|date:'Y-m-d' }}&agrupar_por={{ agrupar_por }}{% if producto_id %}&producto={{ producto_id }}{% endif %}&export=xlsx"
+           class="btn btn-outline-success">
+          <i class="bi bi-file-earmark-excel-fill"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="card h-100 text-center metric-card">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-primary">{{ total_general|floatformat:"-2" }}</div>
+        <div class="small text-muted">Total fardos/items</div>
+        <i class="bi bi-box-seam text-primary fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100 text-center metric-card">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-danger">{{ num_movimientos }}</div>
+        <div class="small text-muted">Salidas</div>
+        <i class="bi bi-receipt-cutoff text-danger fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100 text-center metric-card">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-success">{{ num_productos }}</div>
+        <div class="small text-muted">Productos</div>
+        <i class="bi bi-list-check text-success fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100 text-center metric-card">
+      <div class="card-body py-3">
+        <div class="fs-6 fw-bold text-secondary">{{ fecha_inicio|date:"d/m/Y" }}</div>
+        <div class="small text-muted">a {{ fecha_fin|date:"d/m/Y" }}</div>
+        <i class="bi bi-calendar-range text-secondary fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-xl-5">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-box-fill text-primary me-2"></i>Desglose por producto
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0 table-salidas align-middle">
+            <thead class="table-light">
+              <tr><th class="px-3">Producto</th><th>Código</th><th class="text-end px-3">Cantidad</th></tr>
+            </thead>
+            <tbody>
+              {% for r in por_producto %}
+              <tr>
+                <td class="px-3 fw-semibold">{{ r.item.nombre }}</td>
+                <td class="text-muted small">{{ r.item.codigo }}</td>
+                <td class="text-end px-3 fw-bold">{{ r.cantidad|floatformat:"-2" }} {{ r.unidad }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3" class="text-center text-muted py-4">Sin salidas en el rango.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-xl-7">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-calendar3 text-success me-2"></i>Agrupado por {{ agrupar_por }}
+      </div>
+      <div class="card-body">
+        {% for g in grupos %}
+        <div class="grupo-card ps-3 mb-3">
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="fw-bold">{{ g.label }}</div>
+            <span class="badge bg-primary">{{ g.total|floatformat:"-2" }}</span>
+          </div>
+          <ul class="list-unstyled small mt-2 mb-0">
+            {% for row in g.items %}
+            <li class="d-flex justify-content-between py-1 border-bottom">
+              <span>{{ row.item.nombre }}</span>
+              <span class="fw-semibold">{{ row.cantidad|floatformat:"-2" }} {{ row.item.unidad_medida }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% empty %}
+        <div class="text-center text-muted py-4">
+          <i class="bi bi-inbox fs-1 d-block mb-2"></i>Sin datos agrupados.
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card d-none d-md-block">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-clock-history me-2"></i>Salidas individuales
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 table-salidas align-middle">
+      <thead class="table-light">
+        <tr>
+          <th class="px-3">Fecha movimiento</th>
+          <th>Movimiento</th>
+          <th>Usuario</th>
+          <th>Motivo</th>
+          <th class="text-end">Total</th>
+          <th class="text-end px-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in movimientos %}
+        {% with mov=row.movimiento %}
+        <tr>
+          <td class="px-3 text-nowrap">{{ mov.fecha_movimiento|date:"d/m/Y H:i" }}</td>
+          <td>#{{ mov.pk }}</td>
+          <td>{{ mov.usuario.username }}</td>
+          <td class="text-muted small">{{ mov.motivo|default:"–"|truncatechars:70 }}</td>
+          <td class="text-end fw-bold">{{ row.total|floatformat:"-2" }} · {{ row.num_items }} ítem(s)</td>
+          <td class="text-end px-3">
+            <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-sm btn-outline-primary">Ver detalle</a>
+          </td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Sin movimientos.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="d-md-none">
+  <h2 class="h6 text-muted text-uppercase mb-2">Salidas individuales</h2>
+  {% for row in movimientos %}
+  {% with mov=row.movimiento %}
+  <div class="card mov-card mb-2">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex justify-content-between gap-2">
+        <div>
+          <div class="fw-bold">Movimiento #{{ mov.pk }}</div>
+          <div class="small text-muted">{{ mov.fecha_movimiento|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}</div>
+          <div class="small text-muted">{{ mov.motivo|default:"Sin motivo"|truncatechars:80 }}</div>
+        </div>
+        <div class="text-end">
+          <div class="fw-bold text-danger">{{ row.total|floatformat:"-2" }}</div>
+          <div class="small text-muted">{{ row.num_items }} ítem(s)</div>
+        </div>
+      </div>
+      <a href="{% url 'movimiento_detalle' mov.pk %}" class="btn btn-outline-primary btn-sm w-100 mt-2">Ver detalle</a>
+    </div>
+  </div>
+  {% endwith %}
+  {% empty %}
+  <div class="card"><div class="card-body text-center text-muted py-4">Sin movimientos.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}
