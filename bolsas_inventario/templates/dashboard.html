@@ -28,6 +28,18 @@
     </div>
   </div>
   <div class="col-6 col-md-3">
+    <div class="card h-100 border-danger border-opacity-25">
+      <div class="card-body text-center py-3">
+        <div class="fs-1 fw-bold text-danger">{{ salidas_del_dia.total|floatformat:0 }}</div>
+        <div class="text-muted small">Salidas hoy</div>
+        <div class="text-muted" style="font-size:.72rem">
+          {{ salidas_del_dia.movimientos }} movimiento(s)
+        </div>
+        <i class="bi bi-arrow-up-circle-fill text-danger fs-5 mt-1 d-block"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
     <div class="card h-100">
       <div class="card-body text-center py-3">
         {% if produccion_hoy.produccion_dia is not None %}

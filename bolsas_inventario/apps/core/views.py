@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from django.core.cache import cache
 from django.urls import reverse
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime as dt_datetime, time as dt_time
 from decimal import Decimal
 import csv
 import io
@@ -87,6 +87,44 @@ def _timed_view(name):
                 perf_log.info('%s %.3fs user=%s path=%s', name, elapsed, user, request.get_full_path())
         return wrapper
     return decorator
+
+
+def _rango_local_dia(fecha):
+    tz = timezone.get_current_timezone()
+    inicio = timezone.make_aware(dt_datetime.combine(fecha, dt_time.min), tz)
+    return inicio, inicio + timedelta(days=1)
+
+
+def _filtro_detalle_camiseta():
+    return (
+        Q(item__tipo='producto')
+        & (
+            Q(item__categoria__nombre__icontains='camiseta')
+            | Q(item__nombre__icontains='camiseta')
+        )
+    )
+
+
+def _calcular_salidas_camiseta_del_dia(fecha):
+    inicio, fin = _rango_local_dia(fecha)
+    qs = (
+        DetalleMovimiento.objects
+        .filter(
+            movimiento__tipo_movimiento='salida',
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__gte=inicio,
+            movimiento__fecha_movimiento__lt=fin,
+        )
+        .filter(_filtro_detalle_camiseta())
+    )
+    return {
+        'total': qs.aggregate(t=Sum('cantidad'))['t'] or Decimal('0'),
+        'movimientos': qs.values('movimiento_id').distinct().count(),
+        'productos': qs.values('item_id').distinct().count(),
+        'inicio': inicio,
+        'fin': fin,
+    }
 
 
 # ─── HELPERS DE STOCK PARA MOVIMIENTOS ────────────────────────────────────────
@@ -277,10 +315,18 @@ def _cerrar_pendientes_conciliacion(item, ubicacion):
 @login_required
 @_timed_view('dashboard')
 def dashboard(request):
-    hoy = date.today()
+    hoy = timezone.localdate()
     cache_key = f'dashboard:data:{hoy.isoformat()}'
+    salidas_del_dia = _calcular_salidas_camiseta_del_dia(hoy)
     cached = cache.get(cache_key)
     if cached:
+        cached = cached.copy()
+        cached['hoy'] = hoy
+        cached['salidas_del_dia'] = salidas_del_dia
+        if cached.get('produccion_hoy'):
+            produccion_cacheada = cached['produccion_hoy'].copy()
+            produccion_cacheada['salidas_del_dia'] = salidas_del_dia['total']
+            cached['produccion_hoy'] = produccion_cacheada
         return render(request, 'dashboard.html', cached)
 
     # Single query: annotate stock total, filter bajo_stock in DB (no N+1)
@@ -301,6 +347,7 @@ def dashboard(request):
     )
 
     produccion_hoy = _calcular_produccion(hoy)
+    produccion_hoy['salidas_del_dia'] = salidas_del_dia['total']
 
     hace_30 = timezone.now() - timedelta(days=30)
     repuestos_top = (
@@ -339,6 +386,7 @@ def dashboard(request):
         'items_bajo_stock': items_bajo_stock,
         'ultimos_detalles': ultimos_detalles,
         'produccion_hoy': produccion_hoy,
+        'salidas_del_dia': salidas_del_dia,
         'repuestos_top': repuestos_top,
         'hoy': hoy,
         'total_items': Item.objects.filter(activo=True).count(),
