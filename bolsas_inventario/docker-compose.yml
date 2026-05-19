@@ -17,6 +17,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Backup manual PostgreSQL ────────────────────────────────────────────────
+  # No se levanta con "docker compose up"; se ejecuta manualmente:
+  # docker compose run --rm backup
+  backup:
+    image: postgres:15-alpine
+    profiles: ["manual"]
+    restart: "no"
+    volumes:
+      - ./scripts:/scripts:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    environment:
+      POSTGRES_HOST:          db
+      POSTGRES_PORT:          ${DB_PORT:-5432}
+      POSTGRES_DB:            ${DB_NAME:-bolsas_inventario}
+      POSTGRES_USER:          ${DB_USER:-bolsas_user}
+      POSTGRES_PASSWORD:      ${DB_PASSWORD}
+      BACKUP_RETENTION_DAYS:  ${BACKUP_RETENTION_DAYS:-14}
+      TZ:                     ${TZ:-America/Tegucigalpa}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "/scripts/backup_postgres.sh"]
+
   # ── Django / Gunicorn ───────────────────────────────────────────────────────
   web:
     build:

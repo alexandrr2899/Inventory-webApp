@@ -84,6 +84,67 @@ docker-compose down -v       # también elimina los volúmenes (borra la BD)
 
 ---
 
+## Backups PostgreSQL
+
+El stack incluye un servicio opcional `backup` separado de Django. No corre continuamente y no depende del contenedor `web`; solo ejecuta `pg_dump` contra el servicio `db`.
+
+### Configurar ubicación persistente
+
+En local puedes usar el default:
+
+```env
+BACKUP_DIR=./backups
+BACKUP_RETENTION_DAYS=14
+```
+
+En Raspberry/Portainer usa una ruta absoluta persistente del host, por ejemplo:
+
+```env
+BACKUP_DIR=/apps/inventario/backups
+BACKUP_RETENTION_DAYS=14
+```
+
+Los archivos quedan en:
+
+```text
+<BACKUP_DIR>/postgres/inventario_YYYYMMDD_HHMM.sql.gz
+```
+
+### Ejecutar backup manual
+
+Desde la carpeta del proyecto:
+
+```bash
+docker compose run --rm backup
+```
+
+El contenedor genera el backup, verifica que el archivo exista y tenga tamaño mayor a cero, y elimina backups mayores a `BACKUP_RETENTION_DAYS`.
+
+### Verificar backups
+
+```bash
+ls -lh ./backups/postgres/
+```
+
+En Raspberry, si usas la ruta sugerida:
+
+```bash
+ls -lh /apps/inventario/backups/postgres/
+```
+
+### Restaurar
+
+La restauración está documentada en [RESTORE.md](RESTORE.md). No ejecutes una restauración en producción sin revisar el procedimiento completo.
+
+Buenas prácticas:
+
+- Ejecuta un backup antes de actualizar producción.
+- Copia backups importantes fuera de la Raspberry.
+- Prueba una restauración en un entorno de prueba antes de confiar en el proceso.
+- No subas archivos `.sql` o `.sql.gz` al repositorio.
+
+---
+
 ## Opción B — Correr local sin Docker
 
 ### 1. Crear entorno virtual e instalar dependencias
@@ -216,6 +277,8 @@ La fórmula es: `Producción = Conteo Tarde − Conteo Mañana + Salidas del dí
 | `DB_PORT` | Puerto PostgreSQL | `5432` |
 | `ALLOWED_HOSTS` | Hosts permitidos (separados por coma) | `localhost,127.0.0.1` |
 | `ADMIN_URL` | Ruta privada del admin, con `/` final | `gestion-interna/` |
+| `BACKUP_DIR` | Carpeta persistente del host para backups | `./backups` |
+| `BACKUP_RETENTION_DAYS` | Días de retención de backups manuales | `14` |
 
 ---
 
