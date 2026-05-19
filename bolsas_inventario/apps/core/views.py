@@ -318,15 +318,14 @@ def dashboard(request):
     hoy = timezone.localdate()
     cache_key = f'dashboard:data:{hoy.isoformat()}'
     salidas_del_dia = _calcular_salidas_camiseta_del_dia(hoy)
+    produccion_hoy = _calcular_produccion(hoy, salidas_parciales_hasta=timezone.now())
+    produccion_hoy['salidas_del_dia'] = salidas_del_dia['total']
     cached = cache.get(cache_key)
     if cached:
         cached = cached.copy()
         cached['hoy'] = hoy
         cached['salidas_del_dia'] = salidas_del_dia
-        if cached.get('produccion_hoy'):
-            produccion_cacheada = cached['produccion_hoy'].copy()
-            produccion_cacheada['salidas_del_dia'] = salidas_del_dia['total']
-            cached['produccion_hoy'] = produccion_cacheada
+        cached['produccion_hoy'] = produccion_hoy
         return render(request, 'dashboard.html', cached)
 
     # Single query: annotate stock total, filter bajo_stock in DB (no N+1)
@@ -345,9 +344,6 @@ def dashboard(request):
         .select_related('item', 'movimiento', 'movimiento__usuario')
         .order_by('-movimiento__fecha')[:10]
     )
-
-    produccion_hoy = _calcular_produccion(hoy)
-    produccion_hoy['salidas_del_dia'] = salidas_del_dia['total']
 
     hace_30 = timezone.now() - timedelta(days=30)
     repuestos_top = (
@@ -389,7 +385,6 @@ def dashboard(request):
         'salidas_del_dia': salidas_del_dia,
         'repuestos_top': repuestos_top,
         'hoy': hoy,
-        'total_items': Item.objects.filter(activo=True).count(),
         'total_bajo_stock': total_bajo_stock,
         'total_pendientes_conciliacion': total_pendientes_conciliacion,
         'total_alertas': total_bajo_stock + total_pendientes_conciliacion,
@@ -398,7 +393,7 @@ def dashboard(request):
     return render(request, 'dashboard.html', context)
 
 
-def _calcular_produccion(fecha):
+def _calcular_produccion(fecha, salidas_parciales_hasta=None):
     """
     Calcula producción de día y noche usando SOLO conteos tipo Camiseta.
 
@@ -456,16 +451,18 @@ def _calcular_produccion(fecha):
         cae estrictamente entre t_inicio y t_fin.
         Solo ítems tipo 'producto'.
         """
+        if not t_inicio or not t_fin or t_inicio >= t_fin:
+            return Decimal('0')
         return (
             DetalleMovimiento.objects
             .filter(
                 movimiento__tipo_movimiento='salida',
                 movimiento__anulado=False,
                 movimiento__eliminado=False,
-                movimiento__fecha_movimiento__gt=t_inicio,
+                movimiento__fecha_movimiento__gte=t_inicio,
                 movimiento__fecha_movimiento__lt=t_fin,
-                item__tipo='producto',
             )
+            .filter(_filtro_detalle_camiseta())
             .aggregate(t=Sum('cantidad'))['t'] or Decimal('0')
         )
 
@@ -482,7 +479,13 @@ def _calcular_produccion(fecha):
         produccion_dia  = total_tarde - total_manana + salidas_dia
         falta_dia       = None
     else:
-        salidas_dia    = Decimal('0')
+        if conteo_manana and salidas_parciales_hasta:
+            salidas_dia = _salidas_entre(
+                conteo_manana.fecha_hora_conteo,
+                salidas_parciales_hasta,
+            )
+        else:
+            salidas_dia = Decimal('0')
         produccion_dia = None
         if not conteo_manana and not conteo_tarde:
             falta_dia = 'conteo de mañana y tarde'
@@ -500,7 +503,13 @@ def _calcular_produccion(fecha):
         produccion_noche = total_manana_sig - total_tarde + salidas_noche
         falta_noche      = None
     else:
-        salidas_noche    = Decimal('0')
+        if conteo_tarde and salidas_parciales_hasta:
+            salidas_noche = _salidas_entre(
+                conteo_tarde.fecha_hora_conteo,
+                salidas_parciales_hasta,
+            )
+        else:
+            salidas_noche = Decimal('0')
         produccion_noche = None
         if not conteo_tarde and not conteo_manana_sig:
             falta_noche = 'conteo de tarde y mañana del día siguiente'
