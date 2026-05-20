@@ -1,5 +1,9 @@
 from decimal import Decimal
 from datetime import date, datetime
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+import tempfile
 
 from django.contrib.auth.models import Group, Permission, User
 from django.core.cache import cache
@@ -8,7 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
-    Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
+    BackupJob, Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
     Item, MovimientoInventario, Stock, Ubicacion,
 )
 from .views import _calcular_tramos
@@ -84,6 +88,42 @@ class VistasOperativasTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.post(reverse('notificaciones_panel'), {'tipo': 'stock_bajo'})
         self.assertRedirects(response, reverse('notificaciones_panel'))
+
+    def test_backups_panel_requiere_permiso(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('backups_panel'))
+        self.assertEqual(response.status_code, 403)
+
+        self.user.user_permissions.add(Permission.objects.get(codename='gestionar_backups'))
+        response = self.client.get(reverse('backups_panel'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_backup_manual_registra_job_exitoso(self):
+        self.user.user_permissions.add(Permission.objects.get(codename='gestionar_backups'))
+        self.client.force_login(self.user)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / 'postgres'
+            root.mkdir(parents=True)
+
+            def fake_run(*args, **kwargs):
+                (root / 'inventario_20260520_1200.sql.gz').write_bytes(b'backup')
+                return SimpleNamespace(returncode=0, stdout='ok', stderr='')
+
+            with patch.dict('os.environ', {'BACKUP_ROOT': str(root), 'N8N_WEBHOOK_URL': ''}):
+                with patch('apps.core.views.subprocess.run', side_effect=fake_run):
+                    response = self.client.post(reverse('backups_panel'))
+
+        self.assertRedirects(response, reverse('backups_panel'))
+        job = BackupJob.objects.latest('fecha_inicio')
+        self.assertEqual(job.estado, 'exitoso')
+        self.assertEqual(job.archivo, 'postgres/inventario_20260520_1200.sql.gz')
+
+    def test_backup_download_rechaza_path_traversal(self):
+        self.user.user_permissions.add(Permission.objects.get(codename='gestionar_backups'))
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('backup_descargar', args=['..%2Fsecret.sql.gz']))
+        self.assertEqual(response.status_code, 404)
 
     def test_tramo_noche_se_asigna_a_fecha_inicial(self):
         def aware(year, month, day, hour, minute):

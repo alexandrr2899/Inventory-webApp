@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Categoria, Item, Ubicacion, Stock, Maquina, Cliente,
-    MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle
+    MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle, BackupJob
 )
 
 admin.site.site_header = "Transformadora de Empaques"
@@ -54,6 +54,14 @@ class ClienteAdmin(admin.ModelAdmin):
     list_filter = ['activo']
     search_fields = ['nombre', 'rtn']
     list_editable = ['activo']
+
+
+@admin.register(BackupJob)
+class BackupJobAdmin(admin.ModelAdmin):
+    list_display = ['fecha_inicio', 'fecha_fin', 'usuario', 'estado', 'archivo', 'tamano']
+    list_filter = ['estado']
+    search_fields = ['archivo', 'usuario__username']
+    readonly_fields = ['usuario', 'fecha_inicio', 'fecha_fin', 'estado', 'archivo', 'tamano', 'mensaje_error']
 
 
 class ConteoDetalleInline(admin.TabularInline):

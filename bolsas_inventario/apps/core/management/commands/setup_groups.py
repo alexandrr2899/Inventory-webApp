@@ -10,6 +10,7 @@ GRUPOS = {
         'registrar_produccion',
         # Gestión de movimientos (solo admin)
         'editar_movimiento', 'anular_movimiento', 'eliminar_movimiento',
+        'gestionar_backups',
     ],
     'Supervisor': [
         'ver_inventario', 'registrar_entrada', 'registrar_salida',

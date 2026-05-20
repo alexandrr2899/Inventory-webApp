@@ -87,11 +87,16 @@
 </a>
 {% endif %}
 
-{% if perms.core.importar_excel or user.is_superuser %}
+{% if perms.core.importar_excel or perms.core.gestionar_backups or user.is_superuser %}
 <span class="sidebar-section">Administración</span>
 {% if perms.core.importar_excel %}
 <a href="{% url 'importar_items' %}" class="nav-link {% if request.resolver_match.url_name == 'importar_items' %}active{% endif %}">
   <i class="bi bi-file-earmark-excel-fill text-success"></i> Importar Excel
+</a>
+{% endif %}
+{% if perms.core.gestionar_backups or user.is_superuser %}
+<a href="{% url 'backups_panel' %}" class="nav-link {% if 'backup' in request.resolver_match.url_name %}active{% endif %}">
+  <i class="bi bi-database-down text-info"></i> Backups
 </a>
 {% endif %}
 {% if user.is_superuser %}

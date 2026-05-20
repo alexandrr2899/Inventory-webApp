@@ -142,6 +142,33 @@ class Cliente(models.Model):
         return self.nombre
 
 
+class BackupJob(models.Model):
+    ESTADO_CHOICES = [
+        ('ejecutando', 'Ejecutando'),
+        ('exitoso', 'Exitoso'),
+        ('fallido', 'Fallido'),
+    ]
+
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    fecha_inicio = models.DateTimeField(default=timezone.now)
+    fecha_fin = models.DateTimeField(null=True, blank=True)
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='ejecutando')
+    archivo = models.CharField(max_length=255, blank=True)
+    tamano = models.PositiveBigIntegerField(default=0)
+    mensaje_error = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = 'Trabajo de backup'
+        verbose_name_plural = 'Trabajos de backup'
+        ordering = ['-fecha_inicio']
+        permissions = [
+            ('gestionar_backups', 'Puede gestionar backups'),
+        ]
+
+    def __str__(self):
+        return f'Backup {self.get_estado_display()} - {timezone.localtime(self.fecha_inicio):%d/%m/%Y %H:%M}'
+
+
 class MovimientoInventario(models.Model):
     TIPO_CHOICES = [
         ('entrada', 'Entrada'),

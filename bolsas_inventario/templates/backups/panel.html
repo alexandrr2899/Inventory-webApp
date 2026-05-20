@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+
+{% block extra_head %}
+<style>
+  .backup-card { border-left: 4px solid #0dcaf0; }
+  .backup-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(13,202,240,.12);
+  }
+  .backup-path { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  @media (max-width: 767px) {
+    .backup-table thead { display: none; }
+    .backup-table, .backup-table tbody, .backup-table tr, .backup-table td { display: block; width: 100%; }
+    .backup-table tr {
+      border: 1px solid #dee2e6; border-radius: 10px;
+      margin-bottom: .75rem; padding: .75rem; background: #fff;
+    }
+    .backup-table td { border: 0; padding: .25rem 0; }
+    .backup-table td::before {
+      content: attr(data-label);
+      display: block; font-size: .72rem; color: #6c757d;
+      text-transform: uppercase; font-weight: 700;
+    }
+    .backup-table .btn { width: 100%; margin-top: .4rem; min-height: 42px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div>
+    <h1><i class="bi bi-database-down me-2"></i>Backups</h1>
+    <small class="opacity-75">Backups manuales PostgreSQL</small>
+  </div>
+  <a href="{% url 'dashboard' %}" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-house-fill me-1"></i>Dashboard
+  </a>
+</div>
+
+<div class="alert alert-info d-flex gap-2 align-items-start">
+  <i class="bi bi-shield-lock-fill fs-4"></i>
+  <div>
+    <strong>Solo creación y descarga.</strong>
+    Esta pantalla no restaura ni elimina backups. Los archivos se leen desde <span class="backup-path">{{ backup_root_label }}</span>.
+  </div>
+</div>
+
+{% if not webhook_configurado %}
+<div class="alert alert-warning d-flex gap-2 align-items-start">
+  <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+  <div>
+    <strong>N8N_WEBHOOK_URL no está configurado.</strong>
+    El backup funcionará, pero no se enviará notificación externa.
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-5">
+    <div class="card backup-card h-100">
+      <div class="card-body">
+        <div class="d-flex gap-3 align-items-start">
+          <div class="backup-icon text-info flex-shrink-0">
+            <i class="bi bi-database-fill-down fs-4"></i>
+          </div>
+          <div class="flex-fill">
+            <h2 class="h6 fw-bold mb-1">Crear backup ahora</h2>
+            <p class="text-muted small mb-3">
+              Ejecuta el script autorizado de PostgreSQL. Puede tardar unos segundos según el tamaño de la base de datos.
+            </p>
+            <form method="post" class="m-0">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-info fw-semibold">
+                <i class="bi bi-play-circle-fill me-1"></i>Crear backup ahora
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-7">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-clock-history me-1"></i>Últimos trabajos
+      </div>
+      <div class="card-body p-0">
+        {% if jobs %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle backup-table">
+            <thead class="table-light">
+              <tr>
+                <th>Fecha</th>
+                <th>Usuario</th>
+                <th>Estado</th>
+                <th>Archivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for job in jobs %}
+              <tr>
+                <td data-label="Fecha">{{ job.fecha_inicio|date:"d/m/Y H:i" }}</td>
+                <td data-label="Usuario">{{ job.usuario|default:"N/A" }}</td>
+                <td data-label="Estado">
+                  {% if job.estado == 'exitoso' %}
+                  <span class="badge bg-success">Exitoso</span>
+                  {% elif job.estado == 'fallido' %}
+                  <span class="badge bg-danger">Fallido</span>
+                  {% else %}
+                  <span class="badge bg-secondary">Ejecutando</span>
+                  {% endif %}
+                </td>
+                <td data-label="Archivo" class="small backup-path">{{ job.archivo|default:"-" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-3 text-muted small">Aún no hay trabajos de backup registrados desde la app.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="fw-bold"><i class="bi bi-archive-fill me-1"></i>Backups disponibles</span>
+    <span class="badge bg-light text-dark">{{ backups|length }} archivo(s)</span>
+  </div>
+  <div class="card-body p-0">
+    {% if backups %}
+    <div class="table-responsive">
+      <table class="table mb-0 align-middle backup-table">
+        <thead class="table-light">
+          <tr>
+            <th>Archivo</th>
+            <th>Fecha</th>
+            <th>Tamaño</th>
+            <th>Estado</th>
+            <th class="text-end">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for backup in backups %}
+          <tr>
+            <td data-label="Archivo">
+              <div class="fw-semibold">{{ backup.filename }}</div>
+              <div class="small text-muted backup-path">{{ backup.relative_path }}</div>
+            </td>
+            <td data-label="Fecha">{{ backup.created_at|date:"d/m/Y H:i" }}</td>
+            <td data-label="Tamaño">{{ backup.size_label }}</td>
+            <td data-label="Estado">
+              {% if backup.estado == 'disponible' %}
+              <span class="badge bg-success">Disponible</span>
+              {% else %}
+              <span class="badge bg-warning text-dark">{{ backup.estado }}</span>
+              {% endif %}
+            </td>
+            <td data-label="Acción" class="text-end">
+              <a href="{% url 'backup_descargar' backup.filename %}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-download me-1"></i>Descargar
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-center text-muted">
+      <i class="bi bi-archive fs-1 d-block mb-2"></i>
+      No hay backups disponibles todavía.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

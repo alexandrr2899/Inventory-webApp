@@ -6,6 +6,8 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('alertas/', views.alertas_centro, name='alertas_centro'),
     path('notificaciones/', views.notificaciones_panel, name='notificaciones_panel'),
+    path('backups/', views.backups_panel, name='backups_panel'),
+    path('backups/descargar/<str:filename>/', views.backup_descargar, name='backup_descargar'),
 
     # Inventario - Items
     path('inventario/', views.inventario_lista, name='inventario_lista'),

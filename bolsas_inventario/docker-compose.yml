@@ -28,7 +28,7 @@ services:
       - ./scripts:/scripts:ro
       - ${BACKUP_DIR:-./backups}:/backups
     environment:
-      POSTGRES_HOST:          db
+      POSTGRES_HOST:          ${POSTGRES_HOST:-db}
       POSTGRES_PORT:          ${DB_PORT:-5432}
       POSTGRES_DB:            ${DB_NAME:-bolsas_inventario}
       POSTGRES_USER:          ${DB_USER:-bolsas_user}
@@ -51,6 +51,7 @@ services:
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
+      - ${BACKUP_DIR:-./backups}:/backups
     environment:
       SECRET_KEY:           ${SECRET_KEY}
       DEBUG:                ${DEBUG:-False}
@@ -61,6 +62,15 @@ services:
       DB_USER:              ${DB_USER:-bolsas_user}
       DB_PASSWORD:          ${DB_PASSWORD}
       DB_PORT:              ${DB_PORT:-5432}
+      POSTGRES_HOST:        ${POSTGRES_HOST:-db}
+      POSTGRES_PORT:        ${DB_PORT:-5432}
+      POSTGRES_DB:          ${DB_NAME:-bolsas_inventario}
+      POSTGRES_USER:        ${DB_USER:-bolsas_user}
+      POSTGRES_PASSWORD:    ${DB_PASSWORD}
+      BACKUP_DIR:           /backups
+      BACKUP_ROOT:          /backups/postgres
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-300}
       N8N_WEBHOOK_URL:      ${N8N_WEBHOOK_URL:-}
       ADMIN_URL:            ${ADMIN_URL:-gestion-interna/}
     depends_on:
