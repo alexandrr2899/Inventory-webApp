@@ -22,7 +22,7 @@ services:
   # docker compose run --rm backup
   backup:
     image: postgres:15-alpine
-    profiles: ["manual"]
+    profiles: ["maintenance"]
     restart: "no"
     volumes:
       - ./scripts:/scripts:ro
