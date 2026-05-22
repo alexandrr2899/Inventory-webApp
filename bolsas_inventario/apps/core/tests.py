@@ -108,6 +108,10 @@ class VistasOperativasTests(TestCase):
 
         payload = _payload_produccion_dia()
 
+        self.assertNotIn('conteos_usados', payload)
+        self.assertNotIn('faltantes', payload)
+        self.assertEqual(payload['inventario_actual'][0]['nombre'], 'Bolsa Camiseta Grande')
+        self.assertEqual(payload['inventario_actual'][0]['stock_actual'], 5.0)
         self.assertEqual(payload['salidas_dia_total'], 7.0)
         self.assertEqual(len(payload['salidas_del_dia_detalle']), 1)
         salida = payload['salidas_del_dia_detalle'][0]

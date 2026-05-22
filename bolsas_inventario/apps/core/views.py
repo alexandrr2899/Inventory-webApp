@@ -1056,8 +1056,7 @@ def _fecha_hora_payload():
     return ahora.strftime('%d/%m/%Y'), ahora.strftime('%H:%M')
 
 
-def _payload_inventario_camiseta():
-    fecha, hora = _fecha_hora_payload()
+def _inventario_camiseta_actual():
     orden_operativo = [
         'Bolsa Camiseta Grande',
         'Bolsa Camiseta Mediana',
@@ -1075,20 +1074,25 @@ def _payload_inventario_camiseta():
         .annotate(stock_calc=_STOCK_ANN)
     )
     items.sort(key=lambda item: (orden_map.get(item.nombre.lower(), 999), item.orden, item.nombre))
+    return [
+        {
+            'nombre': item.nombre,
+            'codigo': item.codigo,
+            'stock_actual': _decimal_payload(item.stock_calc),
+            'unidad': item.unidad_medida,
+        }
+        for item in items
+    ]
+
+
+def _payload_inventario_camiseta():
+    fecha, hora = _fecha_hora_payload()
 
     return {
         'titulo': 'Inventario actual de Camiseta',
         'fecha': fecha,
         'hora': hora,
-        'items': [
-            {
-                'nombre': item.nombre,
-                'codigo': item.codigo,
-                'stock_actual': _decimal_payload(item.stock_calc),
-                'unidad': item.unidad_medida,
-            }
-            for item in items
-        ],
+        'items': _inventario_camiseta_actual(),
     }
 
 
@@ -1237,9 +1241,6 @@ def _payload_produccion_dia():
     produccion = _calcular_produccion(fecha_operativa)
     salidas_completas = _salidas_camiseta_detalle_dia(fecha_operativa)
 
-    def _dt(dt):
-        return timezone.localtime(dt).strftime('%d/%m/%Y %H:%M') if dt else None
-
     salidas_calculo_total = (produccion['salidas_dia'] or Decimal('0')) + (produccion['salidas_noche'] or Decimal('0'))
 
     return {
@@ -1257,6 +1258,7 @@ def _payload_produccion_dia():
             'noche': _decimal_payload(produccion['salidas_noche']),
             'total': _decimal_payload(salidas_calculo_total),
         },
+        'inventario_actual': _inventario_camiseta_actual(),
         'salidas_dia_total': _decimal_payload(salidas_completas['total']),
         'salidas_del_dia_detalle': salidas_completas['detalle'],
         'salidas_del_dia_por_producto': salidas_completas['por_producto'],
@@ -1264,15 +1266,6 @@ def _payload_produccion_dia():
             salidas_completas['detalle'],
             salidas_completas['total'],
         ),
-        'conteos_usados': {
-            'manana': _dt(produccion['hora_manana']),
-            'tarde': _dt(produccion['hora_tarde']),
-            'manana_siguiente': _dt(produccion['hora_manana_sig']),
-        },
-        'faltantes': {
-            'dia': produccion['falta_dia'],
-            'noche': produccion['falta_noche'],
-        },
     }
 
 
