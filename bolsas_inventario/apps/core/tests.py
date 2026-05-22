@@ -15,7 +15,7 @@ from .models import (
     BackupJob, Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
     Item, MovimientoInventario, Stock, Ubicacion,
 )
-from .views import _calcular_tramos
+from .views import _calcular_tramos, _payload_produccion_dia
 
 
 @override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
@@ -88,6 +88,33 @@ class VistasOperativasTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.post(reverse('notificaciones_panel'), {'tipo': 'stock_bajo'})
         self.assertRedirects(response, reverse('notificaciones_panel'))
+
+    def test_payload_produccion_dia_incluye_salidas_completas_del_dia(self):
+        cliente = Cliente.objects.create(nombre='Renato')
+        ubicacion = Stock.objects.get(item=self.item).ubicacion
+        mov = MovimientoInventario.objects.create(
+            tipo_movimiento='salida',
+            fecha_movimiento=timezone.now(),
+            usuario=self.user,
+            cliente=cliente,
+            motivo='Salida del día',
+        )
+        DetalleMovimiento.objects.create(
+            movimiento=mov,
+            item=self.item,
+            cantidad=Decimal('7'),
+            ubicacion_origen=ubicacion,
+        )
+
+        payload = _payload_produccion_dia()
+
+        self.assertEqual(payload['salidas_dia_total'], 7.0)
+        self.assertEqual(len(payload['salidas_del_dia_detalle']), 1)
+        salida = payload['salidas_del_dia_detalle'][0]
+        self.assertEqual(salida['movimiento_id'], mov.pk)
+        self.assertEqual(salida['cliente'], 'Renato')
+        self.assertEqual(salida['total_movimiento'], 7.0)
+        self.assertEqual(salida['items'][0]['nombre'], 'Bolsa Camiseta Grande')
 
     def test_backups_panel_requiere_permiso(self):
         self.client.force_login(self.user)

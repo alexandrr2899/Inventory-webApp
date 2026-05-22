@@ -1137,13 +1137,110 @@ def _payload_stock_bajo():
     }
 
 
+def _salidas_camiseta_detalle_dia(fecha_operativa):
+    inicio, fin = _rango_local_dia(fecha_operativa)
+    detalles = (
+        DetalleMovimiento.objects
+        .filter(
+            movimiento__tipo_movimiento='salida',
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__gte=inicio,
+            movimiento__fecha_movimiento__lt=fin,
+        )
+        .filter(_filtro_detalle_camiseta())
+        .select_related('movimiento', 'movimiento__cliente', 'item', 'item__categoria')
+        .order_by('movimiento__fecha_movimiento', 'movimiento_id', 'item__orden', 'item__nombre')
+    )
+
+    movimientos = {}
+    total = Decimal('0')
+    por_producto = {}
+
+    for det in detalles:
+        mov = det.movimiento
+        cliente = mov.cliente or det.cliente
+        grupo = movimientos.setdefault(mov.pk, {
+            'movimiento': mov,
+            'cliente': cliente.nombre if cliente else 'Sin cliente',
+            'items': [],
+            'total': Decimal('0'),
+        })
+        grupo['items'].append(det)
+        grupo['total'] += det.cantidad
+        total += det.cantidad
+
+        producto = por_producto.setdefault(det.item_id, {
+            'item': det.item,
+            'cantidad': Decimal('0'),
+        })
+        producto['cantidad'] += det.cantidad
+
+    salidas = []
+    for grupo in movimientos.values():
+        mov = grupo['movimiento']
+        fecha_local = timezone.localtime(mov.fecha_movimiento)
+        items = []
+        for det in sorted(grupo['items'], key=lambda d: _orden_operativo_producto(d.item)):
+            items.append({
+                'nombre': det.item.nombre,
+                'codigo': det.item.codigo,
+                'cantidad': _decimal_payload(det.cantidad),
+                'unidad': det.item.unidad_medida,
+            })
+        salidas.append({
+            'movimiento_id': mov.pk,
+            'fecha': fecha_local.strftime('%d/%m/%Y'),
+            'hora': fecha_local.strftime('%H:%M'),
+            'cliente': grupo['cliente'],
+            'items': items,
+            'total_movimiento': _decimal_payload(grupo['total']),
+        })
+
+    total_por_producto = []
+    for data in sorted(por_producto.values(), key=lambda d: _orden_operativo_producto(d['item'])):
+        item = data['item']
+        total_por_producto.append({
+            'nombre': item.nombre,
+            'codigo': item.codigo,
+            'cantidad': _decimal_payload(data['cantidad']),
+            'unidad': item.unidad_medida,
+        })
+
+    return {
+        'total': total,
+        'detalle': salidas,
+        'por_producto': total_por_producto,
+        'inicio': inicio,
+        'fin': fin,
+    }
+
+
+def _texto_salidas_dia_telegram(salidas_detalle, total):
+    if not salidas_detalle:
+        return '📤 Salidas del día\nSin salidas de producto terminado registradas.'
+
+    bloques = ['📤 Salidas del día']
+    for salida in salidas_detalle:
+        bloques.append(f'👤 Cliente: {salida["cliente"]}')
+        for item in salida['items']:
+            bloques.append(f'• {item["nombre"]}: {item["cantidad"]:g} {item["unidad"]}')
+        bloques.append(f'Total: {salida["total_movimiento"]:g} Fardo')
+        bloques.append('')
+    bloques.append(f'Total salidas del día: {_decimal_payload(total):g} Fardo')
+    return '\n'.join(bloques).strip()
+
+
 def _payload_produccion_dia():
-    fecha_operativa = date.today()
+    fecha_operativa = timezone.localdate()
     fecha, hora = _fecha_hora_payload()
     produccion = _calcular_produccion(fecha_operativa)
+    salidas_completas = _salidas_camiseta_detalle_dia(fecha_operativa)
 
     def _dt(dt):
         return timezone.localtime(dt).strftime('%d/%m/%Y %H:%M') if dt else None
+
+    salidas_calculo_total = (produccion['salidas_dia'] or Decimal('0')) + (produccion['salidas_noche'] or Decimal('0'))
 
     return {
         'titulo': 'Reporte de producción del día',
@@ -1155,6 +1252,18 @@ def _payload_produccion_dia():
         'produccion_total': _decimal_payload(produccion['produccion_total']),
         'salidas_dia': _decimal_payload(produccion['salidas_dia']),
         'salidas_noche': _decimal_payload(produccion['salidas_noche']),
+        'salidas_calculo': {
+            'dia': _decimal_payload(produccion['salidas_dia']),
+            'noche': _decimal_payload(produccion['salidas_noche']),
+            'total': _decimal_payload(salidas_calculo_total),
+        },
+        'salidas_dia_total': _decimal_payload(salidas_completas['total']),
+        'salidas_del_dia_detalle': salidas_completas['detalle'],
+        'salidas_del_dia_por_producto': salidas_completas['por_producto'],
+        'salidas_del_dia_texto': _texto_salidas_dia_telegram(
+            salidas_completas['detalle'],
+            salidas_completas['total'],
+        ),
         'conteos_usados': {
             'manana': _dt(produccion['hora_manana']),
             'tarde': _dt(produccion['hora_tarde']),
@@ -1168,15 +1277,17 @@ def _payload_produccion_dia():
 
 
 def _payload_salidas_dia():
-    fecha_operativa = date.today()
+    fecha_operativa = timezone.localdate()
     fecha, hora = _fecha_hora_payload()
+    inicio, fin = _rango_local_dia(fecha_operativa)
     detalles = (
         DetalleMovimiento.objects
         .filter(
             movimiento__tipo_movimiento='salida',
             movimiento__anulado=False,
             movimiento__eliminado=False,
-            movimiento__fecha_movimiento__date=fecha_operativa,
+            movimiento__fecha_movimiento__gte=inicio,
+            movimiento__fecha_movimiento__lt=fin,
             item__tipo='producto',
         )
         .select_related('movimiento', 'item', 'cliente', 'movimiento__cliente')
