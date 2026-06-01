@@ -263,11 +263,23 @@ function initUbicacionTS(selUb, itemData, ubIdDefault) {
 
 // ── Actualizar stock según ubicación seleccionada ─────────────────────────────
 function updateStockSpan(stockSpan, itemData, ubId) {
-  if (!itemData || !ubId) { stockSpan.textContent = '–'; return; }
-  const qty = itemData.stocks_by_ub[String(ubId)];
-  stockSpan.textContent = qty !== undefined
-    ? `${parseFloat(qty).toLocaleString('es')} ${itemData.unidad}`
-    : `0 ${itemData.unidad}`;
+  if (!itemData || !ubId) {
+    stockSpan.textContent = '–';
+    stockSpan.classList.remove('text-danger', 'fw-bold');
+    return;
+  }
+  const qtyRaw = itemData.stocks_by_ub[String(ubId)];
+  const qty = qtyRaw !== undefined ? parseFloat(qtyRaw) : 0;
+  // Resaltar stock negativo o cero (incluye salidas pendientes de conciliación)
+  if (qty < 0) {
+    stockSpan.classList.add('text-danger', 'fw-bold');
+    stockSpan.title = 'Stock negativo — hay salidas pendientes de conciliación';
+    stockSpan.textContent = `${qty.toLocaleString('es')} ${itemData.unidad} ⚠`;
+  } else {
+    stockSpan.classList.remove('text-danger', 'fw-bold');
+    stockSpan.title = '';
+    stockSpan.textContent = `${qty.toLocaleString('es')} ${itemData.unidad}`;
+  }
 }
 
 // ── Renderizar tabla de tab fijo (camiseta / pigmentos / lisa) ────────────────

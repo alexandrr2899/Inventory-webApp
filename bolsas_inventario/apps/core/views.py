@@ -136,17 +136,21 @@ def _revertir_efecto_detalle(det):
     """
     Deshace el efecto de stock de un DetalleMovimiento.
     Debe llamarse dentro de transaction.atomic().
+
+    Simétrico con _aplicar_efecto_detalle: usa get_or_create en todos los
+    casos para permitir reversiones sobre filas inexistentes (queda stock
+    negativo o positivo según corresponda).
     """
     tipo = det.movimiento.tipo_movimiento
 
     if tipo == 'entrada':
         if det.ubicacion_destino:
-            s = Stock.objects.filter(
-                item=det.item, ubicacion=det.ubicacion_destino
-            ).first()
-            if s:
-                s.cantidad_actual -= det.cantidad
-                s.save()
+            s, _ = Stock.objects.get_or_create(
+                item=det.item, ubicacion=det.ubicacion_destino,
+                defaults={'cantidad_actual': Decimal('0')},
+            )
+            s.cantidad_actual -= det.cantidad
+            s.save()
 
     elif tipo == 'salida':
         if det.ubicacion_origen:
@@ -159,12 +163,12 @@ def _revertir_efecto_detalle(det):
 
     elif tipo == 'ajuste':
         if det.ubicacion_destino:
-            s = Stock.objects.filter(
-                item=det.item, ubicacion=det.ubicacion_destino
-            ).first()
-            if s:
-                s.cantidad_actual -= det.cantidad
-                s.save()
+            s, _ = Stock.objects.get_or_create(
+                item=det.item, ubicacion=det.ubicacion_destino,
+                defaults={'cantidad_actual': Decimal('0')},
+            )
+            s.cantidad_actual -= det.cantidad
+            s.save()
 
     elif tipo == 'transferencia':
         if det.ubicacion_origen:
@@ -175,18 +179,32 @@ def _revertir_efecto_detalle(det):
             s.cantidad_actual += det.cantidad
             s.save()
         if det.ubicacion_destino:
-            s = Stock.objects.filter(
-                item=det.item, ubicacion=det.ubicacion_destino
-            ).first()
-            if s:
-                s.cantidad_actual -= det.cantidad
-                s.save()
+            s, _ = Stock.objects.get_or_create(
+                item=det.item, ubicacion=det.ubicacion_destino,
+                defaults={'cantidad_actual': Decimal('0')},
+            )
+            s.cantidad_actual -= det.cantidad
+            s.save()
 
 
 def _aplicar_efecto_detalle(det):
     """
     Aplica el efecto de stock de un DetalleMovimiento recién creado/editado.
     Debe llamarse dentro de transaction.atomic().
+
+    IMPORTANTE — stock negativo y pendiente_conciliacion:
+        El campo `pendiente_conciliacion` es solo INFORMATIVO: marca que la
+        salida se permitió con stock insuficiente. NO afecta este cálculo.
+        Toda salida descuenta stock, aunque quede negativo. Si no existe fila
+        Stock, se crea con la cantidad negativa correspondiente.
+
+        Una salida pendiente debe aparecer en:
+          • Stock actual (cantidad_actual), incluido valor negativo.
+          • Conteos (stock sistema mostrado al usuario).
+          • Reportes / kardex / historial.
+          • _stock_en_momento (cálculo de stock teórico).
+
+        Solo movimientos `anulado=True` o `eliminado=True` deben excluirse.
     """
     tipo = det.movimiento.tipo_movimiento
 
@@ -201,15 +219,20 @@ def _aplicar_efecto_detalle(det):
 
     elif tipo == 'salida':
         if det.ubicacion_origen:
-            s = Stock.objects.filter(
-                item=det.item, ubicacion=det.ubicacion_origen
-            ).first()
-            if s:
-                s.cantidad_actual -= det.cantidad
-                s.save()
+            # get_or_create: si no hay fila Stock, se crea con 0 y queda negativa
+            # al descontar. Salidas con pendiente_conciliacion también pasan por
+            # acá — el descuento NUNCA se omite.
+            s, _ = Stock.objects.get_or_create(
+                item=det.item, ubicacion=det.ubicacion_origen,
+                defaults={'cantidad_actual': Decimal('0')},
+            )
+            s.cantidad_actual -= det.cantidad
+            s.save()
 
     elif tipo == 'ajuste':
         if det.ubicacion_destino:
+            # Ajustes pueden ser positivos o negativos. get_or_create también
+            # aquí para permitir ajuste negativo sobre ubicación sin fila previa.
             s, _ = Stock.objects.get_or_create(
                 item=det.item, ubicacion=det.ubicacion_destino,
                 defaults={'cantidad_actual': Decimal('0')},
@@ -219,12 +242,12 @@ def _aplicar_efecto_detalle(det):
 
     elif tipo == 'transferencia':
         if det.ubicacion_origen:
-            s = Stock.objects.filter(
-                item=det.item, ubicacion=det.ubicacion_origen
-            ).first()
-            if s:
-                s.cantidad_actual -= det.cantidad
-                s.save()
+            s, _ = Stock.objects.get_or_create(
+                item=det.item, ubicacion=det.ubicacion_origen,
+                defaults={'cantidad_actual': Decimal('0')},
+            )
+            s.cantidad_actual -= det.cantidad
+            s.save()
         if det.ubicacion_destino:
             s, _ = Stock.objects.get_or_create(
                 item=det.item, ubicacion=det.ubicacion_destino,
@@ -248,9 +271,14 @@ def _stock_en_momento(item, ubicacion, fecha_hora):
     fecha_movimiento como timestamp oficial de cada movimiento.
 
     Algoritmo:
-      1. Parte del stock actual (incluye TODOS los movimientos aplicados).
+      1. Parte del stock actual (incluye TODOS los movimientos aplicados,
+         incluyendo salidas con pendiente_conciliacion=True).
       2. Resta el efecto neto de los movimientos con fecha_movimiento > fecha_hora
          (ocurrieron después del momento de interés → deben excluirse).
+
+    NO filtra por pendiente_conciliacion: una salida pendiente cuenta para
+    el stock igual que cualquier otra. Solo se excluyen movimientos anulados
+    o eliminados.
 
     Esto es correcto independientemente de cuándo se registró cada movimiento
     en el sistema: lo que importa es su fecha_movimiento.
@@ -1614,11 +1642,29 @@ def inventario_lista(request):
         if iid not in ub_map or s['cantidad_actual'] > ub_map[iid][0]:
             ub_map[iid] = (s['cantidad_actual'], s['ubicacion__nombre'])
 
+    # Pendientes de conciliación por ítem (salidas con stock insuficiente activas)
+    pendientes_map: dict = {}
+    pend_qs = (
+        DetalleMovimiento.objects
+        .filter(
+            item__in=page_items,
+            pendiente_conciliacion=True,
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+        )
+        .values('item_id')
+        .annotate(n=Count('pk'))
+    )
+    for row in pend_qs:
+        pendientes_map[row['item_id']] = row['n']
+
     items_data = [
         {
             'item': item,
             'stock': item.stock_calc,
             'bajo': item.stock_calc <= item.stock_minimo,
+            'negativo': item.stock_calc < 0,
+            'pendientes': pendientes_map.get(item.pk, 0),
             'ub_principal': ub_map.get(item.pk, (None, '–'))[1],
         }
         for item in page_items

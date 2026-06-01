@@ -229,7 +229,11 @@
       </span>
       <span class="text-muted fw-normal" style="font-size:.75rem;">{{ item.unidad_medida }}</span>
     </div>
-    {% if entrada.stock_despues <= 0 %}
+    {% if entrada.stock_despues < 0 %}
+      <span class="badge bg-danger" style="font-size:.7rem;">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>Stock negativo
+      </span>
+    {% elif entrada.stock_despues == 0 %}
       <span class="badge bg-danger" style="font-size:.7rem;">Sin stock</span>
     {% elif item.stock_minimo > 0 and entrada.stock_despues <= item.stock_minimo %}
       <span class="badge bg-warning text-dark" style="font-size:.7rem;">Stock bajo</span>

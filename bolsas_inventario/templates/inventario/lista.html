@@ -136,20 +136,34 @@
             </span>
           </td>
           <td class="text-muted small">{{ r.item.categoria|default:"–" }}</td>
-          <td class="text-end fw-bold {% if r.bajo %}text-danger{% else %}text-success{% endif %}">
+          <td class="text-end fw-bold {% if r.negativo %}text-danger{% elif r.bajo %}text-danger{% else %}text-success{% endif %}">
             {{ r.stock }} {{ r.item.unidad_medida }}
+            {% if r.negativo %}
+              <i class="bi bi-arrow-down-circle-fill" title="Stock negativo"></i>
+            {% endif %}
           </td>
           <td class="text-end text-muted small">{{ r.item.stock_minimo }}</td>
           <td class="text-muted small">{{ r.ub_principal }}</td>
           <td>
             {% if not r.item.activo %}
               <span class="badge bg-secondary">Inactivo</span>
+            {% elif r.negativo %}
+              <span class="badge bg-danger">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>Stock negativo
+              </span>
             {% elif r.bajo %}
               <span class="badge bg-danger">
                 <i class="bi bi-exclamation-triangle-fill me-1"></i>Stock bajo
               </span>
             {% else %}
               <span class="badge bg-success bg-opacity-25 text-success">OK</span>
+            {% endif %}
+            {% if r.pendientes %}
+              <span class="badge bg-warning text-dark ms-1"
+                    title="Salidas con stock insuficiente esperando conciliación">
+                <i class="bi bi-hourglass-split me-1"></i>Pend. conciliación
+                <span class="badge bg-dark ms-1">{{ r.pendientes }}</span>
+              </span>
             {% endif %}
           </td>
           <td>
@@ -198,13 +212,23 @@
           </div>
           <div class="text-end flex-shrink-0">
             <div class="fw-bold fs-5 lh-1
-              {% if r.bajo %}text-danger{% else %}text-success{% endif %}">
+              {% if r.negativo or r.bajo %}text-danger{% else %}text-success{% endif %}">
               {{ r.stock }}
             </div>
             <div class="text-muted small">{{ r.item.unidad_medida }}</div>
-            {% if r.bajo %}
+            {% if r.negativo %}
+            <span class="badge bg-danger mt-1" style="font-size:.65rem">
+              <i class="bi bi-exclamation-triangle-fill"></i> Negativo
+            </span>
+            {% elif r.bajo %}
             <span class="badge bg-danger mt-1" style="font-size:.65rem">
               <i class="bi bi-exclamation-triangle-fill"></i> Stock bajo
+            </span>
+            {% endif %}
+            {% if r.pendientes %}
+            <span class="badge bg-warning text-dark mt-1" style="font-size:.65rem"
+                  title="Pendientes de conciliación">
+              <i class="bi bi-hourglass-split"></i> Pend. {{ r.pendientes }}
             </span>
             {% endif %}
           </div>

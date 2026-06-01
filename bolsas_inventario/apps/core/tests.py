@@ -13,9 +13,9 @@ from django.utils import timezone
 
 from .models import (
     BackupJob, Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
-    Item, MovimientoInventario, Stock, Ubicacion,
+    Item, Maquina, MovimientoInventario, Stock, Ubicacion,
 )
-from .views import _calcular_tramos, _payload_produccion_dia
+from .views import _calcular_tramos, _payload_produccion_dia, _aplicar_efecto_detalle, _stock_en_momento
 
 
 @override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
@@ -227,3 +227,220 @@ class VistasOperativasTests(TestCase):
         self.assertContains(response, 'Renato')
         self.assertContains(response, 'Bolsa Camiseta Grande')
         self.assertContains(response, '10')
+
+
+@override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
+class SalidaPendienteConciliacionTests(TestCase):
+    """
+    Verifica que las salidas con stock insuficiente:
+      • Descuentan stock normalmente (queda negativo).
+      • Se marcan como pendiente_conciliacion=True.
+      • NO se excluyen de stock teórico ni de conteos.
+      • Generan ajuste positivo correcto en conciliación.
+    """
+    def setUp(self):
+        cache.clear()
+        categoria = Categoria.objects.create(nombre='Camiseta')
+        self.item = Item.objects.create(
+            codigo='BCG', nombre='Bolsa Camiseta Grande', tipo='producto',
+            categoria=categoria, unidad_medida='fardos', stock_minimo=Decimal('10'),
+        )
+        self.ubicacion = Ubicacion.objects.create(nombre='Bodega PT', tipo='bodega')
+        self.cliente = Cliente.objects.create(nombre='Renato')
+        # Stock inicial 21
+        Stock.objects.create(
+            item=self.item, ubicacion=self.ubicacion,
+            cantidad_actual=Decimal('21'),
+        )
+        self.user = User.objects.create_user(username='op', password='x')
+
+    def _crear_salida(self, cantidad, pendiente, fecha=None):
+        mov = MovimientoInventario.objects.create(
+            tipo_movimiento='salida', tipo_salida='producto_terminado',
+            motivo='test', usuario=self.user, cliente=self.cliente,
+            fecha_movimiento=fecha or timezone.now(),
+        )
+        det = DetalleMovimiento.objects.create(
+            movimiento=mov, item=self.item, cantidad=Decimal(str(cantidad)),
+            ubicacion_origen=self.ubicacion, cliente=self.cliente,
+            pendiente_conciliacion=pendiente,
+        )
+        _aplicar_efecto_detalle(det)
+        return mov, det
+
+    def test_salida_pendiente_descuenta_stock_normalmente(self):
+        """Stock 21 - salida 25 = -4, con pendiente_conciliacion=True."""
+        mov, det = self._crear_salida(25, pendiente=True)
+        stock = Stock.objects.get(item=self.item, ubicacion=self.ubicacion)
+        self.assertEqual(stock.cantidad_actual, Decimal('-4'))
+        self.assertTrue(det.pendiente_conciliacion)
+
+    def test_stock_en_momento_incluye_salidas_pendientes(self):
+        """_stock_en_momento usa cantidad_actual real → ve el stock negativo."""
+        ahora = timezone.now()
+        self._crear_salida(25, pendiente=True, fecha=ahora - timezone.timedelta(hours=1))
+        stock_teorico = _stock_en_momento(self.item, self.ubicacion, ahora)
+        self.assertEqual(stock_teorico, Decimal('-4'))
+
+    def test_conteo_nuevo_muestra_stock_negativo_si_pendiente(self):
+        """Conteo nuevo debe leer Stock.cantidad_actual incluyendo el -4."""
+        self._crear_salida(25, pendiente=True)
+        # Otorgar permisos al usuario
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='registrar_conteo'),
+            Permission.objects.get(codename='ver_inventario'),
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('conteo_nuevo'))
+        self.assertEqual(response.status_code, 200)
+        # El JSON con stocks_by_ub debe contener -4
+        self.assertContains(response, '-4')
+
+    def test_conciliacion_genera_ajuste_positivo_correcto(self):
+        """
+        Stock sistema -4, contado 21 → diferencia = 21 - (-4) = +25.
+        Conciliación debe crear ajuste positivo +25.
+        """
+        from .views import _stock_en_momento as _sem
+        ahora = timezone.now()
+        self._crear_salida(25, pendiente=True, fecha=ahora - timezone.timedelta(hours=2))
+
+        # Crear conteo
+        conteo = Conteo.objects.create(
+            fecha=date.today(), turno='manana', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=ahora,
+        )
+        ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ubicacion,
+            cantidad_contada=Decimal('21'),
+            cantidad_sistema_al_conteo=Decimal('-4'),
+        )
+
+        stock_teorico = _sem(self.item, self.ubicacion, ahora)
+        diferencia = Decimal('21') - stock_teorico  # 21 - (-4) = 25
+        self.assertEqual(stock_teorico, Decimal('-4'))
+        self.assertEqual(diferencia, Decimal('25'))
+
+    def test_conciliacion_aplica_ajuste_y_restaura_stock(self):
+        """
+        Flujo completo: stock -4 → conciliación con conteo 21 →
+        ajuste +25 aplicado → stock final 21.
+        """
+        ahora = timezone.now()
+        self._crear_salida(25, pendiente=True, fecha=ahora - timezone.timedelta(hours=2))
+        self.assertEqual(
+            Stock.objects.get(item=self.item, ubicacion=self.ubicacion).cantidad_actual,
+            Decimal('-4'),
+        )
+
+        conteo = Conteo.objects.create(
+            fecha=date.today(), turno='manana', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=ahora,
+        )
+        ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ubicacion,
+            cantidad_contada=Decimal('21'),
+            cantidad_sistema_al_conteo=Decimal('-4'),
+            diferencia_final=Decimal('25'),
+        )
+
+        for codename in ('aplicar_conciliacion', 'registrar_conteo'):
+            self.user.user_permissions.add(Permission.objects.get(codename=codename))
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse('conteo_ajustar_todos', args=[conteo.pk]))
+        self.assertIn(resp.status_code, (302, 200))
+
+        stock = Stock.objects.get(item=self.item, ubicacion=self.ubicacion)
+        self.assertEqual(stock.cantidad_actual, Decimal('21'))
+
+    def test_anular_salida_pendiente_revierte_una_sola_vez(self):
+        """Caso 3: anular salida -25 → stock vuelve a 21, sin doble reversión."""
+        mov, _ = self._crear_salida(25, pendiente=True)
+        self.assertEqual(
+            Stock.objects.get(item=self.item, ubicacion=self.ubicacion).cantidad_actual,
+            Decimal('-4'),
+        )
+
+        self.user.user_permissions.add(Permission.objects.get(codename='anular_movimiento'))
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            reverse('movimiento_anular', args=[mov.pk]),
+            {'motivo_anulacion': 'prueba reversión'},
+        )
+        self.assertIn(resp.status_code, (302, 200))
+
+        stock = Stock.objects.get(item=self.item, ubicacion=self.ubicacion)
+        self.assertEqual(stock.cantidad_actual, Decimal('21'))
+        mov.refresh_from_db()
+        self.assertTrue(mov.anulado)
+
+        # Segundo intento de anular no debe volver a revertir (sigue en 21)
+        self.client.post(
+            reverse('movimiento_anular', args=[mov.pk]),
+            {'motivo_anulacion': 'segundo intento'},
+        )
+        stock.refresh_from_db()
+        self.assertEqual(stock.cantidad_actual, Decimal('21'))
+
+    def test_salida_repuesto_sin_stock_se_bloquea(self):
+        """Caso 4: salida de repuesto sin stock suficiente NO se permite."""
+        repuesto = Item.objects.create(
+            codigo='REP1', nombre='Cuchilla', tipo='repuesto',
+            unidad_medida='unidad', stock_minimo=Decimal('1'),
+        )
+        Stock.objects.create(item=repuesto, ubicacion=self.ubicacion, cantidad_actual=Decimal('2'))
+        maquina = Maquina.objects.create(codigo='M1', nombre='Extrusora', area='Producción')
+
+        self.user.user_permissions.add(Permission.objects.get(codename='registrar_salida'))
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse('movimiento_salida'), {
+            'tipo_salida': 'repuestos',
+            'motivo': 'test',
+            'item[]': [str(repuesto.pk)],
+            'cantidad[]': ['10'],            # > stock (2)
+            'ubicacion_origen[]': [str(self.ubicacion.pk)],
+            'maquina[]': [str(maquina.pk)],
+        })
+        # No se crea movimiento de repuesto y el stock no cambia
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            MovimientoInventario.objects.filter(tipo_salida='repuestos').exists()
+        )
+        self.assertEqual(
+            Stock.objects.get(item=repuesto, ubicacion=self.ubicacion).cantidad_actual,
+            Decimal('2'),
+        )
+
+
+@override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
+class AuditarStockPendientesCommandTests(TestCase):
+    """Verifica el comando de detección de drift de stock (solo-lectura)."""
+    def setUp(self):
+        cache.clear()
+        self.item = Item.objects.create(
+            codigo='X', nombre='Producto X', tipo='producto',
+            unidad_medida='u', stock_minimo=Decimal('0'),
+        )
+        self.ub = Ubicacion.objects.create(nombre='B', tipo='bodega')
+        self.user = User.objects.create_user(username='u', password='x')
+
+    def test_detecta_y_corrige_drift(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        # Stock dice 50 pero no hay movimientos → esperado 0 → drift -50
+        Stock.objects.create(item=self.item, ubicacion=self.ub, cantidad_actual=Decimal('50'))
+
+        out = StringIO()
+        call_command('auditar_stock_pendientes', stdout=out)
+        salida = out.getvalue()
+        self.assertIn('Drift de stock', salida)
+        self.assertIn('Producto X', salida)
+
+        # Con --fix --confirm corrige a 0
+        out2 = StringIO()
+        call_command('auditar_stock_pendientes', '--fix', '--confirm', stdout=out2)
+        self.assertEqual(
+            Stock.objects.get(item=self.item, ubicacion=self.ub).cantidad_actual,
+            Decimal('0'),
+        )
