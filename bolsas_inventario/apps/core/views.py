@@ -1124,6 +1124,47 @@ def _payload_inventario_camiseta():
     }
 
 
+def _enviar_inventario_camiseta_post_conciliacion(conteo_pk, conteo_tipo, usuario=''):
+    """
+    Reenvía el inventario actual de Camiseta a n8n (mismo evento y payload que
+    el envío manual: event_type='inventario_camiseta_actual').
+
+    Debe invocarse SOLO vía transaction.on_commit(), es decir, después de que
+    los ajustes de conciliación quedaron persistidos. Si el conteo no es de
+    tipo 'camiseta', no hace nada.
+
+    El fallo del webhook NUNCA debe afectar la conciliación: se captura y se
+    registra como warning/error, pero no se propaga.
+    """
+    if conteo_tipo != 'camiseta':
+        return
+    try:
+        payload = _payload_inventario_camiseta()
+        payload['origen'] = 'conciliacion_automatica'
+        payload['conteo_id'] = conteo_pk
+        if usuario:
+            payload['enviado_por'] = usuario
+        ok = send_event('inventario_camiseta_actual', payload)
+        if ok:
+            event_log.info(
+                'Inventario camiseta enviado automáticamente tras conciliación #%s',
+                conteo_pk,
+            )
+        else:
+            event_log.warning(
+                'No se pudo enviar inventario camiseta tras conciliación #%s '
+                '(webhook sin configurar o n8n no respondió). La conciliación NO se afecta.',
+                conteo_pk,
+            )
+    except Exception:
+        # Nunca romper la conciliación por un fallo de notificación
+        event_log.exception(
+            'Error al enviar inventario camiseta tras conciliación #%s. '
+            'La conciliación se completó correctamente de todas formas.',
+            conteo_pk,
+        )
+
+
 def _payload_inventario_pigmentos():
     from .services.notifications import generar_resumen_pigmentos
     payload = generar_resumen_pigmentos()
@@ -3221,8 +3262,17 @@ def conteo_marcar_conciliado(request, pk):
         messages.warning(request, f'Hay {pendientes} ajuste(s) pendiente(s) con diferencia. Aplicalos o ignoralos antes de cerrar.')
         return redirect('conteo_conciliar', pk=pk)
 
-    conteo.estado = 'conciliado'
-    conteo.save(update_fields=['estado'])
+    with transaction.atomic():
+        conteo.estado = 'conciliado'
+        conteo.save(update_fields=['estado'])
+
+        # Reenviar inventario camiseta a n8n UNA sola vez, al cerrar la
+        # conciliación (stocks ya finales). Solo tras commit exitoso.
+        _conteo_pk, _conteo_tipo, _usuario = conteo.pk, conteo.tipo_conteo, request.user.username
+        transaction.on_commit(
+            lambda: _enviar_inventario_camiseta_post_conciliacion(_conteo_pk, _conteo_tipo, _usuario)
+        )
+
     messages.success(request, 'Conteo marcado como conciliado.')
     return redirect('conteo_detalle', pk=pk)
 
