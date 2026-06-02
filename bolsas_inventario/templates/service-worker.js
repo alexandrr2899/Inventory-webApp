@@ -1,14 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════════════
    Service Worker — Inventario Bolsas
    Estrategia:
-   - Archivos estáticos  → Cache First  (arranque rápido)
+   - Archivos estáticos  → Stale-While-Revalidate (rápido + se actualiza solo)
    - Páginas HTML/Django → Network First (datos frescos), fallback en cache
-   - CDN externo         → Cache First  (Bootstrap, icons)
+   - CDN externo         → Cache First  (Bootstrap, icons — versionados por URL)
    ═══════════════════════════════════════════════════════════════════════ */
 
-const CACHE_APP    = 'bolsas-app-v2';
-const CACHE_STATIC = 'bolsas-static-v2';
-const CACHE_CDN    = 'bolsas-cdn-v2';
+const CACHE_APP    = 'bolsas-app-v3';
+const CACHE_STATIC = 'bolsas-static-v3';
+const CACHE_CDN    = 'bolsas-cdn-v3';
 
 // Assets CDN que se cachean al instalar
 const PRECACHE_CDN = [
@@ -89,16 +89,19 @@ self.addEventListener('fetch', event => {
   // Solo manejar requests a este mismo origen
   if (url.origin !== self.location.origin) return;
 
-  // ── Archivos estáticos (/static/...): Cache First ────────────────────
+  // ── Archivos estáticos (/static/...): Stale-While-Revalidate ─────────
+  // Sirve el cache al instante PERO siempre revalida contra la red en
+  // segundo plano y actualiza el cache. Así un cambio de CSS/JS se ve en
+  // la siguiente recarga, sin tener que bumpear la versión del SW.
   if (url.pathname.startsWith('/static/')) {
     event.respondWith(
       caches.open(CACHE_STATIC).then(cache =>
         cache.match(req).then(cached => {
-          if (cached) return cached;
-          return fetch(req).then(res => {
+          const network = fetch(req).then(res => {
             if (res.ok) cache.put(req, res.clone());
             return res;
           }).catch(() => cached);
+          return cached || network;
         })
       )
     );

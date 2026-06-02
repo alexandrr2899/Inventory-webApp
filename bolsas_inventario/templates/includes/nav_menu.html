@@ -88,20 +88,32 @@
 {% endif %}
 
 {% if perms.core.importar_excel or perms.core.gestionar_backups or user.is_superuser %}
-<span class="sidebar-section">Administración</span>
-{% if perms.core.importar_excel %}
-<a href="{% url 'importar_items' %}" class="nav-link {% if request.resolver_match.url_name == 'importar_items' %}active{% endif %}">
-  <i class="bi bi-file-earmark-excel-fill text-success"></i> Importar Excel
+<span class="sidebar-section">Sistema</span>
+{% with un=request.resolver_match.url_name %}
+<a class="nav-link nav-group-toggle d-flex justify-content-between align-items-center"
+   data-bs-toggle="collapse" href="#cfgMenu-{{ menu_id|default:'x' }}" role="button"
+   aria-controls="cfgMenu-{{ menu_id|default:'x' }}"
+   aria-expanded="{% if 'importar' in un or 'backup' in un or 'usuario' in un %}true{% else %}false{% endif %}">
+  <span><i class="bi bi-gear-wide-connected"></i> Configuración</span>
+  <i class="bi bi-chevron-down small chevron"></i>
 </a>
-{% endif %}
-{% if perms.core.gestionar_backups or user.is_superuser %}
-<a href="{% url 'backups_panel' %}" class="nav-link {% if 'backup' in request.resolver_match.url_name %}active{% endif %}">
-  <i class="bi bi-database-down text-info"></i> Backups
-</a>
-{% endif %}
-{% if user.is_superuser %}
-<a href="{% url 'usuario_lista' %}" class="nav-link {% if 'usuario' in request.resolver_match.url_name %}active{% endif %}">
-  <i class="bi bi-person-gear text-primary"></i> Usuarios
-</a>
-{% endif %}
+<div class="collapse nav-group-sub {% if 'importar' in un or 'backup' in un or 'usuario' in un %}show{% endif %}"
+     id="cfgMenu-{{ menu_id|default:'x' }}">
+  {% if perms.core.importar_excel %}
+  <a href="{% url 'importar_items' %}" class="nav-link {% if un == 'importar_items' %}active{% endif %}">
+    <i class="bi bi-file-earmark-excel-fill text-success"></i> Importar Excel
+  </a>
+  {% endif %}
+  {% if perms.core.gestionar_backups or user.is_superuser %}
+  <a href="{% url 'backups_panel' %}" class="nav-link {% if 'backup' in un %}active{% endif %}">
+    <i class="bi bi-database-down text-info"></i> Backups
+  </a>
+  {% endif %}
+  {% if user.is_superuser %}
+  <a href="{% url 'usuario_lista' %}" class="nav-link {% if 'usuario' in un %}active{% endif %}">
+    <i class="bi bi-person-gear text-primary"></i> Usuarios
+  </a>
+  {% endif %}
+</div>
+{% endwith %}
 {% endif %}

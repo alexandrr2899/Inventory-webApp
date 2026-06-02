@@ -1,0 +1,292 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - text: 
+      - link "Transformadora" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e5]: Transformadora
+      - generic [ref=e6]:
+        - button "Cambiar tema claro/oscuro" [ref=e7] [cursor=pointer]:
+          - text: 
+          - generic [ref=e8]: 
+        - generic [ref=e9]: Alexander Ordonez
+        - link "" [ref=e10] [cursor=pointer]:
+          - /url: /logout/
+          - generic [ref=e11]: 
+  - complementary [ref=e12]:
+    - navigation [ref=e13]:
+      - generic [ref=e14]: Principal
+      - link " Dashboard" [ref=e15] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e16]: 
+        - text: Dashboard
+      - link " Alertas" [ref=e17] [cursor=pointer]:
+        - /url: /alertas/
+        - generic [ref=e18]: 
+        - text: Alertas
+      - generic [ref=e19]: Inventario
+      - link " Ítems" [ref=e20] [cursor=pointer]:
+        - /url: /inventario/
+        - generic [ref=e21]: 
+        - text: Ítems
+      - link " Ubicaciones" [ref=e22] [cursor=pointer]:
+        - /url: /ubicaciones/
+        - generic [ref=e23]: 
+        - text: Ubicaciones
+      - generic [ref=e24]: Operaciones
+      - link " Registrar Producción" [ref=e25] [cursor=pointer]:
+        - /url: /produccion/nueva/
+        - generic [ref=e26]: 
+        - text: Registrar Producción
+      - link " Nueva Entrada" [ref=e27] [cursor=pointer]:
+        - /url: /movimientos/entrada/
+        - generic [ref=e28]: 
+        - text: Nueva Entrada
+      - link " Nueva Salida" [ref=e29] [cursor=pointer]:
+        - /url: /movimientos/salida/
+        - generic [ref=e30]: 
+        - text: Nueva Salida
+      - link " Transferencia" [ref=e31] [cursor=pointer]:
+        - /url: /movimientos/transferencia/
+        - generic [ref=e32]: 
+        - text: Transferencia
+      - link " Historial" [ref=e33] [cursor=pointer]:
+        - /url: /movimientos/
+        - generic [ref=e34]: 
+        - text: Historial
+      - generic [ref=e35]: Conteos
+      - link " Nuevo Conteo" [ref=e36] [cursor=pointer]:
+        - /url: /conteos/nuevo/
+        - generic [ref=e37]: 
+        - text: Nuevo Conteo
+      - link " Ver Conteos" [ref=e38] [cursor=pointer]:
+        - /url: /conteos/
+        - generic [ref=e39]: 
+        - text: Ver Conteos
+      - generic [ref=e40]: Catálogos
+      - link " Máquinas" [ref=e41] [cursor=pointer]:
+        - /url: /maquinas/
+        - generic [ref=e42]: 
+        - text: Máquinas
+      - link " Clientes" [ref=e43] [cursor=pointer]:
+        - /url: /clientes/
+        - generic [ref=e44]: 
+        - text: Clientes
+      - generic [ref=e45]: Reportes
+      - link " Stock Bajo" [ref=e46] [cursor=pointer]:
+        - /url: /reportes/stock-bajo/
+        - generic [ref=e47]: 
+        - text: Stock Bajo
+      - link " Producción día" [ref=e48] [cursor=pointer]:
+        - /url: /reportes/produccion/
+        - generic [ref=e49]: 
+        - text: Producción día
+      - link " Producción rango" [ref=e50] [cursor=pointer]:
+        - /url: /reportes/produccion-avanzado/
+        - generic [ref=e51]: 
+        - text: Producción rango
+      - link " Consumo Pigmentos" [ref=e52] [cursor=pointer]:
+        - /url: /reportes/pigmentos/
+        - generic [ref=e53]: 
+        - text: Consumo Pigmentos
+      - link " Notificaciones" [ref=e54] [cursor=pointer]:
+        - /url: /notificaciones/
+        - generic [ref=e55]: 
+        - text: Notificaciones
+      - generic [ref=e56]: Sistema
+      - button " Configuración " [ref=e57] [cursor=pointer]:
+        - generic [ref=e58]:
+          - generic [ref=e59]: 
+          - text: Configuración
+        - generic [ref=e60]: 
+      - text:   
+  - generic [ref=e62]:
+    - generic [ref=e63]:
+      - heading " Dashboard" [level=1] [ref=e64]:
+        - generic [ref=e65]: 
+        - text: Dashboard
+      - text: martes 02 de junio, 2026
+    - generic [ref=e66]:
+      - generic [ref=e69]:
+        - generic [ref=e70]: "3"
+        - generic [ref=e71]: Stock bajo
+        - generic [ref=e72]: 
+      - generic [ref=e75]:
+        - generic [ref=e76]: "0"
+        - generic [ref=e77]: Salidas hoy
+        - generic [ref=e78]: 0 movimiento(s)
+        - generic [ref=e79]: 
+      - generic [ref=e82]:
+        - generic [ref=e83]: –
+        - generic [ref=e84]: Prod. Día
+        - generic [ref=e85]: 
+      - generic [ref=e88]:
+        - generic [ref=e89]: –
+        - generic [ref=e90]: Prod. Noche
+        - generic [ref=e91]: 
+    - generic [ref=e92]:
+      - generic [ref=e93]:
+        - generic [ref=e94]:
+          - generic [ref=e95]: 
+          - text: Producción Camiseta
+        - generic [ref=e96]: Sin datos completos
+      - table [ref=e99]:
+        - rowgroup [ref=e100]:
+          - row "Turno Inicio Fin + Salidas Producción" [ref=e101]:
+            - columnheader "Turno" [ref=e102]
+            - columnheader "Inicio" [ref=e103]
+            - columnheader "Fin" [ref=e104]
+            - columnheader "+ Salidas" [ref=e105]
+            - columnheader "Producción" [ref=e106]
+        - rowgroup [ref=e107]:
+          - 'row " Día – – +0 Falta: conteo de mañana y tarde" [ref=e108]':
+            - cell " Día" [ref=e109]:
+              - generic [ref=e110]: 
+              - text: Día
+            - cell "–" [ref=e111]
+            - cell "–" [ref=e112]
+            - cell "+0" [ref=e113]
+            - 'cell "Falta: conteo de mañana y tarde" [ref=e114]'
+          - 'row " Noche – – +0 Falta: conteo de tarde y mañana del día siguiente" [ref=e115]':
+            - cell " Noche" [ref=e116]:
+              - generic [ref=e117]: 
+              - text: Noche
+            - cell "–" [ref=e118]
+            - cell "–" [ref=e119]
+            - cell "+0" [ref=e120]
+            - 'cell "Falta: conteo de tarde y mañana del día siguiente" [ref=e121]'
+      - generic [ref=e122]:
+        - generic [ref=e123]: 
+        - strong [ref=e124]: "Día:"
+        - text: Falta conteo de mañana y tarde.
+        - strong [ref=e125]: "Noche:"
+        - text: Falta conteo de tarde y mañana del día siguiente.
+        - link "Registrar conteo" [ref=e126] [cursor=pointer]:
+          - /url: /conteos/nuevo/
+    - generic [ref=e127]:
+      - generic [ref=e128]:
+        - generic [ref=e129]: 
+        - text: Acciones rápidas
+      - generic [ref=e131]:
+        - link " Nuevo Conteo" [ref=e133] [cursor=pointer]:
+          - /url: /conteos/nuevo/
+          - generic [ref=e134]: 
+          - text: Nuevo Conteo
+        - link " Nueva Salida" [ref=e136] [cursor=pointer]:
+          - /url: /movimientos/salida/
+          - generic [ref=e137]: 
+          - text: Nueva Salida
+        - link " Nueva Entrada" [ref=e139] [cursor=pointer]:
+          - /url: /movimientos/entrada/
+          - generic [ref=e140]: 
+          - text: Nueva Entrada
+        - link " Alertas" [ref=e142] [cursor=pointer]:
+          - /url: /alertas/
+          - generic [ref=e143]: 
+          - text: Alertas
+    - generic [ref=e144]:
+      - generic [ref=e146]:
+        - generic [ref=e147]:
+          - generic [ref=e148]: 
+          - text: "Alerta: Stock bajo"
+        - list [ref=e150]:
+          - listitem [ref=e151]:
+            - generic [ref=e152]:
+              - generic [ref=e153]: Bolsa Camiseta Pequeña
+              - generic [ref=e154]: cp
+            - generic [ref=e155]:
+              - generic [ref=e156]: 0,00 Fardo
+              - generic [ref=e157]: "mín: 5,00"
+          - listitem [ref=e158]:
+            - generic [ref=e159]:
+              - generic [ref=e160]: Bolsa Camiseta Grande Negra
+              - generic [ref=e161]: cgn
+            - generic [ref=e162]:
+              - generic [ref=e163]: 0,00 Fardo
+              - generic [ref=e164]: "mín: 0,00"
+          - listitem [ref=e165]:
+            - generic [ref=e166]:
+              - generic [ref=e167]: Bolsa Camiseta Pequeña Negra
+              - generic [ref=e168]: cpn
+            - generic [ref=e169]:
+              - generic [ref=e170]: 0 Fardo
+              - generic [ref=e171]: "mín: 0,00"
+      - generic [ref=e173]:
+        - generic [ref=e174]:
+          - generic [ref=e175]: 
+          - text: Últimos movimientos
+        - generic [ref=e176]:
+          - list [ref=e177]:
+            - listitem [ref=e178]:
+              - generic [ref=e179]:
+                - generic [ref=e180]:
+                  - generic [ref=e181]: Ajuste
+                  - text: Resina de Alta Densidad
+                - generic [ref=e182]: "-39,00 Saco"
+              - generic [ref=e183]: 20/05/2026 10:05 · admin
+            - listitem [ref=e184]:
+              - generic [ref=e185]:
+                - generic [ref=e186]:
+                  - generic [ref=e187]: Ajuste
+                  - text: Pigmento Rojo
+                - generic [ref=e188]: "-1,00 saco"
+              - generic [ref=e189]: 20/05/2026 10:05 · admin
+            - listitem [ref=e190]:
+              - generic [ref=e191]:
+                - generic [ref=e192]:
+                  - generic [ref=e193]: Ajuste
+                  - text: Pigmento Amarillo
+                - generic [ref=e194]: "-1,00 saco"
+              - generic [ref=e195]: 20/05/2026 10:05 · admin
+            - listitem [ref=e196]:
+              - generic [ref=e197]:
+                - generic [ref=e198]:
+                  - generic [ref=e199]: Ajuste
+                  - text: Carbonato
+                - generic [ref=e200]: "-3,00 Saco"
+              - generic [ref=e201]: 20/05/2026 10:05 · admin
+            - listitem [ref=e202]:
+              - generic [ref=e203]:
+                - generic [ref=e204]:
+                  - generic [ref=e205]: Ajuste
+                  - text: Bolsa Camiseta Mediana
+                - generic [ref=e206]: 14,00 Fardo
+              - generic [ref=e207]: 20/05/2026 10:03 · admin
+            - listitem [ref=e208]:
+              - generic [ref=e209]:
+                - generic [ref=e210]:
+                  - generic [ref=e211]: Ajuste
+                  - text: Bolsa Camiseta Grande
+                - generic [ref=e212]: 14,00 Fardo
+              - generic [ref=e213]: 20/05/2026 10:03 · admin
+            - listitem [ref=e214]:
+              - generic [ref=e215]:
+                - generic [ref=e216]:
+                  - generic [ref=e217]: Salida
+                  - text: Bolsa Camiseta Mediana
+                - generic [ref=e218]: 4,00 Fardo
+              - generic [ref=e219]: 20/05/2026 10:01 · admin
+            - listitem [ref=e220]:
+              - generic [ref=e221]:
+                - generic [ref=e222]:
+                  - generic [ref=e223]: Salida
+                  - text: Bolsa Camiseta Grande
+                - generic [ref=e224]: 7,00 Fardo
+              - generic [ref=e225]: 20/05/2026 10:01 · admin
+            - listitem [ref=e226]:
+              - generic [ref=e227]:
+                - generic [ref=e228]:
+                  - generic [ref=e229]: Ajuste
+                  - text: Bolsa Camiseta Mediana
+                - generic [ref=e230]: 16,00 Fardo
+              - generic [ref=e231]: 19/05/2026 17:49 · admin
+            - listitem [ref=e232]:
+              - generic [ref=e233]:
+                - generic [ref=e234]:
+                  - generic [ref=e235]: Ajuste
+                  - text: Bolsa Camiseta Grande
+                - generic [ref=e236]: 9,00 Fardo
+              - generic [ref=e237]: 19/05/2026 17:49 · admin
+          - link "Ver todo el historial" [ref=e239] [cursor=pointer]:
+            - /url: /movimientos/
+  - text:     

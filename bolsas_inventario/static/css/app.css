@@ -1,0 +1,237 @@
+/* ============================================================================
+   app.css — Estilos propios de la aplicación
+   ----------------------------------------------------------------------------
+   Sistema de tokens (CSS custom properties) con soporte de tema claro/oscuro.
+   El tema se controla con el atributo data-bs-theme en <html> (Bootstrap 5.3).
+   ========================================================================== */
+
+/* ─── TOKENS: TEMA CLARO (default) ───────────────────────────────────────── */
+:root {
+  --app-brand:          #003087;
+  --app-accent:         #ffd700;
+  --app-navbar-bg:      #003087;
+  --app-page-bg:        #f4f6f9;
+  --app-surface:        #ffffff;
+  --app-surface-2:      #f8f9fa;
+  --app-border:         #dee2e6;
+  --app-text:           #212529;
+  --app-text-muted:     #6c757d;
+  --app-text-faint:     #adb5bd;
+
+  --app-sidebar-bg:     #ffffff;
+  --app-sidebar-border: #dee2e6;
+  --app-nav-link:       #495057;
+  --app-nav-hover-bg:   #e9ecef;
+  --app-nav-active:     #0d6efd;
+
+  --app-card-shadow:    0 1px 6px rgba(0,0,0,.08);
+
+  --app-diff-pos:       #198754;
+  --app-diff-neg:       #dc3545;
+  --app-diff-zero:      #6c757d;
+  --app-warn-bg:        #fff8e1;
+
+  --app-header-from:    #0d6efd;
+  --app-header-to:      #6610f2;
+
+  --app-tipo-producto:   #198754;
+  --app-tipo-repuesto:   #fd7e14;
+  --app-tipo-consumible: #0dcaf0;
+}
+
+/* ─── TOKENS: TEMA OSCURO ────────────────────────────────────────────────── */
+[data-bs-theme="dark"] {
+  --app-brand:          #4d8bff;
+  --app-accent:         #ffd700;
+  --app-navbar-bg:      #0a1326;
+  --app-page-bg:        #0f131a;
+  --app-surface:        #1a2030;
+  --app-surface-2:      #222a3a;
+  --app-border:         #2c3548;
+  --app-text:           #e6e9ef;
+  --app-text-muted:     #9aa4b2;
+  --app-text-faint:     #6c7689;
+
+  --app-sidebar-bg:     #141a26;
+  --app-sidebar-border: #2c3548;
+  --app-nav-link:       #c2c9d6;
+  --app-nav-hover-bg:   #222a3a;
+  --app-nav-active:     #6ea8ff;
+
+  --app-card-shadow:    0 1px 6px rgba(0,0,0,.45);
+
+  --app-diff-pos:       #3dd68c;
+  --app-diff-neg:       #ff6b6b;
+  --app-diff-zero:      #9aa4b2;
+  --app-warn-bg:        #2a2613;
+
+  --app-header-from:    #1b3a8f;
+  --app-header-to:      #3a1d6e;
+
+  --app-tipo-producto:   #2fae6f;
+  --app-tipo-repuesto:   #e8893a;
+  --app-tipo-consumible: #2bb6d4;
+}
+
+/* ─── BASE ───────────────────────────────────────────────────────────────── */
+body { background: var(--app-page-bg); }
+/* Mobile: espacio para el bottom-nav */
+@media (max-width: 767px) { body { padding-bottom: 72px; } }
+
+/* ─── NAVBAR ─────────────────────────────────────────────────────────────── */
+.app-navbar { background: var(--app-navbar-bg); }
+.navbar-brand { font-weight: 700; font-size: 1rem; letter-spacing: -.01em; }
+.navbar-logo { height: 42px; width: auto; object-fit: contain; display: block; }
+.navbar-logo-fallback {
+  display: none; width: 38px; height: 38px; border-radius: 8px;
+  background: var(--app-accent); color: var(--app-brand); font-weight: 900;
+  font-size: 1rem; align-items: center; justify-content: center; flex-shrink: 0;
+}
+@media (max-width: 360px) { .navbar-logo { height: 34px; } }
+
+/* Botón de tema (sol/luna) */
+.theme-toggle { line-height: 1; }
+.theme-toggle .bi-sun-fill { display: none; }
+[data-bs-theme="dark"] .theme-toggle .bi-sun-fill  { display: inline-block; }
+[data-bs-theme="dark"] .theme-toggle .bi-moon-stars-fill { display: none; }
+
+/* ─── SIDEBAR DESKTOP ────────────────────────────────────────────────────── */
+.sidebar { display: none; }
+@media (min-width: 768px) {
+  .sidebar {
+    display: block; position: fixed; top: 56px; left: 0; width: 220px;
+    height: calc(100vh - 56px); overflow-y: auto; background: var(--app-sidebar-bg);
+    border-right: 1px solid var(--app-sidebar-border); padding: 1rem 0; z-index: 100;
+  }
+  .main-content { margin-left: 220px; }
+  body { padding-bottom: 0; }
+}
+
+/* Links de navegación (sidebar + offcanvas) */
+.sidebar .nav-link,
+.offcanvas .nav-link {
+  color: var(--app-nav-link); font-size: .9rem; padding: .45rem 1.1rem; border-radius: 0;
+}
+.sidebar .nav-link:hover,  .sidebar .nav-link.active,
+.offcanvas .nav-link:hover, .offcanvas .nav-link.active {
+  background: var(--app-nav-hover-bg); color: var(--app-nav-active);
+}
+.sidebar .nav-link i,
+.offcanvas .nav-link i { width: 20px; }
+.sidebar-section {
+  font-size: .7rem; text-transform: uppercase; color: var(--app-text-faint);
+  padding: .5rem 1rem .2rem; margin-top: .5rem; letter-spacing: .04em;
+}
+
+/* Sub-links dentro de un grupo colapsable (Configuración) */
+.nav-group-sub .nav-link { padding-left: 2.1rem; font-size: .86rem; }
+.nav-group-toggle .chevron { transition: transform .2s ease; }
+.nav-group-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+/* Header del offcanvas móvil */
+.offcanvas-header { background: var(--app-navbar-bg); }
+
+/* ─── BOTTOM NAV (móvil) ─────────────────────────────────────────────────── */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; background: var(--app-surface);
+  border-top: 1px solid var(--app-border); z-index: 1040; display: flex;
+  justify-content: space-around; padding: 5px 0 calc(5px + env(safe-area-inset-bottom));
+}
+.bottom-nav a, .bottom-nav button {
+  display: flex; flex-direction: column; align-items: center;
+  font-size: .62rem; color: var(--app-text-muted); text-decoration: none; gap: 1px;
+  min-width: 52px; background: none; border: none; padding: 4px 2px; cursor: pointer;
+}
+.bottom-nav a.active, .bottom-nav a:hover,
+.bottom-nav button:hover { color: var(--app-nav-active); }
+.bottom-nav i { font-size: 1.3rem; }
+@media (min-width: 768px) { .bottom-nav { display: none; } }
+
+/* ─── CARDS & UI ─────────────────────────────────────────────────────────── */
+.card { border: none; box-shadow: var(--app-card-shadow); border-radius: 12px; }
+.card-header { border-radius: 12px 12px 0 0 !important; }
+.btn { border-radius: 10px; }
+.btn-lg { padding: .65rem 1.5rem; font-size: 1rem; }
+
+.badge-tipo-producto   { background: var(--app-tipo-producto); }
+.badge-tipo-repuesto   { background: var(--app-tipo-repuesto); }
+.badge-tipo-consumible { background: var(--app-tipo-consumible); color: #000; }
+
+.stock-badge { font-size: 1.05rem; font-weight: 600; }
+.table th { font-size: .8rem; text-transform: uppercase; color: var(--app-text-muted); }
+/* Números alineados en tablas/métricas */
+.tabular-nums, .stock-badge, .card-metric .fs-1, .card-metric .fs-2 {
+  font-variant-numeric: tabular-nums;
+}
+.form-label { font-weight: 600; font-size: .9rem; }
+.alert { border-radius: 10px; }
+
+/* ─── PAGE HEADER (gradiente de marca) ───────────────────────────────────── */
+.page-header {
+  background: linear-gradient(135deg, var(--app-header-from) 0%, var(--app-header-to) 100%);
+  color: #fff; padding: 1rem 1.25rem; border-radius: 12px; margin-bottom: 1.25rem;
+}
+.page-header h1 { font-size: 1.3rem; margin: 0; }
+
+/* ─── QUICK ACTIONS ──────────────────────────────────────────────────────── */
+.quick-action {
+  border-radius: 12px; text-align: center; padding: 1rem;
+  text-decoration: none; display: block; transition: transform .15s;
+}
+.quick-action:hover { transform: translateY(-2px); }
+.quick-action i { font-size: 2rem; display: block; margin-bottom: .4rem; }
+
+/* ─── UTILIDADES COMPARTIDAS (reportes/conciliación) ─────────────────────── */
+/* Canónicas y tematizadas: reemplazan progresivamente las copias inline. */
+.diff-pos  { color: var(--app-diff-pos);  font-weight: 700; }
+.diff-neg  { color: var(--app-diff-neg);  font-weight: 700; }
+.diff-zero { color: var(--app-diff-zero); }
+
+/* ============================================================================
+   AJUSTES DARK MODE — superficies de Bootstrap que no se adaptan solas
+   ----------------------------------------------------------------------------
+   En este código `bg-white` se usa para card-headers que deberían seguir la
+   superficie. En dark los mapeamos a la superficie del tema.
+   ========================================================================== */
+[data-bs-theme="dark"] .bg-white {
+  background-color: var(--app-surface) !important;
+  color: var(--app-text);
+}
+[data-bs-theme="dark"] .text-dark { color: var(--app-text) !important; }
+[data-bs-theme="dark"] .border { border-color: var(--app-border) !important; }
+
+/* Tablas contextuales: Bootstrap las deja claras (fijas) aún en dark.
+   Redefinimos sus variables para que sigan la superficie del tema. */
+[data-bs-theme="dark"] .table-light {
+  --bs-table-color: var(--app-text);
+  --bs-table-bg: var(--app-surface-2);
+  --bs-table-border-color: var(--app-border);
+  --bs-table-color-state: var(--app-text);
+  --bs-table-bg-state: var(--app-surface-2);
+}
+[data-bs-theme="dark"] .table-secondary {
+  --bs-table-color: var(--app-text-muted);
+  --bs-table-bg: #20283a;
+  --bs-table-border-color: var(--app-border);
+  --bs-table-color-state: var(--app-text-muted);
+  --bs-table-bg-state: #20283a;
+}
+[data-bs-theme="dark"] .table-success {
+  --bs-table-color: var(--app-text);
+  --bs-table-bg: rgba(61,214,140,.14);
+  --bs-table-border-color: var(--app-border);
+}
+[data-bs-theme="dark"] .table-warning {
+  --bs-table-color: var(--app-text);
+  --bs-table-bg: rgba(255,193,7,.14);
+  --bs-table-border-color: var(--app-border);
+}
+[data-bs-theme="dark"] .table-danger {
+  --bs-table-color: var(--app-text);
+  --bs-table-bg: rgba(255,107,107,.14);
+  --bs-table-border-color: var(--app-border);
+}
+[data-bs-theme="dark"] .bg-light {
+  background-color: var(--app-surface-2) !important;
+  color: var(--app-text);
+}
