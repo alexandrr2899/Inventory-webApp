@@ -126,14 +126,18 @@ function offlinePage() {
   <title>Sin conexión – Inventario Bolsas</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#f4f6f9;--card:#fff;--title:#1a1a2e;--muted:#6c757d}
+    @media (prefers-color-scheme: dark){
+      :root{--bg:#0f131a;--card:#1a2030;--title:#e6e9ef;--muted:#9aa4b2}
+    }
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-      background:#f4f6f9;display:flex;align-items:center;justify-content:center;
+      background:var(--bg);display:flex;align-items:center;justify-content:center;
       min-height:100vh;padding:2rem;text-align:center}
-    .card{background:#fff;border-radius:16px;padding:2.5rem;max-width:360px;
-      box-shadow:0 4px 24px rgba(0,0,0,.1)}
+    .card{background:var(--card);border-radius:16px;padding:2.5rem;max-width:360px;
+      box-shadow:0 4px 24px rgba(0,0,0,.25)}
     .icon{font-size:4rem;margin-bottom:1rem}
-    h1{color:#1a1a2e;font-size:1.4rem;margin-bottom:.75rem}
-    p{color:#6c757d;font-size:.95rem;line-height:1.5;margin-bottom:1.5rem}
+    h1{color:var(--title);font-size:1.4rem;margin-bottom:.75rem}
+    p{color:var(--muted);font-size:.95rem;line-height:1.5;margin-bottom:1.5rem}
     button{background:#0d6efd;color:#fff;border:none;border-radius:10px;
       padding:.75rem 2rem;font-size:1rem;cursor:pointer;width:100%}
     button:active{opacity:.85}

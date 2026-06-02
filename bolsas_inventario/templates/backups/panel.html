@@ -14,13 +14,13 @@
     .backup-table thead { display: none; }
     .backup-table, .backup-table tbody, .backup-table tr, .backup-table td { display: block; width: 100%; }
     .backup-table tr {
-      border: 1px solid #dee2e6; border-radius: 10px;
-      margin-bottom: .75rem; padding: .75rem; background: #fff;
+      border: 1px solid var(--app-border); border-radius: 10px;
+      margin-bottom: .75rem; padding: .75rem; background: var(--app-surface);
     }
     .backup-table td { border: 0; padding: .25rem 0; }
     .backup-table td::before {
       content: attr(data-label);
-      display: block; font-size: .72rem; color: #6c757d;
+      display: block; font-size: .72rem; color: var(--app-text-muted);
       text-transform: uppercase; font-weight: 700;
     }
     .backup-table .btn { width: 100%; margin-top: .4rem; min-height: 42px; }

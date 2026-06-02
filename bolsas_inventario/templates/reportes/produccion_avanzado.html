@@ -3,19 +3,16 @@
 
 {% block extra_head %}
 <style>
-  /* Diferencias */
-  .diff-pos  { color:#198754; font-weight:700; }
-  .diff-neg  { color:#dc3545; font-weight:700; }
-  .diff-zero { color:#6c757d; }
-  .sin-dato  { color:#adb5bd; font-style:italic; }
+  /* .diff-pos/.diff-neg/.diff-zero → definidas en app.css (tematizadas) */
+  .sin-dato  { color:var(--app-text-faint); font-style:italic; }
 
   /* Tablas */
-  .table-prod th { font-size:.75rem; text-transform:uppercase; color:#6c757d; }
-  .row-sub        { background:#f8f9fa; font-size:.82rem; }
+  .table-prod th { font-size:.75rem; text-transform:uppercase; color:var(--app-text-muted); }
+  .row-sub        { background:var(--app-surface-2); font-size:.82rem; }
   .row-sub td     { padding-top:.35rem; padding-bottom:.35rem; }
   .card-metric .fs-2 { line-height:1.1; }
 
-  /* Badges de tipo tramo */
+  /* Badges de tipo tramo (sólidos, texto blanco — válidos en ambos temas) */
   .badge-dia      { background:#0d6efd; }
   .badge-noche    { background:#6f42c1; }
   .badge-extendido{ background:#fd7e14; }
@@ -24,7 +21,7 @@
   .tramo-extendido td:first-child { border-left: 3px solid #fd7e14; }
 
   /* Grupo header semana/mes */
-  .grupo-header { background:#f1f3f5; }
+  .grupo-header { background:var(--app-surface-2); }
 </style>
 {% endblock %}
 

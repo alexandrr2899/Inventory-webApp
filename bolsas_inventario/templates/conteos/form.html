@@ -6,13 +6,13 @@
   .tab-tipo .nav-link            { border-radius: 20px; font-weight: 600; padding: .35rem 1.1rem;
                                    cursor: pointer; pointer-events: auto; opacity: 1; }
   .tab-tipo .nav-link.active     { background: #6610f2; color: #fff; border-color: #6610f2; }
-  .tab-tipo .nav-link:not(.active){ background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
-  .tab-tipo .nav-link:hover:not(.active){ background: #e9ecef; }
-  .conteo-table th               { font-size: .75rem; text-transform: uppercase; color: #6c757d; }
+  .tab-tipo .nav-link:not(.active){ background: var(--app-surface-2); color: var(--app-nav-link); border: 1px solid var(--app-border); }
+  .tab-tipo .nav-link:hover:not(.active){ background: var(--app-nav-hover-bg); }
+  .conteo-table th               { font-size: .75rem; text-transform: uppercase; color: var(--app-text-muted); }
   .conteo-table td               { vertical-align: middle; }
   .item-nombre                   { font-weight: 600; font-size: .9rem; }
-  .item-codigo                   { font-size: .75rem; color: #6c757d; }
-  .stock-sistema                 { font-size: .8rem; color: #6c757d; white-space: nowrap; }
+  .item-codigo                   { font-size: .75rem; color: var(--app-text-muted); }
+  .stock-sistema                 { font-size: .8rem; color: var(--app-text-muted); white-space: nowrap; }
   /* Tom Select: nunca clipeado por tabla */
   .ts-dropdown { z-index: 9999 !important; }
   /* Quitar padding extra en celdas pequeñas */
@@ -40,12 +40,12 @@
     /* Cada fila se convierte en una tarjeta */
     .conteo-table tbody tr {
       display: block !important;
-      border: 1px solid #dee2e6;
+      border: 1px solid var(--app-border);
       border-radius: .6rem;
       padding: .75rem .85rem;
       margin-bottom: .75rem;
-      box-shadow: 0 1px 4px rgba(0,0,0,.07);
-      background: #fff;
+      box-shadow: var(--app-card-shadow);
+      background: var(--app-surface);
       position: relative;
     }
 
@@ -60,7 +60,7 @@
       display: block;
       font-size: .68rem;
       text-transform: uppercase;
-      color: #6c757d;
+      color: var(--app-text-muted);
       font-weight: 700;
       letter-spacing: .04em;
       margin-bottom: .2rem;
