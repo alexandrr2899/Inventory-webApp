@@ -416,8 +416,9 @@ class SalidaPendienteConciliacionTests(TestCase):
 class InventarioCamisetaPostConciliacionTests(TestCase):
     """
     Verifica el reenvío automático del inventario camiseta (event_type
-    'inventario_camiseta_actual') UNA sola vez, al cerrar la conciliación
-    (conteo_marcar_conciliado), usando transaction.on_commit.
+    'inventario_camiseta_actual') UNA sola vez, cuando el conteo transiciona
+    a 'conciliado' — sin importar si fue por aplicar ajustes (que cierra la
+    conciliación automáticamente) o por el botón 'Cerrar conciliación'.
     """
     def setUp(self):
         cache.clear()
@@ -427,45 +428,16 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
             categoria=cat, unidad_medida='fardos', stock_minimo=Decimal('10'),
         )
         self.ub = Ubicacion.objects.create(nombre='Bodega PT', tipo='bodega')
-        Stock.objects.create(item=self.item, ubicacion=self.ub, cantidad_actual=Decimal('30'))
+        Stock.objects.create(item=self.item, ubicacion=self.ub, cantidad_actual=Decimal('5'))
         self.user = User.objects.create_user(username='conc', password='x')
         self.user.user_permissions.add(
             Permission.objects.get(codename='aplicar_conciliacion')
         )
 
-    def _conteo_listo_para_cerrar(self, tipo='camiseta'):
-        """Conteo con su detalle ya ajustado (sin diferencias pendientes)."""
+    def _conteo_con_diferencia(self, tipo='camiseta'):
+        """Conteo camiseta con una diferencia pendiente de ajustar (+25)."""
         conteo = Conteo.objects.create(
             fecha=date.today(), turno='manana', tipo_conteo=tipo,
-            usuario=self.user, fecha_hora_conteo=timezone.now(),
-        )
-        ConteoDetalle.objects.create(
-            conteo=conteo, item=self.item, ubicacion=self.ub,
-            cantidad_contada=Decimal('30'),
-            cantidad_sistema_al_conteo=Decimal('30'),
-            diferencia_final=Decimal('0'),
-            ajuste_aplicado=True,
-        )
-        return conteo
-
-    def test_envia_una_vez_al_cerrar_conciliacion(self):
-        conteo = self._conteo_listo_para_cerrar('camiseta')
-        self.client.force_login(self.user)
-        with patch('apps.core.views.send_event', return_value=True) as mock_send:
-            with self.captureOnCommitCallbacks(execute=True):
-                resp = self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
-            self.assertIn(resp.status_code, (302, 200))
-        # Exactamente UN envío del evento de inventario camiseta
-        envios = [c for c in mock_send.call_args_list
-                  if c.args[0] == 'inventario_camiseta_actual']
-        self.assertEqual(len(envios), 1)
-        conteo.refresh_from_db()
-        self.assertEqual(conteo.estado, 'conciliado')
-
-    def test_ajustar_no_envia_inventario(self):
-        """Aplicar ajustes (sin cerrar) NO debe enviar el inventario."""
-        conteo = Conteo.objects.create(
-            fecha=date.today(), turno='manana', tipo_conteo='camiseta',
             usuario=self.user, fecha_hora_conteo=timezone.now(),
         )
         ConteoDetalle.objects.create(
@@ -474,6 +446,65 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
             cantidad_sistema_al_conteo=Decimal('5'),
             diferencia_final=Decimal('25'),
         )
+        return conteo
+
+    def test_aplicar_todos_envia_inventario_una_vez(self):
+        """Aplicar todos los ajustes cierra la conciliación → envía 1 vez."""
+        conteo = self._conteo_con_diferencia('camiseta')
+        self.client.force_login(self.user)
+        with patch('apps.core.views.send_event', return_value=True) as mock_send:
+            with self.captureOnCommitCallbacks(execute=True):
+                resp = self.client.post(reverse('conteo_ajustar_todos', args=[conteo.pk]))
+            self.assertIn(resp.status_code, (302, 200))
+        envios = [c for c in mock_send.call_args_list
+                  if c.args[0] == 'inventario_camiseta_actual']
+        self.assertEqual(len(envios), 1)
+        conteo.refresh_from_db()
+        self.assertEqual(conteo.estado, 'conciliado')
+        # Stock final correcto: 5 + 25 = 30
+        self.assertEqual(
+            Stock.objects.get(item=self.item, ubicacion=self.ub).cantidad_actual,
+            Decimal('30'),
+        )
+
+    def test_cerrar_conciliacion_manual_envia_una_vez(self):
+        """Cerrar conciliación (sin diferencias) también envía 1 vez."""
+        conteo = Conteo.objects.create(
+            fecha=date.today(), turno='tarde', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=timezone.now(),
+        )
+        ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ub,
+            cantidad_contada=Decimal('5'),
+            cantidad_sistema_al_conteo=Decimal('5'),
+            diferencia_final=Decimal('0'), ajuste_aplicado=True,
+        )
+        self.client.force_login(self.user)
+        with patch('apps.core.views.send_event', return_value=True) as mock_send:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
+        envios = [c for c in mock_send.call_args_list
+                  if c.args[0] == 'inventario_camiseta_actual']
+        self.assertEqual(len(envios), 1)
+
+    def test_no_doble_envio_si_ya_conciliado(self):
+        """Cerrar un conteo ya conciliado NO debe reenviar."""
+        conteo = self._conteo_con_diferencia('camiseta')
+        self.client.force_login(self.user)
+        # 1) Aplicar todos → conciliado, envía 1
+        with patch('apps.core.views.send_event', return_value=True):
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(reverse('conteo_ajustar_todos', args=[conteo.pk]))
+        # 2) Cerrar conciliación sobre conteo ya conciliado → no reenvía
+        with patch('apps.core.views.send_event', return_value=True) as mock2:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
+        envios = [c for c in mock2.call_args_list
+                  if c.args[0] == 'inventario_camiseta_actual']
+        self.assertEqual(len(envios), 0)
+
+    def test_no_envia_para_conteo_no_camiseta(self):
+        conteo = self._conteo_con_diferencia('pigmentos')
         self.client.force_login(self.user)
         with patch('apps.core.views.send_event', return_value=True) as mock_send:
             with self.captureOnCommitCallbacks(execute=True):
@@ -481,18 +512,9 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
         tipos = [c.args[0] for c in mock_send.call_args_list]
         self.assertNotIn('inventario_camiseta_actual', tipos)
 
-    def test_no_envia_para_conteo_no_camiseta(self):
-        conteo = self._conteo_listo_para_cerrar('pigmentos')
-        self.client.force_login(self.user)
-        with patch('apps.core.views.send_event', return_value=True) as mock_send:
-            with self.captureOnCommitCallbacks(execute=True):
-                self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
-        tipos = [c.args[0] for c in mock_send.call_args_list]
-        self.assertNotIn('inventario_camiseta_actual', tipos)
-
-    def test_fallo_webhook_no_rompe_cierre(self):
-        """Si send_event lanza excepción, el conteo igual queda conciliado."""
-        conteo = self._conteo_listo_para_cerrar('camiseta')
+    def test_fallo_webhook_no_rompe_conciliacion(self):
+        """Si send_event lanza excepción, la conciliación igual se completa."""
+        conteo = self._conteo_con_diferencia('camiseta')
         self.client.force_login(self.user)
 
         def _side_effect(event_type, payload):
@@ -502,10 +524,14 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
 
         with patch('apps.core.views.send_event', side_effect=_side_effect):
             with self.captureOnCommitCallbacks(execute=True):
-                resp = self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
+                resp = self.client.post(reverse('conteo_ajustar_todos', args=[conteo.pk]))
             self.assertIn(resp.status_code, (302, 200))
         conteo.refresh_from_db()
         self.assertEqual(conteo.estado, 'conciliado')
+        self.assertEqual(
+            Stock.objects.get(item=self.item, ubicacion=self.ub).cantidad_actual,
+            Decimal('30'),
+        )
 
 
 @override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])

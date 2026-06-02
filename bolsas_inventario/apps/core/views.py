@@ -1165,6 +1165,23 @@ def _enviar_inventario_camiseta_post_conciliacion(conteo_pk, conteo_tipo, usuari
         )
 
 
+def _notificar_si_conciliacion_completa(conteo, estado_antes, usuario=''):
+    """
+    Programa (vía transaction.on_commit) el reenvío del inventario camiseta
+    SOLO cuando el conteo recién transiciona a 'conciliado'.
+
+    Garantiza exactamente UN envío por conteo: si ya estaba 'conciliado' antes
+    de esta operación, no hace nada. Debe llamarse dentro de transaction.atomic()
+    después de que el estado del conteo quedó actualizado.
+    """
+    if conteo.estado != 'conciliado' or estado_antes == 'conciliado':
+        return
+    _conteo_pk, _conteo_tipo, _usuario = conteo.pk, conteo.tipo_conteo, usuario
+    transaction.on_commit(
+        lambda: _enviar_inventario_camiseta_post_conciliacion(_conteo_pk, _conteo_tipo, _usuario)
+    )
+
+
 def _payload_inventario_pigmentos():
     from .services.notifications import generar_resumen_pigmentos
     payload = generar_resumen_pigmentos()
@@ -3142,6 +3159,7 @@ def conteo_ajustar_detalle(request, pk, det_pk):
     if conteo.anulado:
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
+    estado_antes = conteo.estado
     detalle = get_object_or_404(ConteoDetalle, pk=det_pk, conteo=conteo)
 
     if detalle.ajuste_aplicado:
@@ -3173,6 +3191,8 @@ def conteo_ajustar_detalle(request, pk, det_pk):
         ConteoDetalle.objects.filter(pk=detalle.pk).update(ajuste_aplicado=True)
         conteo.refresh_from_db()
         conteo.actualizar_estado()
+        # Si este ajuste cerró la conciliación, reenviar inventario camiseta (1 vez)
+        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.username)
 
     send_event('count_difference', {
         'conteo_id': conteo.pk, 'item': detalle.item.nombre, 'codigo': detalle.item.codigo,
@@ -3194,6 +3214,7 @@ def conteo_ajustar_todos(request, pk):
     if conteo.anulado:
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
+    estado_antes = conteo.estado
     detalles = conteo.detalles.filter(
         ajuste_aplicado=False,
         diferencia_final__isnull=False,
@@ -3226,6 +3247,8 @@ def conteo_ajustar_todos(request, pk):
         ).exclude(diferencia_final=0).update(ajuste_aplicado=True)
         conteo.refresh_from_db()
         conteo.actualizar_estado()
+        # Si quedó conciliado, reenviar inventario camiseta (1 vez)
+        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.username)
 
     send_event('count_difference', {
         'conteo_id': conteo.pk, 'ajustes_aplicados': count,
@@ -3245,6 +3268,7 @@ def conteo_marcar_conciliado(request, pk):
     if conteo.anulado:
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
+    estado_antes = conteo.estado
 
     # Verificar que no queden diferencias sin ajustar
     pendientes = conteo.detalles.filter(
@@ -3265,13 +3289,8 @@ def conteo_marcar_conciliado(request, pk):
     with transaction.atomic():
         conteo.estado = 'conciliado'
         conteo.save(update_fields=['estado'])
-
-        # Reenviar inventario camiseta a n8n UNA sola vez, al cerrar la
-        # conciliación (stocks ya finales). Solo tras commit exitoso.
-        _conteo_pk, _conteo_tipo, _usuario = conteo.pk, conteo.tipo_conteo, request.user.username
-        transaction.on_commit(
-            lambda: _enviar_inventario_camiseta_post_conciliacion(_conteo_pk, _conteo_tipo, _usuario)
-        )
+        # Reenviar inventario camiseta (1 vez) si recién ahora quedó conciliado
+        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.username)
 
     messages.success(request, 'Conteo marcado como conciliado.')
     return redirect('conteo_detalle', pk=pk)
