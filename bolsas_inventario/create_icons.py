@@ -18,6 +18,9 @@ OUT_DIR   = os.path.join(BASE_DIR, 'static', 'icons')
 SPECS = [
     ('icon-512.png',         512),
     ('icon-192.png',         192),
+    ('apple-touch-icon-120.png', 120),
+    ('apple-touch-icon-152.png', 152),
+    ('apple-touch-icon-167.png', 167),
     ('apple-touch-icon.png', 180),
 ]
 

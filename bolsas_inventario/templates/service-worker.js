@@ -6,15 +6,25 @@
    - CDN externo         → Cache First  (Bootstrap, icons)
    ═══════════════════════════════════════════════════════════════════════ */
 
-const CACHE_APP    = 'bolsas-app-v1';
-const CACHE_STATIC = 'bolsas-static-v1';
-const CACHE_CDN    = 'bolsas-cdn-v1';
+const CACHE_APP    = 'bolsas-app-v2';
+const CACHE_STATIC = 'bolsas-static-v2';
+const CACHE_CDN    = 'bolsas-cdn-v2';
 
 // Assets CDN que se cachean al instalar
 const PRECACHE_CDN = [
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js',
   'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css',
+];
+
+const PRECACHE_STATIC = [
+  '/manifest.json',
+  '/static/icons/icon-192.png',
+  '/static/icons/icon-512.png',
+  '/static/icons/apple-touch-icon.png',
+  '/static/icons/apple-touch-icon-120.png',
+  '/static/icons/apple-touch-icon-152.png',
+  '/static/icons/apple-touch-icon-167.png',
 ];
 
 // ─── INSTALL ──────────────────────────────────────────────────────────────────
@@ -24,6 +34,11 @@ self.addEventListener('install', event => {
       // Pre-cachear CDN
       caches.open(CACHE_CDN).then(cache =>
         Promise.allSettled(PRECACHE_CDN.map(url =>
+          cache.add(url).catch(() => null)
+        ))
+      ),
+      caches.open(CACHE_STATIC).then(cache =>
+        Promise.allSettled(PRECACHE_STATIC.map(url =>
           cache.add(url).catch(() => null)
         ))
       ),
