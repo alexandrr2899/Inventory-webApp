@@ -41,6 +41,9 @@
 
 /* ─── TOKENS: TEMA OSCURO ────────────────────────────────────────────────── */
 [data-bs-theme="dark"] {
+  /* Indica al navegador que renderice controles nativos (select popup,
+     date picker, scrollbars) en modo oscuro. */
+  color-scheme: dark;
   --app-brand:          #4d8bff;
   --app-accent:         #ffd700;
   --app-navbar-bg:      #0a1326;
@@ -235,3 +238,34 @@ body { background: var(--app-page-bg); }
   background-color: var(--app-surface-2) !important;
   color: var(--app-text);
 }
+
+/* TomSelect: su tema bootstrap5 no sigue data-bs-theme. Lo tematizamos. */
+[data-bs-theme="dark"] .ts-control,
+[data-bs-theme="dark"] .ts-wrapper.single .ts-control {
+  background-color: var(--app-surface);
+  color: var(--app-text);
+  border-color: var(--app-border);
+}
+[data-bs-theme="dark"] .ts-control input,
+[data-bs-theme="dark"] .ts-control input::placeholder { color: var(--app-text); }
+[data-bs-theme="dark"] .ts-control .item { color: var(--app-text); }
+[data-bs-theme="dark"] .ts-wrapper.disabled .ts-control { opacity: .55; }
+
+[data-bs-theme="dark"] .ts-dropdown {
+  background-color: var(--app-surface);
+  color: var(--app-text);
+  border-color: var(--app-border);
+  box-shadow: 0 6px 22px rgba(0,0,0,.55);
+}
+[data-bs-theme="dark"] .ts-dropdown .option { color: var(--app-text); }
+[data-bs-theme="dark"] .ts-dropdown .option.active,
+[data-bs-theme="dark"] .ts-dropdown .option:hover {
+  background-color: var(--app-nav-hover-bg);
+  color: var(--app-nav-active);
+}
+[data-bs-theme="dark"] .ts-dropdown .option.selected { background-color: var(--app-surface-2); }
+[data-bs-theme="dark"] .ts-dropdown .optgroup-header {
+  background-color: var(--app-surface-2);
+  color: var(--app-text-muted);
+}
+[data-bs-theme="dark"] .ts-dropdown .no-results { color: var(--app-text-muted); }
