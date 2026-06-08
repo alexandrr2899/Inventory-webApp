@@ -523,5 +523,3 @@ def conteo_marcar_conciliado(request, pk):
 
     messages.success(request, 'Conteo marcado como conciliado.')
     return redirect('conteo_detalle', pk=pk)
-
-

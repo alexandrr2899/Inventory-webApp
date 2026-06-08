@@ -855,5 +855,3 @@ def movimiento_eliminar(request, pk):
             return redirect('movimiento_lista')
 
     return render(request, 'movimientos/eliminar.html', {'mov': mov})
-
-

@@ -269,5 +269,3 @@ def alertas_centro(request):
     }
     cache.set(cache_key, context, 60)
     return render(request, 'alertas/centro.html', context)
-
-

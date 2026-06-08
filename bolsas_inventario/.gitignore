@@ -34,3 +34,6 @@ Thumbs.db
 
 # ── Herramientas de desarrollo / IA ──────────────────────────────────────────
 .claude/
+
+# Override de compose para pruebas locales (no se versiona)
+docker-compose.test.yml

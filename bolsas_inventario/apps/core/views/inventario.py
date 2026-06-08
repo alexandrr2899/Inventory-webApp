@@ -271,5 +271,3 @@ def ubicacion_editar(request, pk):
     return render(request, 'inventario/ubicacion_form.html', {
         'form': form, 'titulo': f'Editar: {ubicacion.nombre}', 'ubicacion': ubicacion
     })
-
-

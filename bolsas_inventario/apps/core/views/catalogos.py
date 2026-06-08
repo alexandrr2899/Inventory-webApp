@@ -308,5 +308,3 @@ def cliente_salidas(request, pk):
             return response
         messages.warning(request, 'openpyxl no está disponible para exportar Excel.')
     return render(request, 'clientes/salidas.html', context)
-
-

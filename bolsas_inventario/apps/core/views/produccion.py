@@ -56,5 +56,3 @@ def produccion_nueva(request):
         'form': form,
         'ubicaciones': ubicaciones,
     })
-
-

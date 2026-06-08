@@ -35,5 +35,3 @@ def api_item_info(request, pk):
             for s in stocks
         ]
     })
-
-

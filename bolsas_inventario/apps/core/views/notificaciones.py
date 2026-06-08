@@ -40,5 +40,3 @@ def notificaciones_panel(request):
         'reportes': reportes,
         'webhook_configurado': bool(getattr(settings, 'N8N_WEBHOOK_URL', '')),
     })
-
-

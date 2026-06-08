@@ -466,5 +466,3 @@ def usuario_editar(request, pk):
         'titulo': f'Editar: {usuario.username}',
         'usuario': usuario,
     })
-
-
