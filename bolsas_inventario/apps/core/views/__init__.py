@@ -16,7 +16,11 @@ from .calc import *      # noqa: F401,F403
 from .payloads import *  # noqa: F401,F403
 
 # Nombres públicos (vistas) — usados por urls.py vía views.<nombre>
-from .main import *  # noqa: F401,F403
+from .main import *         # noqa: F401,F403
+from .inventario import *   # noqa: F401,F403
+from .movimientos import *  # noqa: F401,F403
+from .conteos import *      # noqa: F401,F403
+from .reportes import *     # noqa: F401,F403
 
 # Helpers con prefijo _ usados por código externo (tests) — import * no los trae
 from .calc import _calcular_tramos  # noqa: F401
