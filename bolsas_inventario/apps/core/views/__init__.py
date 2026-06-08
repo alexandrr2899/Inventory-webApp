@@ -9,13 +9,13 @@ A medida que se extraigan módulos (stock, conteos, reportes, etc.), se irán
 agregando aquí sus re-exports y achicando main.py.
 """
 
+# Helpers compartidos (incluye barrel con helpers _ y re-exports de Django/modelos)
+from .common import *  # noqa: F401,F403
+from .stock import *   # noqa: F401,F403
+
 # Nombres públicos (vistas) — usados por urls.py vía views.<nombre>
 from .main import *  # noqa: F401,F403
 
 # Helpers con prefijo _ usados por código externo (tests) — import * no los trae
-from .main import (  # noqa: F401
-    _calcular_tramos,
-    _payload_produccion_dia,
-    _aplicar_efecto_detalle,
-    _stock_en_momento,
-)
+from .main import _calcular_tramos, _payload_produccion_dia  # noqa: F401
+from .stock import _aplicar_efecto_detalle, _stock_en_momento  # noqa: F401
