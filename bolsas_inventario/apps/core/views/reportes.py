@@ -342,3 +342,168 @@ def reporte_produccion_avanzado(request):
     })
 
 
+# ─── REPORTE CONSUMO PIGMENTOS ────────────────────────────────────────────────
+
+@login_required
+@permission_required(_perm('ver_reportes'), raise_exception=True)
+@_timed_view('reporte_consumo_pigmentos')
+def reporte_consumo_pigmentos(request):
+    """
+    Reporte de consumo de pigmentos en un rango de fechas.
+
+    Consumo = ajustes negativos sobre ítems de categoría Pigmentos.
+    Muestra: consumo total, promedio diario, stock actual, días de cobertura,
+    estado (ok / bajo / crítico) y pedido sugerido.
+    """
+    hoy = date.today()
+
+    # ── Filtros ───────────────────────────────────────────────────────────────
+    def _parse_date(s, fallback):
+        try:
+            return date.fromisoformat(s) if s else fallback
+        except ValueError:
+            return fallback
+
+    fecha_inicio = _parse_date(request.GET.get('fecha_inicio', ''), hoy - timedelta(days=30))
+    fecha_fin    = _parse_date(request.GET.get('fecha_fin', ''),    hoy)
+    if fecha_fin < fecha_inicio:
+        fecha_fin = fecha_inicio
+
+    pigmento_pk  = request.GET.get('pigmento', '').strip()
+    try:
+        dias_objetivo = max(1, int(request.GET.get('dias_objetivo', 14)))
+    except (ValueError, TypeError):
+        dias_objetivo = 14
+
+    dias_rango = max(1, (fecha_fin - fecha_inicio).days + 1)
+
+    # ── Pigmentos activos ─────────────────────────────────────────────────────
+    pigmentos_qs = (
+        Item.objects
+        .filter(activo=True, tipo='consumible', categoria__nombre__iexact='Pigmentos')
+        .select_related('categoria')
+        .annotate(stock_calc=_STOCK_ANN)
+        .order_by('orden', 'nombre')
+    )
+    if pigmento_pk:
+        pigmentos_qs = pigmentos_qs.filter(pk=pigmento_pk)
+
+    todos_pigmentos = (
+        Item.objects
+        .filter(activo=True, tipo='consumible', categoria__nombre__iexact='Pigmentos')
+        .order_by('orden', 'nombre')
+    )
+
+    # ── Consumo por ítem: ajustes negativos en el rango ───────────────────────
+    consumos_base = DetalleMovimiento.objects.filter(
+        movimiento__tipo_movimiento='ajuste',
+        movimiento__anulado=False,
+        movimiento__eliminado=False,
+        movimiento__fecha_movimiento__date__gte=fecha_inicio,
+        movimiento__fecha_movimiento__date__lte=fecha_fin,
+        item__tipo='consumible',
+        item__categoria__nombre__iexact='Pigmentos',
+        cantidad__lt=0,
+    )
+    if pigmento_pk:
+        consumos_base = consumos_base.filter(item_id=pigmento_pk)
+
+    consumo_por_item = {
+        row['item_id']: abs(row['total'])
+        for row in consumos_base.values('item_id').annotate(total=Sum('cantidad'))
+    }
+
+    # ── Construir tabla de resultados ─────────────────────────────────────────
+    ESTADO_LABELS = {
+        'ok':          'OK',
+        'bajo':        'Bajo',
+        'critico':     'Crítico',
+        'sin_consumo': 'Sin consumo',
+    }
+
+    resultados = []
+    total_consumo  = Decimal('0')
+    total_criticos = 0
+    total_pedido   = Decimal('0')
+
+    for pig in pigmentos_qs:
+        consumo = consumo_por_item.get(pig.pk, Decimal('0'))
+        stock   = pig.stock_calc or Decimal('0')
+
+        if consumo > 0:
+            promedio_diario = consumo / Decimal(str(dias_rango))
+            dias_cob = float(stock / promedio_diario) if promedio_diario else None
+            pedido   = max(Decimal('0'), promedio_diario * Decimal(str(dias_objetivo)) - stock)
+        else:
+            promedio_diario = Decimal('0')
+            dias_cob = None
+            pedido   = Decimal('0')
+
+        if dias_cob is None:
+            estado = 'sin_consumo'
+        elif dias_cob < 3:
+            estado = 'critico'
+            total_criticos += 1
+        elif dias_cob <= 7:
+            estado = 'bajo'
+        else:
+            estado = 'ok'
+
+        total_consumo += consumo
+        total_pedido  += pedido
+
+        resultados.append({
+            'item':           pig,
+            'consumo':        consumo,
+            'promedio_diario': round(promedio_diario, 2),
+            'stock':          stock,
+            'dias_cobertura': round(dias_cob, 1) if dias_cob is not None else None,
+            'pedido':         round(pedido, 2),
+            'estado':         estado,
+            'estado_label':   ESTADO_LABELS[estado],
+        })
+
+    # ── Detalle de movimientos (solo cuando se filtra un pigmento) ─────────────
+    detalle_movimientos = []
+    if pigmento_pk:
+        detalle_movimientos = list(
+            consumos_base
+            .select_related('movimiento', 'movimiento__usuario', 'item')
+            .order_by('-movimiento__fecha_movimiento')
+        )
+
+    # ── Exportar CSV ──────────────────────────────────────────────────────────
+    if request.GET.get('export') == 'csv':
+        fname = f'consumo_pigmentos_{fecha_inicio}_{fecha_fin}.csv'
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{fname}"'
+        response.write('﻿')  # BOM para Excel
+        writer = csv.writer(response)
+        writer.writerow([
+            'Pigmento', 'Código', 'Consumo total', 'Promedio diario',
+            'Stock actual', 'Cobertura (días)', 'Pedido sugerido', 'Unidad', 'Estado',
+        ])
+        for r in resultados:
+            writer.writerow([
+                r['item'].nombre, r['item'].codigo,
+                r['consumo'], r['promedio_diario'],
+                r['stock'],
+                r['dias_cobertura'] if r['dias_cobertura'] is not None else '',
+                r['pedido'], r['item'].unidad_medida,
+                r['estado_label'],
+            ])
+        return response
+
+    return render(request, 'reportes/pigmentos.html', {
+        'resultados':          resultados,
+        'todos_pigmentos':     todos_pigmentos,
+        'fecha_inicio':        fecha_inicio,
+        'fecha_fin':           fecha_fin,
+        'dias_rango':          dias_rango,
+        'dias_objetivo':       dias_objetivo,
+        'pigmento_pk':         pigmento_pk,
+        'total_consumo':       total_consumo,
+        'total_criticos':      total_criticos,
+        'total_pedido':        total_pedido,
+        'detalle_movimientos': detalle_movimientos,
+    })

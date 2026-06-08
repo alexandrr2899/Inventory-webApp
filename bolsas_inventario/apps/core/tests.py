@@ -142,7 +142,7 @@ class VistasOperativasTests(TestCase):
                 return SimpleNamespace(returncode=0, stdout='ok', stderr='')
 
             with patch.dict('os.environ', {'BACKUP_ROOT': str(root), 'N8N_WEBHOOK_URL': ''}):
-                with patch('apps.core.views.main.subprocess.run', side_effect=fake_run):
+                with patch('apps.core.views.admin_ops.subprocess.run', side_effect=fake_run):
                     response = self.client.post(reverse('backups_panel'))
 
         self.assertRedirects(response, reverse('backups_panel'))
