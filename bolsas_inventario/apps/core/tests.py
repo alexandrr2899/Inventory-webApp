@@ -452,7 +452,7 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
         """Aplicar todos los ajustes cierra la conciliación → envía 1 vez."""
         conteo = self._conteo_con_diferencia('camiseta')
         self.client.force_login(self.user)
-        with patch('apps.core.views.main.send_event', return_value=True) as mock_send:
+        with patch('apps.core.views.payloads.send_event', return_value=True) as mock_send:
             with self.captureOnCommitCallbacks(execute=True):
                 resp = self.client.post(reverse('conteo_ajustar_todos', args=[conteo.pk]))
             self.assertIn(resp.status_code, (302, 200))
@@ -480,7 +480,7 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
             diferencia_final=Decimal('0'), ajuste_aplicado=True,
         )
         self.client.force_login(self.user)
-        with patch('apps.core.views.main.send_event', return_value=True) as mock_send:
+        with patch('apps.core.views.payloads.send_event', return_value=True) as mock_send:
             with self.captureOnCommitCallbacks(execute=True):
                 self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
         envios = [c for c in mock_send.call_args_list
@@ -492,11 +492,11 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
         conteo = self._conteo_con_diferencia('camiseta')
         self.client.force_login(self.user)
         # 1) Aplicar todos → conciliado, envía 1
-        with patch('apps.core.views.main.send_event', return_value=True):
+        with patch('apps.core.views.payloads.send_event', return_value=True):
             with self.captureOnCommitCallbacks(execute=True):
                 self.client.post(reverse('conteo_ajustar_todos', args=[conteo.pk]))
         # 2) Cerrar conciliación sobre conteo ya conciliado → no reenvía
-        with patch('apps.core.views.main.send_event', return_value=True) as mock2:
+        with patch('apps.core.views.payloads.send_event', return_value=True) as mock2:
             with self.captureOnCommitCallbacks(execute=True):
                 self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
         envios = [c for c in mock2.call_args_list
@@ -506,7 +506,7 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
     def test_no_envia_para_conteo_no_camiseta(self):
         conteo = self._conteo_con_diferencia('pigmentos')
         self.client.force_login(self.user)
-        with patch('apps.core.views.main.send_event', return_value=True) as mock_send:
+        with patch('apps.core.views.payloads.send_event', return_value=True) as mock_send:
             with self.captureOnCommitCallbacks(execute=True):
                 self.client.post(reverse('conteo_ajustar_todos', args=[conteo.pk]))
         tipos = [c.args[0] for c in mock_send.call_args_list]
@@ -522,7 +522,7 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
                 raise RuntimeError('n8n caído')
             return True
 
-        with patch('apps.core.views.main.send_event', side_effect=_side_effect):
+        with patch('apps.core.views.payloads.send_event', side_effect=_side_effect):
             with self.captureOnCommitCallbacks(execute=True):
                 resp = self.client.post(reverse('conteo_ajustar_todos', args=[conteo.pk]))
             self.assertIn(resp.status_code, (302, 200))
