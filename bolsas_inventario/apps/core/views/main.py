@@ -36,18 +36,18 @@ _STOCK_ANN = Coalesce(
     output_field=DecimalField(max_digits=12, decimal_places=2),
 )
 
-from .models import (
+from ..models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle, BackupJob
 )
 from django.contrib.auth.models import User, Group
-from .forms import (
+from ..forms import (
     ItemForm, CategoriaForm, UbicacionForm, MaquinaForm, ClienteForm,
     MovimientoEntradaForm, MovimientoSalidaForm, MovimientoTransferenciaForm,
     ConteoForm, FiltroMovimientosForm, ProduccionForm, ImportarItemsForm,
     UsuarioCrearForm, UsuarioEditarForm,
 )
-from .services.notifications import notify_stock, send_event, send_security_event
+from ..services.notifications import notify_stock, send_event, send_security_event
 
 
 def _perm(codename):
@@ -1183,7 +1183,7 @@ def _notificar_si_conciliacion_completa(conteo, estado_antes, usuario=''):
 
 
 def _payload_inventario_pigmentos():
-    from .services.notifications import generar_resumen_pigmentos
+    from ..services.notifications import generar_resumen_pigmentos
     payload = generar_resumen_pigmentos()
     payload['titulo'] = 'Inventario actual de Pigmentos'
     return payload
