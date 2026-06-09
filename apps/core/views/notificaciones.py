@@ -24,7 +24,7 @@ def notificaciones_panel(request):
             return redirect('notificaciones_panel')
 
         payload = cfg['builder']()
-        payload['enviado_por'] = request.user.username
+        payload['enviado_por'] = request.user.get_full_name() or request.user.username
         ok = send_event(cfg['event_type'], payload)
         event_log.info('[EVENT] reporte_manual_enviado user=%s tipo=%s ok=%s', request.user.username, tipo, ok)
 
