@@ -1,162 +1,141 @@
-# Inventario Bolsas — Sistema de Control de Inventario
+# Inventario Bolsas - Sistema de Control de Inventario
 
-App web mobile-first para control de inventario de planta de producción de bolsas.
-Desarrollada con Django + PostgreSQL + Bootstrap 5.
+App web mobile-first para controlar inventario, movimientos, conteos fisicos,
+produccion, clientes, maquinas, usuarios, backups y alertas operativas.
+
+Stack principal: Django 4.2, PostgreSQL 15, Bootstrap 5, Gunicorn,
+WhiteNoise, openpyxl, django-axes y Docker Compose.
 
 ---
 
-## Módulos incluidos
+## Modulos incluidos
 
-| Módulo | Descripción |
+| Modulo | Descripcion |
 |---|---|
-| **Dashboard** | Resumen del día, alertas de stock bajo, producción estimada, acciones rápidas |
-| **Inventario** | Gestión de ítems (productos, repuestos, consumibles) y ubicaciones |
-| **Movimientos** | Entradas, salidas, transferencias con actualización automática de stock |
-| **Conteos físicos** | Conteo mañana/tarde, comparación sistema vs físico, ajuste por diferencia |
-| **Producción** | Cálculo diario: Tarde − Mañana + Salidas |
-| **Máquinas** | Catálogo de máquinas por área |
-| **Clientes** | Registro de clientes para salidas de producto terminado |
-| **Reportes** | Stock bajo con exportación CSV, historial de movimientos con filtros |
+| **Dashboard** | Resumen operativo, alertas de stock bajo, acciones rapidas y accesos principales |
+| **Inventario** | Items, categorias, ubicaciones, stock por ubicacion, historial por item y orden de listados |
+| **Movimientos** | Entradas, salidas, transferencias, edicion, anulacion, eliminacion logica y exportacion CSV |
+| **Conteos fisicos** | Conteos manana/tarde por tipo, diferencias sistema vs fisico, conciliacion y anulacion |
+| **Produccion** | Registro de producto terminado hacia bodega con fecha/hora operativa |
+| **Maquinas** | Catalogo de maquinas por area para salidas de repuestos |
+| **Clientes** | Registro de clientes y consulta de salidas por cliente |
+| **Reportes** | Stock bajo, produccion, produccion avanzada y consumo de pigmentos |
+| **Importacion Excel** | Descarga de plantilla e importacion masiva de items |
+| **Usuarios y permisos** | Roles Administrador, Supervisor y Operador con permisos por modulo |
+| **Backups** | Backup PostgreSQL manual desde Docker o desde panel web, descarga y registro de trabajos |
+| **Notificaciones** | Envio opcional de eventos/reportes a n8n mediante `N8N_WEBHOOK_URL` |
 
 ---
 
 ## Requisitos previos
 
-- **Docker** y **Docker Compose** instalados  
-  _O_ Python 3.11+ y PostgreSQL 15+ si prefieres correr local sin Docker
+- Docker y Docker Compose.
+- Para correr sin Docker: Python 3.11+ y PostgreSQL 15+.
 
 ---
 
-## Opción A — Correr con Docker (recomendado)
+## Opcion A - Correr con Docker
 
-### 1. Clonar / descargar el proyecto
+### 1. Entrar al proyecto
 
 ```bash
 cd bolsas_inventario
 ```
 
-### 2. Crear el archivo de entorno
+### 2. Crear `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Edita `.env` y define valores seguros antes de levantar producción:
+Completa como minimo:
 
 ```env
-DEBUG=False
 SECRET_KEY=generar-una-clave-larga-y-aleatoria
-DB_HOST=db
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1
+CSRF_TRUSTED_ORIGINS=
 DB_NAME=bolsas_inventario
 DB_USER=bolsas_user
 DB_PASSWORD=generar-una-contrasena-fuerte
+DB_HOST=db
 DB_PORT=5432
-ALLOWED_HOSTS=localhost,127.0.0.1
-ADMIN_URL=mi-ruta-admin-secreta/
+POSTGRES_HOST=db
+BACKUP_DIR=./backups
+BACKUP_RETENTION_DAYS=14
+BACKUP_TIMEOUT_SECONDS=300
+APP_PORT=8000
+N8N_WEBHOOK_URL=
+ADMIN_URL=gestion-interna/
 ```
 
-### 3. Construir y levantar los contenedores
+Notas importantes:
+
+- `SECRET_KEY` y `DB_PASSWORD` son obligatorios.
+- `ADMIN_URL` define la ruta real del admin Django. `/admin/` devuelve 404 a proposito.
+- Si usas Cloudflare Tunnel o dominio publico, agrega el dominio a `ALLOWED_HOSTS` y el origen completo a `CSRF_TRUSTED_ORIGINS`.
+
+### 3. Construir y levantar
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
-La primera vez tarda unos minutos. Cuando la app esté arriba, crea el superusuario manualmente:
+En segundo plano:
+
+```bash
+docker compose up -d --build
+```
+
+La app queda disponible en:
+
+```text
+http://localhost:8000
+```
+
+Si defines otro puerto:
+
+```env
+APP_PORT=8001
+```
+
+abre `http://localhost:8001`.
+
+### 4. Crear superusuario y roles
 
 ```bash
 docker compose exec web python manage.py createsuperuser
-```
-
-### 4. Abrir en el navegador
-
-```
-http://localhost:8000
+docker compose exec web python manage.py setup_groups
 ```
 
 No hay usuario por defecto por seguridad.
 
-### 5. Detener
+### 5. Comandos utiles
 
 ```bash
-docker-compose down          # detiene y elimina contenedores
-docker-compose down -v       # también elimina los volúmenes (borra la BD)
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py check
+docker compose exec web python manage.py setup_groups
+docker compose logs -f web
+docker compose down
+docker compose down -v
 ```
+
+`docker compose down -v` borra los volumenes, incluida la base de datos.
 
 ---
 
-## Backups PostgreSQL
+## Opcion B - Correr local sin Docker
 
-El stack incluye un servicio opcional `backup` separado de Django. No corre continuamente y no depende del contenedor `web`; solo ejecuta `pg_dump` contra el servicio `db`.
-
-### Configurar ubicación persistente
-
-En local puedes usar el default:
-
-```env
-BACKUP_DIR=./backups
-BACKUP_RETENTION_DAYS=14
-```
-
-En Raspberry/Portainer usa una ruta absoluta persistente del host, por ejemplo:
-
-```env
-BACKUP_DIR=/apps/inventario/backups
-BACKUP_RETENTION_DAYS=14
-```
-
-Los archivos quedan en:
-
-```text
-<BACKUP_DIR>/postgres/inventario_YYYYMMDD_HHMM.sql.gz
-```
-
-### Ejecutar backup manual
-
-Desde la carpeta del proyecto:
+### 1. Crear entorno e instalar dependencias
 
 ```bash
-docker compose run --rm backup
-```
-
-El contenedor genera el backup, verifica que el archivo exista y tenga tamaño mayor a cero, y elimina backups mayores a `BACKUP_RETENTION_DAYS`.
-
-### Verificar backups
-
-```bash
-ls -lh ./backups/postgres/
-```
-
-En Raspberry, si usas la ruta sugerida:
-
-```bash
-ls -lh /apps/inventario/backups/postgres/
-```
-
-### Restaurar
-
-La restauración está documentada en [RESTORE.md](RESTORE.md). No ejecutes una restauración en producción sin revisar el procedimiento completo.
-
-Buenas prácticas:
-
-- Ejecuta un backup antes de actualizar producción.
-- Copia backups importantes fuera de la Raspberry.
-- Prueba una restauración en un entorno de prueba antes de confiar en el proceso.
-- No subas archivos `.sql` o `.sql.gz` al repositorio.
-
----
-
-## Opción B — Correr local sin Docker
-
-### 1. Crear entorno virtual e instalar dependencias
-
-```bash
-cd bolsas_inventario
 python3 -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Crear base de datos PostgreSQL
+### 2. Crear base PostgreSQL
 
 ```bash
 psql -U postgres -c "CREATE DATABASE bolsas_inventario;"
@@ -164,154 +143,261 @@ psql -U postgres -c "CREATE USER bolsas_user WITH PASSWORD '<contrasena-fuerte>'
 psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE bolsas_inventario TO bolsas_user;"
 ```
 
-### 3. Configurar variables de entorno
+### 3. Configurar entorno
 
 ```bash
 cp .env.example .env
-# Edita .env con tus valores de DB_HOST=localhost, etc.
 ```
 
-### 4. Aplicar migraciones y crear superusuario
+Para local, usa `DB_HOST=localhost` y completa `SECRET_KEY` y `DB_PASSWORD`.
+
+### 4. Migrar, crear roles y usuario
 
 ```bash
 python manage.py migrate
+python manage.py setup_groups
 python manage.py createsuperuser
-```
-
-### 5. Cargar datos iniciales de ejemplo (opcional)
-
-```bash
-python manage.py shell -c "
-from apps.core.models import Categoria, Ubicacion, Maquina
-Categoria.objects.get_or_create(nombre='Bolsas de polietileno')
-Categoria.objects.get_or_create(nombre='Bolsas biodegradables')
-Categoria.objects.get_or_create(nombre='Materia prima')
-Ubicacion.objects.get_or_create(nombre='Bodega Principal', defaults={'tipo':'bodega'})
-Ubicacion.objects.get_or_create(nombre='Área de Producción', defaults={'tipo':'produccion'})
-Ubicacion.objects.get_or_create(nombre='Estante A', defaults={'tipo':'estante'})
-Maquina.objects.get_or_create(codigo='M-001', defaults={'nombre':'Extrusora 1', 'area':'Producción'})
-Maquina.objects.get_or_create(codigo='M-002', defaults={'nombre':'Selladora 1', 'area':'Producción'})
-print('Datos de ejemplo creados.')
-"
-```
-
-### 6. Correr el servidor de desarrollo
-
-```bash
 python manage.py runserver
 ```
 
-Abrir en `http://127.0.0.1:8000`
+Abrir:
+
+```text
+http://127.0.0.1:8000
+```
+
+---
+
+## Roles y permisos
+
+Los grupos se crean o actualizan con:
+
+```bash
+python manage.py setup_groups
+```
+
+En Docker:
+
+```bash
+docker compose exec web python manage.py setup_groups
+```
+
+Roles incluidos:
+
+| Rol | Permisos principales |
+|---|---|
+| **Administrador** | Inventario, movimientos, conteos, reportes, importacion, produccion, backups y gestion avanzada de movimientos |
+| **Supervisor** | Inventario, entradas/salidas, conteos, conciliacion, reportes y produccion |
+| **Operador** | Inventario, conteos y produccion |
+
+La gestion de usuarios dentro de la app esta restringida a superusuarios.
+
+---
+
+## Importacion Excel
+
+Ruta de la app:
+
+```text
+/importar/items/
+```
+
+La plantilla se descarga desde:
+
+```text
+/importar/plantilla/
+```
+
+Columnas requeridas:
+
+- `codigo`
+- `nombre`
+- `tipo` (`producto`, `repuesto` o `consumible`)
+- `unidad_medida`
+
+Columnas opcionales:
+
+- `stock_minimo`
+- `categoria`
+- `descripcion`
+
+Si el codigo ya existe, el item se actualiza. Si no existe, se crea.
+
+---
+
+## Backups PostgreSQL
+
+El proyecto tiene dos formas de ejecutar backups:
+
+1. Servicio Docker `backup`.
+2. Panel web `/backups/` para usuarios con permiso `gestionar_backups`.
+
+Ambos generan archivos SQL plano comprimidos:
+
+```text
+<BACKUP_DIR>/postgres/inventario_YYYYMMDD_HHMM.sql.gz
+```
+
+### Configurar ubicacion persistente
+
+En local:
+
+```env
+BACKUP_DIR=./backups
+BACKUP_RETENTION_DAYS=14
+```
+
+En Raspberry/Portainer usa una ruta absoluta persistente:
+
+```env
+BACKUP_DIR=/apps/inventario/backups
+BACKUP_RETENTION_DAYS=14
+```
+
+### Backup manual por Docker
+
+```bash
+docker compose run --rm backup
+```
+
+El contenedor ejecuta `pg_dump`, comprime el resultado, valida que el archivo no este vacio y elimina respaldos mayores a `BACKUP_RETENTION_DAYS`.
+
+### Backup desde panel web
+
+Ruta:
+
+```text
+/backups/
+```
+
+Requiere superusuario o permiso `gestionar_backups`. El panel permite:
+
+- Ejecutar un backup.
+- Ver los ultimos trabajos (`BackupJob`).
+- Listar backups disponibles.
+- Descargar archivos `.sql.gz`.
+
+### Restaurar
+
+La restauracion esta documentada en [RESTORE.md](RESTORE.md). No restaures en produccion sin detener la app web y confirmar el archivo de backup.
+
+Buenas practicas:
+
+- Ejecuta un backup antes de actualizar produccion.
+- Copia backups importantes fuera de la Raspberry.
+- Prueba restauraciones en un entorno de prueba.
+- No subas archivos `.sql` ni `.sql.gz` al repositorio.
+
+---
+
+## Notificaciones y n8n
+
+Si `N8N_WEBHOOK_URL` esta definido, la app envia eventos estructurados por HTTP:
+
+- stock bajo o en cero
+- resumen de pigmentos
+- movimientos
+- backups exitosos o fallidos
+- reportes manuales
+- eventos de seguridad relevantes
+
+Si `N8N_WEBHOOK_URL` esta vacio, las notificaciones quedan deshabilitadas sin romper el flujo de la app.
+
+Panel manual:
+
+```text
+/notificaciones/
+```
+
+Requiere superusuario, grupo Administrador o grupo Supervisor.
+
+---
+
+## Seguridad operativa
+
+- `SECRET_KEY` y `DB_PASSWORD` no tienen fallback seguro: deben existir en `.env` o en Portainer.
+- El admin real usa `ADMIN_URL`; `/admin/` responde 404.
+- `django-axes` bloquea intentos fallidos de login por IP despues de 5 fallos durante 1 hora.
+- En produccion, cookies de sesion y CSRF se marcan como seguras cuando `DEBUG=False`.
+- La app confia en `X-Forwarded-Proto` y `X-Forwarded-Host` para funcionar detras de Cloudflare Tunnel/proxy.
+
+---
+
+## Pruebas
+
+Con entorno local configurado:
+
+```bash
+python manage.py test
+```
+
+Con Docker:
+
+```bash
+docker compose exec web python manage.py test
+```
+
+Tambien existe `docker-compose.test.yml` para levantar un contenedor `web-test` en el puerto 8005 reutilizando la base `db`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.test.yml build web-test
+docker compose -f docker-compose.yml -f docker-compose.test.yml up -d web-test
+```
 
 ---
 
 ## Estructura del proyecto
 
-```
+```text
 bolsas_inventario/
-├── config/                  # Configuración Django
-│   ├── settings.py
-│   ├── urls.py
-│   └── wsgi.py
+├── config/                         # Settings, URLs globales, auth, admin configurable
 ├── apps/
-│   └── core/                # Aplicación principal
-│       ├── models.py        # Item, Stock, Movimiento, Conteo, etc.
-│       ├── views.py         # Todas las vistas
-│       ├── forms.py         # Formularios con validación
-│       ├── urls.py          # Rutas URL
-│       └── admin.py         # Panel de administración
-├── templates/               # Plantillas HTML (Bootstrap 5)
-│   ├── base.html            # Layout base con nav mobile
-│   ├── dashboard.html
-│   ├── inventario/
-│   ├── movimientos/
-│   ├── conteos/
-│   ├── maquinas/
-│   ├── clientes/
-│   └── reportes/
-├── static/                  # CSS y JS personalizados
+│   └── core/
+│       ├── models.py               # Items, stock, movimientos, conteos, backups
+│       ├── forms.py                # Formularios operativos e importacion
+│       ├── urls.py                 # Rutas del modulo core
+│       ├── admin.py                # Admin Django
+│       ├── signals.py              # Hooks de la app
+│       ├── services/
+│       │   └── notifications.py    # Webhook n8n y payloads de alerta
+│       ├── management/commands/
+│       │   ├── setup_groups.py
+│       │   └── auditar_stock_pendientes.py
+│       └── views/                  # Vistas separadas por dominio
+│           ├── dashboard.py
+│           ├── inventario.py
+│           ├── movimientos.py
+│           ├── conteos.py
+│           ├── catalogos.py
+│           ├── reportes.py
+│           ├── produccion.py
+│           ├── notificaciones.py
+│           ├── admin_ops.py
+│           └── api.py
+├── templates/                      # Bootstrap 5, PWA, pantallas y parciales
+├── static/                         # CSS, JS, imagenes e iconos
+├── scripts/
+│   └── backup_postgres.sh
+├── backups/                        # Backups locales, ignorar en Git
 ├── Dockerfile
 ├── docker-compose.yml
+├── docker-compose.test.yml
 ├── entrypoint.sh
+├── manage.py
 ├── requirements.txt
-└── .env.example
+├── README.md
+└── RESTORE.md
 ```
 
 ---
 
-## Flujo de trabajo diario
+## Flujo recomendado de produccion
 
-### Conteo de inventario (2 veces al día)
-
-1. Ir a **Conteos → Nuevo Conteo**
-2. Seleccionar **fecha**, **turno** (mañana o tarde) y **ubicación general**
-3. Ingresar la cantidad física contada para cada producto
-4. Guardar — el sistema calcula la diferencia vs. el stock del sistema
-5. Si hay diferencias, revisar y opcionalmente **Aplicar Ajuste**
-
-### Registrar producción / salidas
-
-- **Nueva Entrada**: para ingresar materia prima o productos recibidos
-- **Nueva Salida**: para despacho a clientes (productos terminados) o consumo de repuestos
-- **Transferencia**: para mover stock entre ubicaciones
-
-### Ver producción estimada del día
-
-1. Dashboard → sección producción, **o**
-2. **Reportes → Producción Diaria**
-
-La fórmula es: `Producción = Conteo Tarde − Conteo Mañana + Salidas del día`
-
----
-
-## Variables de entorno
-
-| Variable | Descripción | Default |
-|---|---|---|
-| `DEBUG` | Modo debug (False en producción) | `False` |
-| `SECRET_KEY` | Clave secreta Django | — |
-| `DB_HOST` | Host PostgreSQL | `localhost` |
-| `DB_NAME` | Nombre de la base de datos | `bolsas_inventario` |
-| `DB_USER` | Usuario PostgreSQL | `bolsas_user` |
-| `DB_PASSWORD` | Contraseña PostgreSQL | — |
-| `DB_PORT` | Puerto PostgreSQL | `5432` |
-| `ALLOWED_HOSTS` | Hosts permitidos (separados por coma) | `localhost,127.0.0.1` |
-| `ADMIN_URL` | Ruta privada del admin, con `/` final | `gestion-interna/` |
-| `BACKUP_DIR` | Carpeta persistente del host para backups | `./backups` |
-| `BACKUP_RETENTION_DAYS` | Días de retención de backups manuales | `14` |
-
----
-
-## URLs principales
-
-| URL | Descripción |
-|---|---|
-| `/` | Dashboard |
-| `/inventario/` | Lista de ítems |
-| `/movimientos/entrada/` | Nueva entrada |
-| `/movimientos/salida/` | Nueva salida |
-| `/conteos/nuevo/` | Nuevo conteo físico |
-| `/reportes/stock-bajo/` | Ítems bajo stock mínimo |
-| `/reportes/produccion/` | Producción del día |
-| `/admin/` | Panel de administración Django |
-
----
-
-## Notas para producción
-
-```bash
-# En .env:
-DEBUG=False
-SECRET_KEY=clave-larga-aleatoria-segura
-ALLOWED_HOSTS=tu-dominio.com,www.tu-dominio.com
-```
-
-```bash
-# Colectar archivos estáticos
-python manage.py collectstatic
-
-# Usar Gunicorn (ya configurado en entrypoint.sh)
-gunicorn config.wsgi:application --bind 0.0.0.0:8000
-```
-
-Para HTTPS en producción se recomienda poner **Nginx** como proxy reverso frente a Gunicorn.
+1. Completar `.env` o variables de Portainer.
+2. Levantar stack con `docker compose up -d --build`.
+3. Ejecutar migraciones.
+4. Crear superusuario.
+5. Ejecutar `setup_groups`.
+6. Asignar roles a usuarios.
+7. Confirmar backup manual.
+8. Probar login, dashboard, inventario, movimientos y reportes.
