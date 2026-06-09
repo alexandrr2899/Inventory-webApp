@@ -421,7 +421,7 @@ def conteo_ajustar_detalle(request, pk, det_pk):
         conteo.refresh_from_db()
         conteo.actualizar_estado()
         # Si este ajuste cerró la conciliación, reenviar inventario camiseta (1 vez)
-        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.username)
+        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.get_full_name() or request.user.username)
 
     send_event('count_difference', {
         'conteo_id': conteo.pk, 'item': detalle.item.nombre, 'codigo': detalle.item.codigo,
@@ -477,7 +477,7 @@ def conteo_ajustar_todos(request, pk):
         conteo.refresh_from_db()
         conteo.actualizar_estado()
         # Si quedó conciliado, reenviar inventario camiseta (1 vez)
-        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.username)
+        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.get_full_name() or request.user.username)
 
     send_event('count_difference', {
         'conteo_id': conteo.pk, 'ajustes_aplicados': count,
@@ -519,7 +519,7 @@ def conteo_marcar_conciliado(request, pk):
         conteo.estado = 'conciliado'
         conteo.save(update_fields=['estado'])
         # Reenviar inventario camiseta (1 vez) si recién ahora quedó conciliado
-        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.username)
+        _notificar_si_conciliacion_completa(conteo, estado_antes, request.user.get_full_name() or request.user.username)
 
     messages.success(request, 'Conteo marcado como conciliado.')
     return redirect('conteo_detalle', pk=pk)

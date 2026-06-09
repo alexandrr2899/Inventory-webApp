@@ -82,7 +82,15 @@ def _enviar_inventario_camiseta_post_conciliacion(conteo_pk, conteo_tipo, usuari
     El fallo del webhook NUNCA debe afectar la conciliación: se captura y se
     registra como warning/error, pero no se propaga.
     """
+    event_log.info(
+        '[CONCILIACION] on_commit ejecutado — conteo_pk=%s tipo=%r usuario=%s',
+        conteo_pk, conteo_tipo, usuario,
+    )
     if conteo_tipo != 'camiseta':
+        event_log.info(
+            '[CONCILIACION] Conteo #%s tipo=%r — no es camiseta, se omite el envío.',
+            conteo_pk, conteo_tipo,
+        )
         return
     try:
         payload = _payload_inventario_camiseta()
@@ -120,9 +128,27 @@ def _notificar_si_conciliacion_completa(conteo, estado_antes, usuario=''):
     de esta operación, no hace nada. Debe llamarse dentro de transaction.atomic()
     después de que el estado del conteo quedó actualizado.
     """
-    if conteo.estado != 'conciliado' or estado_antes == 'conciliado':
+    event_log.info(
+        '[CONCILIACION] Conteo #%s tipo=%r estado_antes=%r estado_actual=%r usuario=%s',
+        conteo.pk, conteo.tipo_conteo, estado_antes, conteo.estado, usuario,
+    )
+    if conteo.estado != 'conciliado':
+        event_log.info(
+            '[CONCILIACION] Conteo #%s — estado actual no es conciliado (%r), no se envía.',
+            conteo.pk, conteo.estado,
+        )
+        return
+    if estado_antes == 'conciliado':
+        event_log.info(
+            '[CONCILIACION] Conteo #%s — ya estaba conciliado antes, no se reenvía.',
+            conteo.pk,
+        )
         return
     _conteo_pk, _conteo_tipo, _usuario = conteo.pk, conteo.tipo_conteo, usuario
+    event_log.info(
+        '[CONCILIACION] Conteo #%s tipo=%r — programando envío inventario camiseta.',
+        _conteo_pk, _conteo_tipo,
+    )
     transaction.on_commit(
         lambda: _enviar_inventario_camiseta_post_conciliacion(_conteo_pk, _conteo_tipo, _usuario)
     )
