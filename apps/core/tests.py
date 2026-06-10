@@ -467,8 +467,8 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
             Decimal('30'),
         )
 
-    def test_cerrar_conciliacion_manual_envia_una_vez(self):
-        """Cerrar conciliación (sin diferencias) también envía 1 vez."""
+    def test_cerrar_conciliacion_manual_turno_tarde_envia_produccion(self):
+        """Cerrar conciliación de camiseta turno tarde → envía producción 1 vez."""
         conteo = Conteo.objects.create(
             fecha=date.today(), turno='tarde', tipo_conteo='camiseta',
             usuario=self.user, fecha_hora_conteo=timezone.now(),
@@ -483,9 +483,30 @@ class InventarioCamisetaPostConciliacionTests(TestCase):
         with patch('apps.core.views.payloads.send_event', return_value=True) as mock_send:
             with self.captureOnCommitCallbacks(execute=True):
                 self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
-        envios = [c for c in mock_send.call_args_list
-                  if c.args[0] == 'inventario_camiseta_actual']
-        self.assertEqual(len(envios), 1)
+        tipos = [c.args[0] for c in mock_send.call_args_list]
+        # Turno tarde manda producción, NO inventario camiseta.
+        self.assertEqual(tipos.count('reporte_produccion_dia'), 1)
+        self.assertNotIn('inventario_camiseta_actual', tipos)
+
+    def test_conciliacion_turno_manana_envia_inventario_camiseta(self):
+        """Conciliar camiseta turno mañana → envía inventario camiseta 1 vez."""
+        conteo = Conteo.objects.create(
+            fecha=date.today(), turno='manana', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=timezone.now(),
+        )
+        ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ub,
+            cantidad_contada=Decimal('5'),
+            cantidad_sistema_al_conteo=Decimal('5'),
+            diferencia_final=Decimal('0'), ajuste_aplicado=True,
+        )
+        self.client.force_login(self.user)
+        with patch('apps.core.views.payloads.send_event', return_value=True) as mock_send:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(reverse('conteo_marcar_conciliado', args=[conteo.pk]))
+        tipos = [c.args[0] for c in mock_send.call_args_list]
+        self.assertEqual(tipos.count('inventario_camiseta_actual'), 1)
+        self.assertNotIn('reporte_produccion_dia', tipos)
 
     def test_no_doble_envio_si_ya_conciliado(self):
         """Cerrar un conteo ya conciliado NO debe reenviar."""

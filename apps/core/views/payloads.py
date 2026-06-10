@@ -70,10 +70,14 @@ def _payload_inventario_camiseta():
     }
 
 
-def _enviar_inventario_camiseta_post_conciliacion(conteo_pk, conteo_tipo, usuario=''):
+def _enviar_reporte_post_conciliacion(conteo_pk, conteo_tipo, conteo_turno, usuario=''):
     """
-    Reenvía el inventario actual de Camiseta a n8n (mismo evento y payload que
-    el envío manual: event_type='inventario_camiseta_actual').
+    Reenvía a n8n el reporte que corresponde tras conciliar un conteo de Camiseta:
+
+      • Turno mañana → inventario actual de Camiseta
+        (event_type='inventario_camiseta_actual').
+      • Turno tarde  → reporte de producción del día
+        (event_type='reporte_produccion_dia', el mismo del envío manual).
 
     Debe invocarse SOLO vía transaction.on_commit(), es decir, después de que
     los ajustes de conciliación quedaron persistidos. Si el conteo no es de
@@ -83,8 +87,8 @@ def _enviar_inventario_camiseta_post_conciliacion(conteo_pk, conteo_tipo, usuari
     registra como warning/error, pero no se propaga.
     """
     event_log.info(
-        '[CONCILIACION] on_commit ejecutado — conteo_pk=%s tipo=%r usuario=%s',
-        conteo_pk, conteo_tipo, usuario,
+        '[CONCILIACION] on_commit ejecutado — conteo_pk=%s tipo=%r turno=%r usuario=%s',
+        conteo_pk, conteo_tipo, conteo_turno, usuario,
     )
     if conteo_tipo != 'camiseta':
         event_log.info(
@@ -92,30 +96,40 @@ def _enviar_inventario_camiseta_post_conciliacion(conteo_pk, conteo_tipo, usuari
             conteo_pk, conteo_tipo,
         )
         return
+
+    if conteo_turno == 'tarde':
+        builder, event_type, descripcion = (
+            _payload_produccion_dia, 'reporte_produccion_dia', 'producción del día',
+        )
+    else:
+        builder, event_type, descripcion = (
+            _payload_inventario_camiseta, 'inventario_camiseta_actual', 'inventario camiseta',
+        )
+
     try:
-        payload = _payload_inventario_camiseta()
+        payload = builder()
         payload['origen'] = 'conciliacion_automatica'
         payload['conteo_id'] = conteo_pk
         if usuario:
             payload['enviado_por'] = usuario
-        ok = send_event('inventario_camiseta_actual', payload)
+        ok = send_event(event_type, payload)
         if ok:
             event_log.info(
-                'Inventario camiseta enviado automáticamente tras conciliación #%s',
-                conteo_pk,
+                'Reporte %s (%s) enviado automáticamente tras conciliación #%s',
+                descripcion, event_type, conteo_pk,
             )
         else:
             event_log.warning(
-                'No se pudo enviar inventario camiseta tras conciliación #%s '
+                'No se pudo enviar reporte %s tras conciliación #%s '
                 '(webhook sin configurar o n8n no respondió). La conciliación NO se afecta.',
-                conteo_pk,
+                descripcion, conteo_pk,
             )
     except Exception:
         # Nunca romper la conciliación por un fallo de notificación
         event_log.exception(
-            'Error al enviar inventario camiseta tras conciliación #%s. '
+            'Error al enviar reporte %s tras conciliación #%s. '
             'La conciliación se completó correctamente de todas formas.',
-            conteo_pk,
+            descripcion, conteo_pk,
         )
 
 
@@ -144,13 +158,15 @@ def _notificar_si_conciliacion_completa(conteo, estado_antes, usuario=''):
             conteo.pk,
         )
         return
-    _conteo_pk, _conteo_tipo, _usuario = conteo.pk, conteo.tipo_conteo, usuario
+    _conteo_pk, _conteo_tipo, _conteo_turno, _usuario = (
+        conteo.pk, conteo.tipo_conteo, conteo.turno, usuario,
+    )
     event_log.info(
-        '[CONCILIACION] Conteo #%s tipo=%r — programando envío inventario camiseta.',
-        _conteo_pk, _conteo_tipo,
+        '[CONCILIACION] Conteo #%s tipo=%r turno=%r — programando envío de reporte.',
+        _conteo_pk, _conteo_tipo, _conteo_turno,
     )
     transaction.on_commit(
-        lambda: _enviar_inventario_camiseta_post_conciliacion(_conteo_pk, _conteo_tipo, _usuario)
+        lambda: _enviar_reporte_post_conciliacion(_conteo_pk, _conteo_tipo, _conteo_turno, _usuario)
     )
 
 
@@ -447,7 +463,7 @@ def _orden_operativo_producto(item):
 __all__ = [
     '_puede_enviar_notificaciones', '_decimal_payload', '_fecha_hora_payload',
     '_inventario_camiseta_actual', '_payload_inventario_camiseta',
-    '_enviar_inventario_camiseta_post_conciliacion', '_notificar_si_conciliacion_completa',
+    '_enviar_reporte_post_conciliacion', '_notificar_si_conciliacion_completa',
     '_payload_inventario_pigmentos', '_payload_stock_bajo', '_salidas_camiseta_detalle_dia',
     '_texto_salidas_dia_telegram', '_payload_produccion_dia', '_payload_salidas_dia',
     '_REPORTES_MANUALES', '_orden_operativo_producto',
