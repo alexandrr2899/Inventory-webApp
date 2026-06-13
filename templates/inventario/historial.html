@@ -172,14 +172,20 @@
       <span class="badge rounded-pill
         {% if mov.tipo_movimiento == 'entrada' %}bg-success
         {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+        {% elif mov.tipo_movimiento == 'ajuste' and det.item.tipo == 'producto' and det.cantidad > 0 %}bg-success
         {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
         {% else %}bg-info text-dark{% endif %}"
         style="font-size:.72rem;">
         {% if mov.tipo_movimiento == 'entrada' %}<i class="bi bi-arrow-down-circle-fill me-1"></i>
         {% elif mov.tipo_movimiento == 'salida' %}<i class="bi bi-arrow-up-circle-fill me-1"></i>
+        {% elif mov.tipo_movimiento == 'ajuste' and det.item.tipo == 'producto' and det.cantidad > 0 %}<i class="bi bi-graph-up-arrow me-1"></i>
         {% elif mov.tipo_movimiento == 'ajuste' %}<i class="bi bi-sliders me-1"></i>
         {% else %}<i class="bi bi-arrow-left-right me-1"></i>{% endif %}
-        {{ mov.get_tipo_movimiento_display }}
+        {% if mov.tipo_movimiento == 'ajuste' and det.item.tipo == 'producto' and det.cantidad > 0 %}
+          Producción
+        {% else %}
+          {{ mov.get_tipo_movimiento_display }}
+        {% endif %}
       </span>
       <!-- Referencia (datos del detalle: cliente, máquina, ubicaciones) -->
       {% if det.cliente %}

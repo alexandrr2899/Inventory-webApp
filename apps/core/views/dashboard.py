@@ -36,7 +36,10 @@ def dashboard(request):
     ultimos_detalles = (
         DetalleMovimiento.objects
         .filter(movimiento__eliminado=False)
-        .select_related('item', 'movimiento', 'movimiento__usuario')
+        .select_related(
+            'item', 'cliente', 'maquina',
+            'movimiento', 'movimiento__usuario', 'movimiento__cliente',
+        )
         .order_by('-movimiento__fecha')[:10]
     )
 

@@ -110,9 +110,14 @@
             <span class="badge rounded-pill
               {% if mov.tipo_movimiento == 'entrada' %}bg-success
               {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+              {% elif mov.tipo_movimiento == 'ajuste' and det.item.tipo == 'producto' and det.cantidad > 0 %}bg-success
               {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
               {% else %}bg-info text-dark{% endif %}">
-              {{ mov.get_tipo_movimiento_display }}
+              {% if mov.tipo_movimiento == 'ajuste' and det.item.tipo == 'producto' and det.cantidad > 0 %}
+                Producción
+              {% else %}
+                {{ mov.get_tipo_movimiento_display }}
+              {% endif %}
             </span>
             {% if mov.anulado %}<span class="badge bg-secondary" style="font-size:.65rem;">Anulado</span>{% endif %}
             {% if mov.editado %}<span class="badge bg-warning text-dark" style="font-size:.65rem;">Editado</span>{% endif %}

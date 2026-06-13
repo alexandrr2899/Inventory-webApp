@@ -285,16 +285,28 @@
                 <span class="badge rounded-pill
                   {% if mov.tipo_movimiento == 'entrada' %}bg-success
                   {% elif mov.tipo_movimiento == 'salida' %}bg-danger
+                  {% elif mov.tipo_movimiento == 'ajuste' and det.item.tipo == 'producto' and det.cantidad > 0 %}bg-success
                   {% elif mov.tipo_movimiento == 'ajuste' %}bg-warning text-dark
                   {% else %}bg-info text-dark{% endif %} me-2">
-                  {{ mov.get_tipo_movimiento_display }}
+                  {% if mov.tipo_movimiento == 'ajuste' and det.item.tipo == 'producto' and det.cantidad > 0 %}
+                    Producción
+                  {% else %}
+                    {{ mov.get_tipo_movimiento_display }}
+                  {% endif %}
                 </span>
                 <span class="small fw-semibold">{{ det.item.nombre }}</span>
+                {% if det.cliente or mov.cliente %}
+                  <span class="small text-muted ms-1">→ {{ det.cliente.nombre|default:mov.cliente.nombre }}</span>
+                {% endif %}
+                {% if det.maquina %}
+                  <span class="small text-muted ms-1">→ {{ det.maquina.nombre }}</span>
+                {% endif %}
               </div>
               <span class="small fw-bold">{{ det.cantidad }} {{ det.item.unidad_medida }}</span>
             </div>
             <div class="text-muted mt-1" style="font-size:.72rem">
               {{ mov.fecha|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}
+              {% if mov.motivo %} · {{ mov.motivo|truncatechars:40 }}{% endif %}
             </div>
           </li>
           {% endwith %}

@@ -44,6 +44,81 @@ class VistasOperativasTests(TestCase):
         response = self.client.get(reverse('dashboard'))
         self.assertEqual(response.status_code, 200)
 
+    def test_dashboard_ultimos_movimientos_muestra_cliente_de_salida(self):
+        cliente = Cliente.objects.create(nombre='Renato')
+        ubicacion = Stock.objects.get(item=self.item).ubicacion
+        mov = MovimientoInventario.objects.create(
+            tipo_movimiento='salida',
+            fecha_movimiento=timezone.now(),
+            usuario=self.user,
+            cliente=cliente,
+            motivo='Entrega programada',
+        )
+        DetalleMovimiento.objects.create(
+            movimiento=mov,
+            item=self.item,
+            cantidad=Decimal('3'),
+            ubicacion_origen=ubicacion,
+            cliente=cliente,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Renato')
+        self.assertContains(response, 'Entrega programada')
+
+    def test_dashboard_muestra_ajuste_positivo_de_producto_como_produccion(self):
+        ubicacion = Stock.objects.get(item=self.item).ubicacion
+        mov = MovimientoInventario.objects.create(
+            tipo_movimiento='ajuste',
+            fecha_movimiento=timezone.now(),
+            usuario=self.user,
+            motivo='Ajuste por conteo',
+        )
+        DetalleMovimiento.objects.create(
+            movimiento=mov,
+            item=self.item,
+            cantidad=Decimal('10'),
+            ubicacion_destino=ubicacion,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        idx = html.index('Ajuste por conteo')
+        movimiento_html = html[idx - 600:idx]
+        self.assertIn('Producción', movimiento_html)
+        self.assertNotIn('>Ajuste', movimiento_html)
+
+    def test_dashboard_muestra_ajuste_negativo_de_producto_como_ajuste(self):
+        ubicacion = Stock.objects.get(item=self.item).ubicacion
+        mov = MovimientoInventario.objects.create(
+            tipo_movimiento='ajuste',
+            fecha_movimiento=timezone.now(),
+            usuario=self.user,
+            motivo='Ajuste por merma',
+        )
+        DetalleMovimiento.objects.create(
+            movimiento=mov,
+            item=self.item,
+            cantidad=Decimal('-4'),
+            ubicacion_destino=ubicacion,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        idx = html.index('Ajuste por merma')
+        movimiento_html = html[idx - 600:idx]
+        self.assertIn('Ajuste', movimiento_html)
+        self.assertNotIn('Producción', movimiento_html)
+
     def test_inventario_responde_con_permiso(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse('inventario_lista'))
