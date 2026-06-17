@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Nuevo Conteo{% endblock %}
+{% block title %}{% if modo_edicion %}Editar Conteo #{{ conteo.pk }}{% else %}Nuevo Conteo{% endif %}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -96,8 +96,13 @@
 
 {% block content %}
 <div class="page-header" style="background:linear-gradient(135deg,#6610f2,#0d6efd);">
-  <h1><i class="bi bi-clipboard-plus-fill me-2"></i>Nuevo Conteo Físico</h1>
-  <small class="opacity-75">Seleccioná el tipo, completá las cantidades y guardá</small>
+  <h1>
+    <i class="bi {% if modo_edicion %}bi-pencil-square{% else %}bi-clipboard-plus-fill{% endif %} me-2"></i>
+    {% if modo_edicion %}Editar Conteo #{{ conteo.pk }}{% else %}Nuevo Conteo Físico{% endif %}
+  </h1>
+  <small class="opacity-75">
+    {% if modo_edicion %}Corregí los datos y volvé a revisar la conciliación{% else %}Seleccioná el tipo, completá las cantidades y guardá{% endif %}
+  </small>
 </div>
 
 <form method="post" novalidate id="form-conteo">
@@ -217,9 +222,9 @@
 
   <div class="d-flex gap-2 flex-wrap align-items-center">
     <button type="submit" class="btn btn-primary btn-lg flex-fill flex-md-grow-0">
-      <i class="bi bi-check-lg me-2"></i>Guardar conteo (<span id="lbl-count">0</span> ítem(s))
+      <i class="bi bi-check-lg me-2"></i>{% if modo_edicion %}Actualizar{% else %}Guardar{% endif %} conteo (<span id="lbl-count">0</span> ítem(s))
     </button>
-    <a href="{% url 'conteo_lista' %}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
+    <a href="{{ cancel_url }}" class="btn btn-outline-secondary btn-lg">Cancelar</a>
   </div>
 </form>
 {% endblock %}

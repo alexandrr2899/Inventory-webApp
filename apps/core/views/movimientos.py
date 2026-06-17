@@ -219,12 +219,12 @@ def movimiento_entrada(request):
                     ubicacion_destino=ubicacion_destino,
                 )
                 _aplicar_efecto_detalle(det)
-                send_event('movement_created', {
+                _send_event_later('movement_created', {
                     'tipo': 'entrada', 'item': item.nombre, 'codigo': item.codigo,
                     'cantidad': str(cantidad), 'ubicacion': ubicacion_destino.nombre,
                     'usuario': request.user.username,
                 })
-                notify_stock(item, movimiento='entrada', usuario=request.user.username)
+                _notify_stock_later(item, movimiento='entrada', usuario=request.user.username)
         messages.success(
             request,
             f'Movimiento #{mov.pk} registrado con {len(filas_validas)} ítem(s).'
@@ -447,18 +447,18 @@ def movimiento_salida(request):
                 _aplicar_efecto_detalle(det)
                 if pendiente:
                     pendientes_creados.append(det)
-                send_event('movement_created', {
+                _send_event_later('movement_created', {
                     'tipo': 'salida', 'item': it.nombre, 'codigo': it.codigo,
                     'cantidad': str(cantidad), 'ubicacion': ubicacion_pt.nombre,
                     'cliente': cliente.nombre if cliente else None,
                     'pendiente_conciliacion': pendiente,
                     'usuario': request.user.username,
                 })
-                notify_stock(it, movimiento='salida', usuario=request.user.username)
+                _notify_stock_later(it, movimiento='salida', usuario=request.user.username)
 
             # Notificar pendientes
             for det in pendientes_creados:
-                send_event('salida_pendiente_conciliacion', {
+                _send_event_later('salida_pendiente_conciliacion', {
                     'movimiento_pk': mov.pk,
                     'item': det.item.nombre, 'codigo': det.item.codigo,
                     'cantidad': str(det.cantidad),
@@ -580,12 +580,12 @@ def movimiento_salida(request):
                 maquina=maquina,
             )
             _aplicar_efecto_detalle(det)
-            send_event('movement_created', {
+            _send_event_later('movement_created', {
                 'tipo': 'salida', 'item': it.nombre, 'codigo': it.codigo,
                 'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
                 'usuario': request.user.username,
             })
-            notify_stock(it, movimiento='salida', usuario=request.user.username)
+            _notify_stock_later(it, movimiento='salida', usuario=request.user.username)
 
     messages.success(
         request,
@@ -690,8 +690,18 @@ def movimiento_editar(request, pk):
             nuevos_valores = []
             detalles = list(mov.detalles.all())
 
+            # Emparejar cada detalle con su fila del POST por det_id (no por
+            # posición): el índice posicional es frágil si el formulario reordena
+            # filas y podría aplicar cantidades a la línea equivocada.
+            pos_por_id = {str(did): i for i, did in enumerate(det_ids)}
+
             for i, det in enumerate(detalles):
-                cant_str = det_cantidades[i].strip() if i < len(det_cantidades) else ''
+                idx = pos_por_id.get(str(det.pk))
+                if idx is None:
+                    errores.append(f'Línea {i+1} ({det.item.nombre}): datos del formulario incompletos.')
+                    continue
+
+                cant_str = det_cantidades[idx].strip() if idx < len(det_cantidades) else ''
                 try:
                     nueva_cant = Decimal(cant_str)
                     if nueva_cant <= 0:
@@ -700,8 +710,8 @@ def movimiento_editar(request, pk):
                     errores.append(f'Línea {i+1} ({det.item.nombre}): cantidad inválida.')
                     continue
 
-                ub_or_id  = det_ub_origen[i]  if i < len(det_ub_origen)  else ''
-                ub_dst_id = det_ub_destino[i] if i < len(det_ub_destino) else ''
+                ub_or_id  = det_ub_origen[idx]  if idx < len(det_ub_origen)  else ''
+                ub_dst_id = det_ub_destino[idx] if idx < len(det_ub_destino) else ''
                 nueva_ub_origen  = Ubicacion.objects.filter(pk=ub_or_id).first()  if ub_or_id  else None
                 nueva_ub_destino = Ubicacion.objects.filter(pk=ub_dst_id).first() if ub_dst_id else None
                 nuevos_valores.append((det, nueva_cant, nueva_ub_origen, nueva_ub_destino))
@@ -731,7 +741,7 @@ def movimiento_editar(request, pk):
                         det.ubicacion_destino = nueva_ub_destino
                         det.save(update_fields=['cantidad', 'ubicacion_origen', 'ubicacion_destino'])
                         _aplicar_efecto_detalle(det)
-                        notify_stock(det.item, movimiento='edicion', usuario=request.user.username)
+                        _notify_stock_later(det.item, movimiento='edicion', usuario=request.user.username)
 
                 security_log.info(
                     'Movimiento #%s editado por %s — %s',
@@ -784,7 +794,7 @@ def movimiento_anular(request, pk):
                     'anulado', 'fecha_anulacion', 'usuario_anulacion', 'motivo_anulacion'
                 ])
                 for det in mov.detalles.select_related('item').all():
-                    notify_stock(det.item, movimiento='anulacion', usuario=request.user.username)
+                    _notify_stock_later(det.item, movimiento='anulacion', usuario=request.user.username)
 
             security_log.info(
                 'Movimiento #%s ANULADO por %s — %s',
@@ -844,8 +854,8 @@ def movimiento_eliminar(request, pk):
                 ])
                 if not mov.anulado:
                     for det in mov.detalles.select_related('item').all():
-                        notify_stock(det.item, movimiento='eliminacion',
-                                     usuario=request.user.username)
+                        _notify_stock_later(det.item, movimiento='eliminacion',
+                                            usuario=request.user.username)
 
             security_log.warning(
                 'Movimiento #%s ELIMINADO por %s — %s',

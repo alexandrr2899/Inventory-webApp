@@ -40,6 +40,18 @@ services:
         condition: service_healthy
     command: ["sh", "/scripts/backup_postgres.sh"]
 
+  # ── Redis (caché compartida entre workers) ──────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # Sin "ports:" — solo accesible dentro de la red Docker interna.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # ── Django / Gunicorn ───────────────────────────────────────────────────────
   web:
     build:
@@ -73,8 +85,11 @@ services:
       BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-300}
       N8N_WEBHOOK_URL:      ${N8N_WEBHOOK_URL:-}
       ADMIN_URL:            ${ADMIN_URL:-gestion-interna/}
+      REDIS_URL:            ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:

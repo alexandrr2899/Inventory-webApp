@@ -123,6 +123,29 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+# ─── CACHÉ ────────────────────────────────────────────────────────────────────
+
+# Redis compartido entre workers de gunicorn. Imprescindible para que el
+# anti-spam de alertas de stock (apps/core/services/notifications.py) tenga
+# un estado único — con LocMemCache cada worker tiene su propia copia y las
+# alertas se duplican. Si REDIS_URL está vacío (local/tests) se usa memoria.
+REDIS_URL = config('REDIS_URL', default='')
+
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND':  'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND':  'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'inventario-locmem',
+        }
+    }
+
 # ─── INTERNACIONALIZACIÓN ─────────────────────────────────────────────────────
 
 LANGUAGE_CODE = 'es'

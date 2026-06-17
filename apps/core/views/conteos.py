@@ -6,6 +6,8 @@ cerrar conciliación, anular. Tras una conciliación de Camiseta dispara el
 reenvío automático del inventario a n8n (helpers en payloads.py).
 """
 
+from django.db import IntegrityError
+
 from .common import *    # noqa: F401,F403
 from .stock import *     # noqa: F401,F403
 from .calc import *      # noqa: F401,F403
@@ -14,105 +16,7 @@ from .payloads import *  # noqa: F401,F403
 
 # ─── CONTEOS ──────────────────────────────────────────────────────────────────
 
-@login_required
-def conteo_anular(request, pk):
-    """
-    Anulación lógica de un conteo: revierte en stock todos los ajustes de
-    conciliación generados por este conteo, marca cada movimiento de ajuste
-    como anulado, y finalmente marca el conteo como anulado.
-    No elimina ningún registro.
-    """
-    if not (request.user.has_perm(_perm('anular_conteo')) or request.user.is_superuser):
-        from django.core.exceptions import PermissionDenied
-        raise PermissionDenied
-
-    conteo = get_object_or_404(
-        Conteo.objects.select_related('usuario'),
-        pk=pk,
-    )
-
-    if conteo.anulado:
-        messages.warning(request, 'Este conteo ya estaba anulado.')
-        return redirect('conteo_detalle', pk=pk)
-
-    # Movimientos de ajuste vinculados a este conteo (por motivo)
-    ajustes_qs = (
-        MovimientoInventario.objects
-        .filter(
-            tipo_movimiento='ajuste',
-            motivo__contains=f'Conteo #{conteo.pk}',
-            anulado=False,
-            eliminado=False,
-        )
-        .prefetch_related(
-            'detalles__item',
-            'detalles__ubicacion_origen',
-            'detalles__ubicacion_destino',
-        )
-    )
-    ajustes = list(ajustes_qs)
-
-    if request.method == 'POST':
-        motivo = request.POST.get('motivo_anulacion', '').strip()
-        if not motivo:
-            messages.error(request, 'El motivo de anulación es obligatorio.')
-        else:
-            ahora = timezone.now()
-            with transaction.atomic():
-                for mov_ajuste in ajustes:
-                    _revertir_todos_los_detalles(mov_ajuste)
-                    mov_ajuste.anulado           = True
-                    mov_ajuste.fecha_anulacion   = ahora
-                    mov_ajuste.usuario_anulacion = request.user
-                    mov_ajuste.motivo_anulacion  = f'Anulación de Conteo #{conteo.pk} — {motivo}'
-                    mov_ajuste.save(update_fields=[
-                        'anulado', 'fecha_anulacion', 'usuario_anulacion', 'motivo_anulacion',
-                    ])
-                    for det in mov_ajuste.detalles.select_related('item').all():
-                        notify_stock(det.item, movimiento='anulacion', usuario=request.user.username)
-
-                conteo.anulado           = True
-                conteo.fecha_anulacion   = ahora
-                conteo.usuario_anulacion = request.user
-                conteo.motivo_anulacion  = motivo
-                conteo.save(update_fields=[
-                    'anulado', 'fecha_anulacion', 'usuario_anulacion', 'motivo_anulacion',
-                ])
-
-            security_log.info(
-                'Conteo #%s ANULADO por %s — %s ajuste(s) revertido(s) — %s',
-                conteo.pk, request.user.username, len(ajustes), motivo,
-            )
-            messages.success(
-                request,
-                f'Conteo #{conteo.pk} anulado. {len(ajustes)} ajuste(s) de conciliación revertido(s).'
-            )
-            return redirect('conteo_lista')
-
-    return render(request, 'conteos/anular.html', {
-        'conteo': conteo,
-        'ajustes': ajustes,
-    })
-
-
-@login_required
-@permission_required(_perm('registrar_conteo'), raise_exception=True)
-@_timed_view('conteo_lista')
-def conteo_lista(request):
-    qs = (
-        Conteo.objects
-        .select_related('usuario')
-        .annotate(num_detalles=Count('detalles'))
-        .order_by('-fecha', 'turno')
-    )
-    paginator = Paginator(qs, 30)
-    page_obj = paginator.get_page(request.GET.get('page'))
-    return render(request, 'conteos/lista.html', {'conteos': page_obj, 'page_obj': page_obj})
-
-
-@login_required
-@permission_required(_perm('registrar_conteo'), raise_exception=True)
-def conteo_nuevo(request):
+def _conteo_form_context(*, form, filas_previas, tipo_conteo_inicial=None):
     hoy = date.today()
     ubicaciones = list(Ubicacion.objects.all())
 
@@ -163,40 +67,253 @@ def conteo_nuevo(request):
     for item in all_items:
         items_por_tipo[_clasificar(item)].append(_build_item_dict(item))
 
-    items_por_tipo_json = _json_safe(items_por_tipo)
-    all_items_json = _json_safe([_build_item_dict(item) for item in all_items])
-    ubicaciones_json = _json_safe([
-        {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
-        for u in ubicaciones
-    ])
+    return {
+        'form': form,
+        'items_por_tipo_json': _json_safe(items_por_tipo),
+        'all_items_json': _json_safe([_build_item_dict(item) for item in all_items]),
+        'ubicaciones_json': _json_safe([
+            {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
+            for u in ubicaciones
+        ]),
+        'hoy': hoy,
+        'filas_previas_json': _json_safe(filas_previas),
+        'tipo_conteo_inicial': tipo_conteo_inicial or form.data.get('tipo_conteo') or form.initial.get('tipo_conteo') or 'camiseta',
+        'tipos_conteo_fijos': ['camiseta', 'pigmentos', 'lisa'],
+    }
+
+
+def _es_administrador(user):
+    return user.is_superuser or user.groups.filter(name='Administrador').exists()
+
+
+def _puede_editar_conteos(user):
+    return _es_administrador(user) or user.has_perm(_perm('editar_conteo'))
+
+
+def _puede_anular_conteos(user):
+    return (
+        _es_administrador(user)
+        or user.has_perm(_perm('anular_conteo'))
+    )
+
+
+def _filas_previas_from_post(request):
+    return [
+        {'item_id': iid, 'ub_id': uid, 'cant': cant}
+        for iid, uid, cant in zip(
+            request.POST.getlist('item[]'),
+            request.POST.getlist('ubicacion[]'),
+            request.POST.getlist('cantidad_contada[]'),
+        )
+        if cant.strip()
+    ]
+
+
+def _filas_previas_from_conteo(conteo):
+    return [
+        {'item_id': d.item_id, 'ub_id': d.ubicacion_id, 'cant': str(d.cantidad_contada)}
+        for d in conteo.detalles.select_related('item', 'ubicacion').order_by('item__orden', 'item__nombre')
+    ]
+
+
+def _validar_filas_conteo(request):
+    item_ids = request.POST.getlist('item[]')
+    ubicacion_ids = request.POST.getlist('ubicacion[]')
+    cantidades = request.POST.getlist('cantidad_contada[]')
+
+    errores = []
+    filas = []
+    vistos = {}   # (item_id, ub_id) → nº de fila donde apareció primero
+
+    for i, (item_id, ub_id, cant_str) in enumerate(
+        zip(item_ids, ubicacion_ids, cantidades), 1
+    ):
+        cant_str = cant_str.strip()
+        if not cant_str:
+            continue
+        if not item_id:
+            errores.append(f'Fila {i}: ítem inválido.')
+            continue
+        if not ub_id:
+            errores.append(f'Fila {i}: selecciona una ubicación.')
+            continue
+        try:
+            cantidad_contada = Decimal(cant_str)
+        except Exception:
+            errores.append(f'Fila {i}: cantidad inválida.')
+            continue
+        if cantidad_contada < 0:
+            errores.append(f'Fila {i}: la cantidad no puede ser negativa.')
+            continue
+        try:
+            item = Item.objects.get(pk=item_id, activo=True)
+        except Item.DoesNotExist:
+            errores.append(f'Fila {i}: ítem no encontrado.')
+            continue
+        try:
+            ubicacion = Ubicacion.objects.get(pk=ub_id)
+        except Ubicacion.DoesNotExist:
+            errores.append(f'Fila {i}: ubicación no encontrada.')
+            continue
+
+        # Evitar duplicados (item, ubicación): dos filas para el mismo par
+        # crearían dos ConteoDetalle y la conciliación generaría doble ajuste.
+        clave = (item.pk, ubicacion.pk)
+        if clave in vistos:
+            errores.append(
+                f'Fila {i}: «{item.nombre}» en «{ubicacion.nombre}» está '
+                f'duplicado (ya aparece en la fila {vistos[clave]}).'
+            )
+            continue
+        vistos[clave] = i
+
+        cantidad_sistema = Stock.objects.filter(item=item, ubicacion=ubicacion).values_list(
+            'cantidad_actual', flat=True
+        ).first() or Decimal('0')
+        filas.append((item, ubicacion, cantidad_contada, cantidad_sistema))
+
+    return errores, filas
+
+
+def _render_conteo_form(request, form, filas_previas, tipo_conteo_inicial=None, conteo=None):
+    context = _conteo_form_context(
+        form=form,
+        filas_previas=filas_previas,
+        tipo_conteo_inicial=tipo_conteo_inicial,
+    )
+    context['conteo'] = conteo
+    context['modo_edicion'] = conteo is not None
+    context['cancel_url'] = reverse('conteo_detalle', args=[conteo.pk]) if conteo else reverse('conteo_lista')
+    return render(request, 'conteos/form.html', context)
+
+
+def _recalcular_diferencias_conteo(conteo):
+    detalles = conteo.detalles.select_related('item', 'ubicacion')
+    for detalle in detalles:
+        stock_teorico = _stock_en_momento(
+            detalle.item, detalle.ubicacion, conteo.fecha_hora_conteo
+        )
+        diferencia_final = detalle.cantidad_contada - stock_teorico
+        if detalle.diferencia_final != diferencia_final:
+            ConteoDetalle.objects.filter(pk=detalle.pk).update(
+                diferencia_final=diferencia_final
+            )
+
+
+@login_required
+def conteo_anular(request, pk):
+    """
+    Anulación lógica de un conteo: revierte en stock todos los ajustes de
+    conciliación generados por este conteo, marca cada movimiento de ajuste
+    como anulado, y finalmente marca el conteo como anulado.
+    No elimina ningún registro.
+    """
+    if not _puede_anular_conteos(request.user):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied
+
+    conteo = get_object_or_404(
+        Conteo.objects.select_related('usuario'),
+        pk=pk,
+    )
+
+    if conteo.anulado:
+        messages.warning(request, 'Este conteo ya estaba anulado.')
+        return redirect('conteo_detalle', pk=pk)
+
+    # Movimientos de ajuste vinculados a este conteo (por motivo)
+    ajustes_qs = (
+        MovimientoInventario.objects
+        .filter(
+            tipo_movimiento='ajuste',
+            motivo__contains=f'Conteo #{conteo.pk}',
+            anulado=False,
+            eliminado=False,
+        )
+        .prefetch_related(
+            'detalles__item',
+            'detalles__ubicacion_origen',
+            'detalles__ubicacion_destino',
+        )
+    )
+    ajustes = list(ajustes_qs)
+
+    if request.method == 'POST':
+        motivo = request.POST.get('motivo_anulacion', '').strip()
+        if not motivo:
+            messages.error(request, 'El motivo de anulación es obligatorio.')
+        else:
+            ahora = timezone.now()
+            with transaction.atomic():
+                for mov_ajuste in ajustes:
+                    _revertir_todos_los_detalles(mov_ajuste)
+                    mov_ajuste.anulado           = True
+                    mov_ajuste.fecha_anulacion   = ahora
+                    mov_ajuste.usuario_anulacion = request.user
+                    mov_ajuste.motivo_anulacion  = f'Anulación de Conteo #{conteo.pk} — {motivo}'
+                    mov_ajuste.save(update_fields=[
+                        'anulado', 'fecha_anulacion', 'usuario_anulacion', 'motivo_anulacion',
+                    ])
+                    for det in mov_ajuste.detalles.select_related('item').all():
+                        _notify_stock_later(det.item, movimiento='anulacion', usuario=request.user.username)
+
+                conteo.anulado           = True
+                conteo.fecha_anulacion   = ahora
+                conteo.usuario_anulacion = request.user
+                conteo.motivo_anulacion  = motivo
+                conteo.save(update_fields=[
+                    'anulado', 'fecha_anulacion', 'usuario_anulacion', 'motivo_anulacion',
+                ])
+
+            security_log.info(
+                'Conteo #%s ANULADO por %s — %s ajuste(s) revertido(s) — %s',
+                conteo.pk, request.user.username, len(ajustes), motivo,
+            )
+            messages.success(
+                request,
+                f'Conteo #{conteo.pk} anulado. {len(ajustes)} ajuste(s) de conciliación revertido(s).'
+            )
+            return redirect('conteo_lista')
+
+    return render(request, 'conteos/anular.html', {
+        'conteo': conteo,
+        'ajustes': ajustes,
+    })
+
+
+@login_required
+@permission_required(_perm('registrar_conteo'), raise_exception=True)
+@_timed_view('conteo_lista')
+def conteo_lista(request):
+    qs = (
+        Conteo.objects
+        .select_related('usuario')
+        .annotate(num_detalles=Count('detalles'))
+        .order_by('-fecha', 'turno')
+    )
+    paginator = Paginator(qs, 30)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    return render(request, 'conteos/lista.html', {
+        'conteos': page_obj,
+        'page_obj': page_obj,
+        'puede_editar_conteos': _puede_editar_conteos(request.user),
+        'puede_anular_conteos': _puede_anular_conteos(request.user),
+    })
+
+
+@login_required
+@permission_required(_perm('registrar_conteo'), raise_exception=True)
+def conteo_nuevo(request):
+    hoy = date.today()
 
     if request.method == 'POST':
         form = ConteoForm(request.POST)
 
-        item_ids = request.POST.getlist('item[]')
-        ubicacion_ids = request.POST.getlist('ubicacion[]')
-        cantidades = request.POST.getlist('cantidad_contada[]')
-
-        # Lista ordenada: [{item_id, ub_id, cant}] para todos los ítems con cantidad
-        filas_previas = [
-            {'item_id': iid, 'ub_id': uid, 'cant': cant}
-            for iid, uid, cant in zip(item_ids, ubicacion_ids, cantidades)
-            if cant.strip()
-        ]
-        filas_previas_json = _json_safe(filas_previas)
+        filas_previas = _filas_previas_from_post(request)
         tipo_conteo_previo = request.POST.get('tipo_conteo', 'camiseta')
 
         def _render_error(f):
-            return render(request, 'conteos/form.html', {
-                'form': f,
-                'items_por_tipo_json': items_por_tipo_json,
-                'all_items_json': all_items_json,
-                'ubicaciones_json': ubicaciones_json,
-                'hoy': hoy,
-                'filas_previas_json': filas_previas_json,
-                'tipo_conteo_inicial': tipo_conteo_previo,
-                'tipos_conteo_fijos': ['camiseta', 'pigmentos', 'lisa'],
-            })
+            return _render_conteo_form(request, f, filas_previas, tipo_conteo_previo)
 
         if not form.is_valid():
             return _render_error(form)
@@ -214,42 +331,7 @@ def conteo_nuevo(request):
             )
             return _render_error(form)
 
-        errores = []
-        filas = []
-
-        for i, (item_id, ub_id, cant_str) in enumerate(
-            zip(item_ids, ubicacion_ids, cantidades), 1
-        ):
-            cant_str = cant_str.strip()
-            if not cant_str:
-                continue
-            if not item_id:
-                errores.append(f'Fila {i}: ítem inválido.')
-                continue
-            if not ub_id:
-                errores.append(f'Fila {i}: selecciona una ubicación.')
-                continue
-            try:
-                cantidad_contada = Decimal(cant_str)
-            except Exception:
-                errores.append(f'Fila {i}: cantidad inválida.')
-                continue
-            if cantidad_contada < 0:
-                errores.append(f'Fila {i}: la cantidad no puede ser negativa.')
-                continue
-            try:
-                item = Item.objects.get(pk=item_id, activo=True)
-            except Item.DoesNotExist:
-                errores.append(f'Fila {i}: ítem no encontrado.')
-                continue
-            try:
-                ubicacion = Ubicacion.objects.get(pk=ub_id)
-            except Ubicacion.DoesNotExist:
-                errores.append(f'Fila {i}: ubicación no encontrada.')
-                continue
-
-            cantidad_sistema = stocks_map.get((item.pk, ubicacion.pk), Decimal('0'))
-            filas.append((item, ubicacion, cantidad_contada, cantidad_sistema))
+        errores, filas = _validar_filas_conteo(request)
 
         if errores:
             for e in errores:
@@ -260,18 +342,29 @@ def conteo_nuevo(request):
             messages.error(request, 'Ingresá al menos una cantidad en el conteo.')
             return _render_error(form)
 
-        with transaction.atomic():
-            conteo = form.save(commit=False)
-            conteo.usuario = request.user
-            conteo.save()
-            for item, ubicacion, cantidad_contada, cantidad_sistema in filas:
-                ConteoDetalle.objects.create(
-                    conteo=conteo,
-                    item=item,
-                    ubicacion=ubicacion,
-                    cantidad_contada=cantidad_contada,
-                    cantidad_sistema_al_conteo=cantidad_sistema,
-                )
+        try:
+            with transaction.atomic():
+                conteo = form.save(commit=False)
+                conteo.usuario = request.user
+                conteo.save()
+                for item, ubicacion, cantidad_contada, cantidad_sistema in filas:
+                    ConteoDetalle.objects.create(
+                        conteo=conteo,
+                        item=item,
+                        ubicacion=ubicacion,
+                        cantidad_contada=cantidad_contada,
+                        cantidad_sistema_al_conteo=cantidad_sistema,
+                    )
+        except IntegrityError:
+            # Carrera contra el UniqueConstraint conteo_activo_unico: otro
+            # usuario registró el mismo (fecha, turno, tipo) en paralelo.
+            label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(tipo_conteo, tipo_conteo)
+            label_turno = dict(Conteo.TURNO_CHOICES).get(turno, turno)
+            messages.error(
+                request,
+                f'Ya existe un conteo de {label_tipo} - {label_turno} para {fecha}.'
+            )
+            return _render_error(form)
 
         label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(conteo.tipo_conteo, conteo.tipo_conteo)
         messages.success(
@@ -286,16 +379,103 @@ def conteo_nuevo(request):
         'tipo_conteo': 'camiseta',
         'fecha_hora_conteo': timezone.localtime(timezone.now()).strftime('%Y-%m-%dT%H:%M'),
     })
-    return render(request, 'conteos/form.html', {
-        'form': form,
-        'items_por_tipo_json': items_por_tipo_json,
-        'all_items_json': all_items_json,
-        'ubicaciones_json': ubicaciones_json,
-        'hoy': hoy,
-        'filas_previas_json': '[]',
-        'tipo_conteo_inicial': 'camiseta',
-        'tipos_conteo_fijos': ['camiseta', 'pigmentos', 'lisa'],
-    })
+    return _render_conteo_form(request, form, [], 'camiseta')
+
+
+@login_required
+def conteo_editar(request, pk):
+    if not _puede_editar_conteos(request.user):
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied
+
+    conteo = get_object_or_404(Conteo, pk=pk)
+    if conteo.anulado:
+        messages.error(request, 'Este conteo está anulado y no puede editarse.')
+        return redirect('conteo_detalle', pk=pk)
+    if conteo.estado == 'conciliado':
+        messages.error(request, 'Este conteo ya está conciliado y no puede editarse.')
+        return redirect('conteo_detalle', pk=pk)
+    if conteo.detalles.filter(ajuste_aplicado=True).exists():
+        messages.error(
+            request,
+            'Este conteo ya tiene ajustes aplicados. Anulalo primero para revertir los ajustes antes de editar.'
+        )
+        return redirect('conteo_detalle', pk=pk)
+
+    if request.method == 'POST':
+        form = ConteoForm(request.POST, instance=conteo)
+        filas_previas = _filas_previas_from_post(request)
+        tipo_conteo_previo = request.POST.get('tipo_conteo', conteo.tipo_conteo)
+
+        def _render_error(f):
+            return _render_conteo_form(request, f, filas_previas, tipo_conteo_previo, conteo)
+
+        if not form.is_valid():
+            return _render_error(form)
+
+        fecha = form.cleaned_data['fecha']
+        turno = form.cleaned_data['turno']
+        tipo_conteo = form.cleaned_data['tipo_conteo']
+
+        if Conteo.objects.filter(
+            fecha=fecha,
+            turno=turno,
+            tipo_conteo=tipo_conteo,
+            anulado=False,
+        ).exclude(pk=conteo.pk).exists():
+            label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(tipo_conteo, tipo_conteo)
+            label_turno = dict(Conteo.TURNO_CHOICES).get(turno, turno)
+            messages.error(
+                request,
+                f'Ya existe un conteo de {label_tipo} - {label_turno} para {fecha}.'
+            )
+            return _render_error(form)
+
+        errores, filas = _validar_filas_conteo(request)
+
+        if errores:
+            for e in errores:
+                messages.error(request, e)
+            return _render_error(form)
+
+        if not filas:
+            messages.error(request, 'Ingresá al menos una cantidad en el conteo.')
+            return _render_error(form)
+
+        try:
+            with transaction.atomic():
+                conteo = form.save()
+                conteo.estado = 'pendiente'
+                conteo.save(update_fields=['estado'])
+                conteo.detalles.all().delete()
+                for item, ubicacion, cantidad_contada, cantidad_sistema in filas:
+                    ConteoDetalle.objects.create(
+                        conteo=conteo,
+                        item=item,
+                        ubicacion=ubicacion,
+                        cantidad_contada=cantidad_contada,
+                        cantidad_sistema_al_conteo=cantidad_sistema,
+                    )
+        except IntegrityError:
+            label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(tipo_conteo, tipo_conteo)
+            label_turno = dict(Conteo.TURNO_CHOICES).get(turno, turno)
+            messages.error(
+                request,
+                f'Ya existe un conteo de {label_tipo} - {label_turno} para {fecha}.'
+            )
+            return _render_error(form)
+
+        messages.success(request, f'Conteo #{conteo.pk} actualizado. Revisá la conciliación para recalcular diferencias.')
+        return redirect('conteo_conciliar', pk=conteo.pk)
+
+    form = ConteoForm(instance=conteo)
+    return _render_conteo_form(
+        request,
+        form,
+        _filas_previas_from_conteo(conteo),
+        conteo.tipo_conteo,
+        conteo,
+    )
 
 
 @login_required
@@ -311,6 +491,8 @@ def conteo_detalle(request, pk):
         'detalles': detalles,
         'total_contado': total_contado,
         'total_dif_original': total_dif_original,
+        'puede_editar_conteos': _puede_editar_conteos(request.user),
+        'puede_anular_conteos': _puede_anular_conteos(request.user),
     }
     return render(request, 'conteos/detalle.html', context)
 
@@ -389,6 +571,7 @@ def conteo_ajustar_detalle(request, pk, det_pk):
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
     estado_antes = conteo.estado
+    _recalcular_diferencias_conteo(conteo)
     detalle = get_object_or_404(ConteoDetalle, pk=det_pk, conteo=conteo)
 
     if detalle.ajuste_aplicado:
@@ -444,6 +627,7 @@ def conteo_ajustar_todos(request, pk):
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
     estado_antes = conteo.estado
+    _recalcular_diferencias_conteo(conteo)
     detalles = conteo.detalles.filter(
         ajuste_aplicado=False,
         diferencia_final__isnull=False,
@@ -498,6 +682,7 @@ def conteo_marcar_conciliado(request, pk):
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
     estado_antes = conteo.estado
+    _recalcular_diferencias_conteo(conteo)
 
     # Verificar que no queden diferencias sin ajustar
     pendientes = conteo.detalles.filter(

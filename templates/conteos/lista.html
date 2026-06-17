@@ -74,9 +74,19 @@
               <a href="{% url 'conteo_detalle' c.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver detalle">
                 <i class="bi bi-eye-fill"></i>
               </a>
+              {% if not c.anulado and c.estado != 'conciliado' and puede_editar_conteos %}
+              <a href="{% url 'conteo_editar' c.pk %}" class="btn btn-outline-warning btn-sm" title="Editar">
+                <i class="bi bi-pencil-square"></i>
+              </a>
+              {% endif %}
               {% if not c.anulado and c.estado != 'conciliado' %}
               <a href="{% url 'conteo_conciliar' c.pk %}" class="btn btn-outline-primary btn-sm" title="Conciliar">
                 <i class="bi bi-clipboard-check-fill"></i>
+              </a>
+              {% endif %}
+              {% if not c.anulado and puede_anular_conteos %}
+              <a href="{% url 'conteo_anular' c.pk %}" class="btn btn-outline-danger btn-sm" title="Anular">
+                <i class="bi bi-slash-circle-fill"></i>
               </a>
               {% endif %}
             </div>
@@ -125,9 +135,19 @@
         <a href="{% url 'conteo_detalle' c.pk %}" class="btn btn-outline-secondary btn-sm flex-fill">
           <i class="bi bi-eye-fill me-1"></i>Ver
         </a>
+        {% if not c.anulado and c.estado != 'conciliado' and puede_editar_conteos %}
+        <a href="{% url 'conteo_editar' c.pk %}" class="btn btn-outline-warning btn-sm flex-fill">
+          <i class="bi bi-pencil-square me-1"></i>Editar
+        </a>
+        {% endif %}
         {% if not c.anulado and c.estado != 'conciliado' %}
         <a href="{% url 'conteo_conciliar' c.pk %}" class="btn btn-outline-primary btn-sm flex-fill">
           <i class="bi bi-clipboard-check-fill me-1"></i>Conciliar
+        </a>
+        {% endif %}
+        {% if not c.anulado and puede_anular_conteos %}
+        <a href="{% url 'conteo_anular' c.pk %}" class="btn btn-outline-danger btn-sm flex-fill">
+          <i class="bi bi-slash-circle-fill me-1"></i>Anular
         </a>
         {% endif %}
       </div>

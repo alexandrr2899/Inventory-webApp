@@ -36,6 +36,7 @@ urlpatterns = [
     path('conteos/', views.conteo_lista, name='conteo_lista'),
     path('conteos/nuevo/', views.conteo_nuevo, name='conteo_nuevo'),
     path('conteos/<int:pk>/', views.conteo_detalle, name='conteo_detalle'),
+    path('conteos/<int:pk>/editar/', views.conteo_editar, name='conteo_editar'),
     path('conteos/<int:pk>/anular/', views.conteo_anular, name='conteo_anular'),
     path('conteos/<int:pk>/conciliar/', views.conteo_conciliar, name='conteo_conciliar'),
     path('conteos/<int:pk>/ajustar/<int:det_pk>/', views.conteo_ajustar_detalle, name='conteo_ajustar_detalle'),

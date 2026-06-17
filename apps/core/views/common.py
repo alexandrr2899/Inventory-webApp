@@ -102,6 +102,25 @@ def _timed_view(name):
     return decorator
 
 
+def _notify_stock_later(item, movimiento='', usuario=''):
+    """
+    Igual que notify_stock pero diferido a DESPUÉS del commit.
+
+    Evita ejecutar la llamada HTTP del webhook (timeout 5 s) DENTRO de
+    transaction.atomic(), que mantendría abierta la transacción y los locks
+    de fila mientras se espera a n8n. Si no hay transacción activa, Django
+    ejecuta el callback de inmediato.
+    """
+    transaction.on_commit(
+        lambda: notify_stock(item, movimiento=movimiento, usuario=usuario)
+    )
+
+
+def _send_event_later(event_type, payload):
+    """Envía un evento al webhook DESPUÉS del commit (ver _notify_stock_later)."""
+    transaction.on_commit(lambda: send_event(event_type, payload))
+
+
 def _rango_local_dia(fecha):
     tz = timezone.get_current_timezone()
     inicio = timezone.make_aware(dt_datetime.combine(fecha, dt_time.min), tz)

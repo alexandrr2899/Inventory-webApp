@@ -361,6 +361,7 @@ class Conteo(models.Model):
             )
         ]
         permissions = [
+            ('editar_conteo', 'Puede editar conteos'),
             ('anular_conteo', 'Puede anular conteos'),
         ]
 

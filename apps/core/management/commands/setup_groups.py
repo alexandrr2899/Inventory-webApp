@@ -8,6 +8,7 @@ GRUPOS = {
         'registrar_entrada', 'registrar_salida', 'registrar_conteo',
         'aplicar_conciliacion', 'importar_excel', 'ver_reportes',
         'registrar_produccion',
+        'editar_conteo', 'anular_conteo',
         # Gestión de movimientos (solo admin)
         'editar_movimiento', 'anular_movimiento', 'eliminar_movimiento',
         'gestionar_backups',

@@ -7,7 +7,64 @@ conciliación. Toda salida descuenta stock (permite negativo); solo se
 excluyen movimientos anulados/eliminados.
 """
 
+from django.db import IntegrityError
+
 from .common import *  # noqa: F401,F403
+
+
+def _mutar_stock(item, ubicacion, delta):
+    """
+    Suma `delta` (positivo o negativo) al stock de (item, ubicacion) de forma
+    ATÓMICA a nivel de base de datos. Debe llamarse dentro de transaction.atomic().
+
+    Usa un UPDATE con F('cantidad_actual') + delta en lugar de leer→sumar en
+    Python→guardar. Esto evita la condición de carrera por "lost update": dos
+    requests concurrentes que tocan el mismo Stock ya no se pisan, porque el
+    UPDATE de Postgres bloquea la fila hasta el commit de la transacción.
+
+    Si la fila no existe todavía se crea con `delta`. Si dos transacciones
+    intentan crearla a la vez, una gana y la otra recibe IntegrityError
+    (unique_together item+ubicacion) → se reintenta como UPDATE.
+    """
+    if ubicacion is None or not delta:
+        return
+    actualizadas = (
+        Stock.objects
+        .filter(item=item, ubicacion=ubicacion)
+        .update(cantidad_actual=F('cantidad_actual') + delta)
+    )
+    if actualizadas:
+        return
+    try:
+        Stock.objects.create(item=item, ubicacion=ubicacion, cantidad_actual=delta)
+    except IntegrityError:
+        # La fila apareció entre el UPDATE y el CREATE (carrera de creación):
+        # ahora sí existe, así que aplicamos el delta como UPDATE atómico.
+        Stock.objects.filter(item=item, ubicacion=ubicacion).update(
+            cantidad_actual=F('cantidad_actual') + delta
+        )
+
+
+def _deltas_detalle(det):
+    """
+    Devuelve la lista de (ubicacion, delta) que un DetalleMovimiento aplica
+    sobre el stock. `_aplicar_efecto_detalle` los suma; `_revertir_efecto_detalle`
+    los resta. Centraliza la semántica por tipo de movimiento en un solo lugar.
+    """
+    tipo = det.movimiento.tipo_movimiento
+    if tipo == 'entrada':
+        return [(det.ubicacion_destino, det.cantidad)]
+    if tipo == 'salida':
+        return [(det.ubicacion_origen, -det.cantidad)]
+    if tipo == 'ajuste':
+        # Ajustes pueden ser positivos o negativos.
+        return [(det.ubicacion_destino, det.cantidad)]
+    if tipo == 'transferencia':
+        return [
+            (det.ubicacion_origen, -det.cantidad),
+            (det.ubicacion_destino, det.cantidad),
+        ]
+    return []
 
 
 def _revertir_efecto_detalle(det):
@@ -15,54 +72,11 @@ def _revertir_efecto_detalle(det):
     Deshace el efecto de stock de un DetalleMovimiento.
     Debe llamarse dentro de transaction.atomic().
 
-    Simétrico con _aplicar_efecto_detalle: usa get_or_create en todos los
-    casos para permitir reversiones sobre filas inexistentes (queda stock
-    negativo o positivo según corresponda).
+    Simétrico con _aplicar_efecto_detalle: aplica los deltas negados de forma
+    atómica (F()), permitiendo reversiones sobre filas inexistentes.
     """
-    tipo = det.movimiento.tipo_movimiento
-
-    if tipo == 'entrada':
-        if det.ubicacion_destino:
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual -= det.cantidad
-            s.save()
-
-    elif tipo == 'salida':
-        if det.ubicacion_origen:
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_origen,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual += det.cantidad
-            s.save()
-
-    elif tipo == 'ajuste':
-        if det.ubicacion_destino:
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual -= det.cantidad
-            s.save()
-
-    elif tipo == 'transferencia':
-        if det.ubicacion_origen:
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_origen,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual += det.cantidad
-            s.save()
-        if det.ubicacion_destino:
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual -= det.cantidad
-            s.save()
+    for ubicacion, delta in _deltas_detalle(det):
+        _mutar_stock(det.item, ubicacion, -delta)
 
 
 def _aplicar_efecto_detalle(det):
@@ -84,55 +98,8 @@ def _aplicar_efecto_detalle(det):
 
         Solo movimientos `anulado=True` o `eliminado=True` deben excluirse.
     """
-    tipo = det.movimiento.tipo_movimiento
-
-    if tipo == 'entrada':
-        if det.ubicacion_destino:
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual += det.cantidad
-            s.save()
-
-    elif tipo == 'salida':
-        if det.ubicacion_origen:
-            # get_or_create: si no hay fila Stock, se crea con 0 y queda negativa
-            # al descontar. Salidas con pendiente_conciliacion también pasan por
-            # acá — el descuento NUNCA se omite.
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_origen,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual -= det.cantidad
-            s.save()
-
-    elif tipo == 'ajuste':
-        if det.ubicacion_destino:
-            # Ajustes pueden ser positivos o negativos. get_or_create también
-            # aquí para permitir ajuste negativo sobre ubicación sin fila previa.
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual += det.cantidad
-            s.save()
-
-    elif tipo == 'transferencia':
-        if det.ubicacion_origen:
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_origen,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual -= det.cantidad
-            s.save()
-        if det.ubicacion_destino:
-            s, _ = Stock.objects.get_or_create(
-                item=det.item, ubicacion=det.ubicacion_destino,
-                defaults={'cantidad_actual': Decimal('0')},
-            )
-            s.cantidad_actual += det.cantidad
-            s.save()
+    for ubicacion, delta in _deltas_detalle(det):
+        _mutar_stock(det.item, ubicacion, delta)
 
 
 def _revertir_todos_los_detalles(mov):
@@ -221,6 +188,8 @@ def _cerrar_pendientes_conciliacion(item, ubicacion):
 
 # Exporta solo los helpers de stock (los nombres de common ya vienen de allí).
 __all__ = [
+    '_mutar_stock',
+    '_deltas_detalle',
     '_revertir_efecto_detalle',
     '_aplicar_efecto_detalle',
     '_revertir_todos_los_detalles',
