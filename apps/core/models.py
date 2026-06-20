@@ -432,3 +432,21 @@ class ConteoDetalle(models.Model):
         if self.diferencia_final == 0:
             return 'ok'
         return 'sobrante' if self.diferencia_final > 0 else 'faltante'
+
+
+class InventarioConfig(models.Model):
+    """
+    Configuración singleton del inventario (una sola fila, pk=1).
+    Por ahora guarda el orden de las tabs de la lista de inventario.
+    """
+    orden_tabs = models.JSONField(default=list)
+
+    class Meta:
+        verbose_name = 'Configuración de inventario'
+        verbose_name_plural = 'Configuración de inventario'
+        permissions = [
+            ('ordenar_tabs_inventario', 'Puede ordenar las tabs del inventario'),
+        ]
+
+    def __str__(self):
+        return 'Configuración de inventario'

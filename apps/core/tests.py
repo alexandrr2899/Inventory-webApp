@@ -662,3 +662,17 @@ class AuditarStockPendientesCommandTests(TestCase):
             Stock.objects.get(item=self.item, ubicacion=self.ub).cantidad_actual,
             Decimal('0'),
         )
+
+
+@override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
+class InventarioConfigModelTests(TestCase):
+    def test_singleton_y_permiso_existen(self):
+        from apps.core.models import InventarioConfig
+        from django.contrib.auth.models import Permission
+
+        config, creado = InventarioConfig.objects.get_or_create(pk=1)
+        self.assertTrue(creado)
+        self.assertEqual(config.orden_tabs, [])
+        self.assertTrue(
+            Permission.objects.filter(codename='ordenar_tabs_inventario').exists()
+        )
