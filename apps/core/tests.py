@@ -699,6 +699,8 @@ class GetOrdenTabsTests(TestCase):
         self.assertEqual(
             set(claves), {'todos', 'producto', 'repuesto', 'consumible', 'bajo_stock'}
         )
+        # Las tabs ausentes se agregan al final en orden canónico
+        self.assertEqual(claves[2:], ['todos', 'repuesto', 'consumible'])
 
     def test_ignora_duplicados_guardados(self):
         from apps.core.models import InventarioConfig
