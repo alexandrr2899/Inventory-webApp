@@ -676,3 +676,34 @@ class InventarioConfigModelTests(TestCase):
         self.assertTrue(
             Permission.objects.filter(codename='ordenar_tabs_inventario').exists()
         )
+
+
+@override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
+class GetOrdenTabsTests(TestCase):
+    def test_orden_canonico_sin_config(self):
+        from apps.core.views import get_orden_tabs
+        claves = [t['clave'] for t in get_orden_tabs()]
+        self.assertEqual(
+            claves, ['todos', 'producto', 'repuesto', 'consumible', 'bajo_stock']
+        )
+
+    def test_reconcilia_guardado_con_canonico(self):
+        from apps.core.models import InventarioConfig
+        from apps.core.views import get_orden_tabs
+        InventarioConfig.objects.create(
+            pk=1, orden_tabs=['bajo_stock', 'desconocida', 'producto']
+        )
+        claves = [t['clave'] for t in get_orden_tabs()]
+        self.assertEqual(claves[:2], ['bajo_stock', 'producto'])
+        self.assertEqual(len(claves), 5)
+        self.assertEqual(
+            set(claves), {'todos', 'producto', 'repuesto', 'consumible', 'bajo_stock'}
+        )
+
+    def test_ignora_duplicados_guardados(self):
+        from apps.core.models import InventarioConfig
+        from apps.core.views import get_orden_tabs
+        InventarioConfig.objects.create(pk=1, orden_tabs=['todos', 'todos', 'producto'])
+        claves = [t['clave'] for t in get_orden_tabs()]
+        self.assertEqual(len(claves), 5)
+        self.assertEqual(claves.count('todos'), 1)

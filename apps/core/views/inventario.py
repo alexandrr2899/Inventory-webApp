@@ -4,6 +4,50 @@ inventario.py — Ítems, ubicaciones, kardex/historial.
 from .common import *  # noqa: F401,F403
 from .stock import *   # noqa: F401,F403
 
+# ─── TABS DEL INVENTARIO ──────────────────────────────────────────────────────
+# Definición canónica (orden por defecto + metadata de presentación). El orden
+# real lo guarda InventarioConfig; get_orden_tabs() reconcilia ambos.
+TABS_INVENTARIO = [
+    {'clave': 'todos',      'etiqueta': 'Todos'},
+    {'clave': 'producto',   'etiqueta': 'Producto',   'color': '#198754'},
+    {'clave': 'repuesto',   'etiqueta': 'Repuesto'},
+    {'clave': 'consumible', 'etiqueta': 'Consumible'},
+    {'clave': 'bajo_stock', 'etiqueta': 'Bajo stock', 'danger': True},
+]
+TABS_CLAVES = [t['clave'] for t in TABS_INVENTARIO]
+_TABS_POR_CLAVE = {t['clave']: t for t in TABS_INVENTARIO}
+
+# Columnas ordenables de la tabla → campo ORM (se usa en una tarea posterior)
+ORDEN_COLS = {
+    'nombre':    'nombre',
+    'codigo':    'codigo',
+    'tipo':      'tipo',
+    'categoria': 'categoria__nombre',
+    'stock':     'stock_calc',
+}
+
+
+def get_orden_tabs():
+    """
+    Devuelve las tabs en el orden guardado (InventarioConfig singleton),
+    reconciliado con el set canónico: respeta el orden guardado para claves
+    válidas (sin duplicar), y agrega al final cualquier tab canónica ausente.
+    Descarta claves desconocidas. Siempre devuelve las 5 tabs con su metadata.
+    """
+    from ..models import InventarioConfig
+    config, _ = InventarioConfig.objects.get_or_create(pk=1)
+    ordenadas = []
+    vistas = set()
+    for clave in (config.orden_tabs or []):
+        if clave in _TABS_POR_CLAVE and clave not in vistas:
+            ordenadas.append(clave)
+            vistas.add(clave)
+    for clave in TABS_CLAVES:
+        if clave not in vistas:
+            ordenadas.append(clave)
+            vistas.add(clave)
+    return [_TABS_POR_CLAVE[c] for c in ordenadas]
+
 
 # ─── INVENTARIO ───────────────────────────────────────────────────────────────
 
