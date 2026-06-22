@@ -3,6 +3,7 @@ inventario.py — Ítems, ubicaciones, kardex/historial.
 """
 from .common import *  # noqa: F401,F403
 from .stock import *   # noqa: F401,F403
+from django.http import HttpResponseBadRequest
 
 # ─── TABS DEL INVENTARIO ──────────────────────────────────────────────────────
 # Definición canónica (orden por defecto + metadata de presentación). El orden
@@ -47,6 +48,30 @@ def get_orden_tabs():
             ordenadas.append(clave)
             vistas.add(clave)
     return [_TABS_POR_CLAVE[c] for c in ordenadas]
+
+
+@login_required
+@require_POST
+@permission_required(_perm('ordenar_tabs_inventario'), raise_exception=True)
+def inventario_tabs_orden(request):
+    """Persiste el orden global de tabs. Body JSON: {"orden": [clave, ...]}."""
+    from ..models import InventarioConfig
+    try:
+        nuevo = json.loads(request.body).get('orden')
+    except (ValueError, TypeError, AttributeError):
+        return HttpResponseBadRequest('JSON inválido.')
+
+    if (not isinstance(nuevo, list)
+            or len(nuevo) != len(TABS_CLAVES)
+            or set(nuevo) != set(TABS_CLAVES)):
+        return HttpResponseBadRequest(
+            'El orden debe ser una permutación exacta de las tabs.'
+        )
+
+    config, _ = InventarioConfig.objects.get_or_create(pk=1)
+    config.orden_tabs = nuevo
+    config.save(update_fields=['orden_tabs'])
+    return JsonResponse({'ok': True})
 
 
 # ─── INVENTARIO ───────────────────────────────────────────────────────────────

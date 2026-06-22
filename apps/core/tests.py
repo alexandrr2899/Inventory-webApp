@@ -709,3 +709,44 @@ class GetOrdenTabsTests(TestCase):
         claves = [t['clave'] for t in get_orden_tabs()]
         self.assertEqual(len(claves), 5)
         self.assertEqual(claves.count('todos'), 1)
+
+
+@override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
+class GuardarOrdenTabsTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Permission
+        self.editor = User.objects.create_user('editor', password='x')
+        self.editor.user_permissions.add(
+            Permission.objects.get(codename='ordenar_tabs_inventario')
+        )
+        self.viewer = User.objects.create_user('viewer', password='x')
+
+    def _post(self, user, orden):
+        import json as _json
+        self.client.force_login(user)
+        return self.client.post(
+            reverse('inventario_tabs_orden'),
+            data=_json.dumps({'orden': orden}),
+            content_type='application/json',
+        )
+
+    def test_guarda_permutacion_valida_con_permiso(self):
+        from apps.core.models import InventarioConfig
+        orden = ['bajo_stock', 'producto', 'todos', 'consumible', 'repuesto']
+        resp = self._post(self.editor, orden)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(InventarioConfig.objects.get(pk=1).orden_tabs, orden)
+
+    def test_sin_permiso_403(self):
+        resp = self._post(self.viewer,
+                          ['todos', 'producto', 'repuesto', 'consumible', 'bajo_stock'])
+        self.assertEqual(resp.status_code, 403)
+
+    def test_permutacion_invalida_400(self):
+        resp = self._post(self.editor, ['todos', 'producto', 'repuesto', 'consumible'])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_clave_desconocida_400(self):
+        resp = self._post(self.editor,
+                          ['todos', 'producto', 'repuesto', 'consumible', 'XXX'])
+        self.assertEqual(resp.status_code, 400)
