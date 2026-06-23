@@ -1,0 +1,7 @@
+{% if doc.estado_pago == 'pagada' %}<span class="badge bg-success">Pagada</span>
+{% elif doc.estado_pago == 'anulada' %}<span class="badge bg-dark">Anulada</span>
+{% elif doc.estado_pago == 'vencida' %}<span class="badge bg-danger">Vencida</span>
+{% elif doc.es_pago_parcial %}<span class="badge bg-warning text-dark">Pago parcial</span>
+{% else %}<span class="badge bg-secondary">Pendiente</span>{% endif %}
+{% if doc.vence_hoy %}<span class="badge bg-danger">Vence hoy</span>
+{% elif doc.vence_en_7_dias %}<span class="badge bg-warning text-dark">Vence pronto</span>{% endif %}

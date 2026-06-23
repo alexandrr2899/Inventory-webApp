@@ -1,0 +1,44 @@
+<div class="d-flex flex-wrap gap-3 mb-3">
+  <div class="card flex-fill"><div class="card-body py-2"><small>Facturado</small><div class="fs-5">L {{ resumen.total_facturado }}</div></div></div>
+  <div class="card flex-fill"><div class="card-body py-2"><small>Pagado</small><div class="fs-5">L {{ resumen.total_pagado }}</div></div></div>
+  <div class="card flex-fill"><div class="card-body py-2"><small>Pendiente</small><div class="fs-5">L {{ resumen.total_pendiente }}</div></div></div>
+  <div class="card flex-fill"><div class="card-body py-2"><small>Vencido</small><div class="fs-5">L {{ resumen.total_vencido }}</div></div></div>
+  <div class="card flex-fill"><div class="card-body py-2"><small>Facturas</small><div class="fs-5">{{ resumen.num_facturas }}</div></div></div>
+  <div class="card flex-fill"><div class="card-body py-2"><small>Envíos</small><div class="fs-5">{{ resumen.num_envios }}</div></div></div>
+</div>
+
+<div class="btn-group btn-group-sm mb-2" role="group">
+  <button class="btn btn-outline-primary filtro-fac {% if not tipo_filtro %}active{% endif %}" data-tipo="">Todos</button>
+  <button class="btn btn-outline-primary filtro-fac {% if tipo_filtro == 'factura' %}active{% endif %}" data-tipo="factura">Facturas</button>
+  <button class="btn btn-outline-primary filtro-fac {% if tipo_filtro == 'envio' %}active{% endif %}" data-tipo="envio">Envíos</button>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle">
+    <thead class="table-light"><tr>
+      <th>Tipo</th><th>Número</th><th>Producto</th><th>Fecha</th><th>Vencimiento</th>
+      <th class="text-end">Libras</th><th class="text-end">Precio</th><th class="text-end">Total</th>
+      <th class="text-end">Pagado</th><th class="text-end">Saldo</th><th>Estado</th><th>PDF</th>
+    </tr></thead>
+    <tbody>
+    {% for doc in documentos %}
+      <tr>
+        <td>{{ doc.get_tipo_documento_display }}</td>
+        <td><a href="{% url 'factura_detalle' doc.pk %}">{{ doc.numero_documento|default:doc.pk }}</a></td>
+        <td>{{ doc.get_producto_display|default:"—" }}</td>
+        <td>{{ doc.fecha_documento|date:"d/m/Y"|default:"—" }}</td>
+        <td>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</td>
+        <td class="text-end">{{ doc.total_libras|default:"—" }}</td>
+        <td class="text-end">{{ doc.precio_por_libra|default:"—" }}</td>
+        <td class="text-end">L {{ doc.monto_total }}</td>
+        <td class="text-end">L {{ doc.monto_pagado }}</td>
+        <td class="text-end">L {{ doc.saldo_pendiente }}</td>
+        <td>{% include "facturas/_badges.html" with doc=doc %}</td>
+        <td>{% if doc.archivo_pdf %}<a href="{{ doc.archivo_pdf.url }}" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="12" class="text-muted">Sin documentos.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
