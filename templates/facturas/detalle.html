@@ -1,22 +1,189 @@
 {% extends "base.html" %}
-{% block title %}Documento {{ doc.pk }}{% endblock %}
+{% block title %}{{ doc.get_tipo_documento_display }} {{ doc.numero_documento|default:doc.pk }}{% endblock %}
+
 {% block content %}
-<h1>Documento {{ doc.pk }}</h1>
-<dl>
-  <dt>Tipo</dt><dd>{{ doc.tipo_documento }}</dd>
-  <dt>Cliente</dt><dd>{{ doc.cliente }}</dd>
-  <dt>Número</dt><dd>{{ doc.numero_documento }}</dd>
-  <dt>Fecha</dt><dd>{{ doc.fecha_documento }}</dd>
-  <dt>Total</dt><dd>{{ doc.monto_total }}</dd>
-  <dt>Pagado</dt><dd>{{ doc.monto_pagado }}</dd>
-  <dt>Estado</dt><dd>{{ doc.estado_pago }}</dd>
-  <dt>Revisión</dt><dd>{{ doc.estado_revision }}</dd>
-</dl>
-<h2>Pagos</h2>
-<ul>
-  {% for p in pagos %}<li>{{ p.fecha_pago }} — {{ p.monto }}</li>
-  {% empty %}<li>Sin pagos registrados.</li>
-  {% endfor %}
-</ul>
-<a href="{% url 'factura_editar' doc.pk %}" class="btn btn-secondary">Editar</a>
+<div class="page-header d-flex justify-content-between align-items-center" style="background:linear-gradient(135deg,#0d6efd,#198754);">
+  <div>
+    <h1><i class="bi bi-receipt me-2"></i>{{ doc.get_tipo_documento_display }} {{ doc.numero_documento|default:doc.pk }}</h1>
+    <small class="opacity-75">{{ doc.cliente.nombre }}</small>
+  </div>
+  <a href="{% url 'facturas_lista' %}" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-arrow-left me-1"></i>Documentos
+  </a>
+</div>
+
+{# Action buttons #}
+<div class="d-flex flex-wrap gap-2 mb-4">
+  {% if perms.core.registrar_pago_factura and doc.estado_pago != 'anulada' and doc.estado_pago != 'pagada' %}
+  <a href="{% url 'factura_pago_nuevo' doc.pk %}" class="btn btn-success">
+    <i class="bi bi-cash-coin me-1"></i>Registrar pago
+  </a>
+  {% endif %}
+  {% if perms.core.gestionar_facturas and doc.estado_pago != 'anulada' %}
+  <a href="{% url 'factura_editar' doc.pk %}" class="btn btn-outline-primary">
+    <i class="bi bi-pencil-fill me-1"></i>Editar
+  </a>
+  <form method="post" action="{% url 'factura_revisar' doc.pk %}" class="d-inline">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-outline-info">
+      <i class="bi bi-check2-circle me-1"></i>Marcar revisada
+    </button>
+  </form>
+  {% endif %}
+  {% if perms.core.anular_factura and doc.estado_pago != 'anulada' %}
+  <form method="post" action="{% url 'factura_anular' doc.pk %}" class="d-inline"
+        onsubmit="return confirm('¿Anular este documento? Esta acción no se puede deshacer.');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-outline-danger">
+      <i class="bi bi-x-circle-fill me-1"></i>Anular
+    </button>
+  </form>
+  {% endif %}
+  {% if doc.archivo_pdf %}
+  <a href="{{ doc.archivo_pdf.url }}" class="btn btn-outline-secondary" target="_blank">
+    <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>Descargar PDF
+  </a>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  {# Document details card #}
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-file-text me-2 text-primary"></i>Datos del documento
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5">Tipo</dt>
+          <dd class="col-7">{{ doc.get_tipo_documento_display }}</dd>
+
+          <dt class="col-5">Cliente</dt>
+          <dd class="col-7 fw-semibold">{{ doc.cliente.nombre }}</dd>
+
+          <dt class="col-5">Número</dt>
+          <dd class="col-7">{{ doc.numero_documento|default:"–" }}</dd>
+
+          <dt class="col-5">Fecha</dt>
+          <dd class="col-7">{{ doc.fecha_documento|date:"d/m/Y"|default:"–" }}</dd>
+
+          <dt class="col-5">Vencimiento</dt>
+          <dd class="col-7">{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"–" }}</dd>
+
+          <dt class="col-5">Producto</dt>
+          <dd class="col-7">{{ doc.get_producto_display|default:"–" }}</dd>
+
+          <dt class="col-5">Libras</dt>
+          <dd class="col-7">{{ doc.total_libras|floatformat:2|default:"–" }}</dd>
+
+          <dt class="col-5">Precio/lb</dt>
+          <dd class="col-7">{{ doc.precio_por_libra|floatformat:2|default:"–" }}</dd>
+
+          <dt class="col-5">Subtotal</dt>
+          <dd class="col-7">{{ doc.subtotal|floatformat:2 }}</dd>
+
+          <dt class="col-5">ISV</dt>
+          <dd class="col-7">{{ doc.isv|floatformat:2 }}</dd>
+
+          <dt class="col-5">Total</dt>
+          <dd class="col-7 fw-bold fs-5">L {{ doc.monto_total|floatformat:2 }}</dd>
+
+          <dt class="col-5">Pagado</dt>
+          <dd class="col-7 text-success fw-semibold">L {{ doc.monto_pagado|floatformat:2 }}</dd>
+
+          <dt class="col-5">Saldo</dt>
+          <dd class="col-7 {% if doc.saldo_pendiente > 0 %}text-danger fw-bold{% endif %}">L {{ doc.saldo_pendiente|floatformat:2 }}</dd>
+
+          <dt class="col-5">Estado pago</dt>
+          <dd class="col-7">{% include "facturas/_badges.html" with doc=doc %}</dd>
+
+          <dt class="col-5">Revisión</dt>
+          <dd class="col-7">
+            {% if doc.estado_revision == 'revisada' %}
+              <span class="badge bg-success">Revisada</span>
+            {% elif doc.estado_revision == 'error' %}
+              <span class="badge bg-danger">Error</span>
+            {% else %}
+              <span class="badge bg-secondary">Pendiente</span>
+            {% endif %}
+          </dd>
+
+          {% if doc.notas %}
+          <dt class="col-5">Notas</dt>
+          <dd class="col-7">{{ doc.notas }}</dd>
+          {% endif %}
+
+          <dt class="col-5 text-muted small">Creado</dt>
+          <dd class="col-7 text-muted small">{{ doc.created_at|date:"d/m/Y H:i" }}</dd>
+
+          <dt class="col-5 text-muted small">Actualizado</dt>
+          <dd class="col-7 text-muted small">{{ doc.updated_at|date:"d/m/Y H:i" }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  {# Texto extraído #}
+  {% if doc.texto_extraido %}
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-file-earmark-text me-2 text-secondary"></i>Texto extraído del PDF
+      </div>
+      <div class="card-body p-0">
+        <pre class="m-0 p-3" style="font-size:.78rem;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">{{ doc.texto_extraido }}</pre>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# Historial de pagos #}
+<div class="card mt-4">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-cash-stack me-2 text-success"></i>Historial de pagos
+  </div>
+  {% if pagos %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th class="px-3">Fecha</th>
+          <th>Método</th>
+          <th>Referencia</th>
+          <th class="text-end">Monto</th>
+          <th>Notas</th>
+          <th class="text-end px-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pago in pagos %}
+        <tr>
+          <td class="px-3 text-nowrap">{{ pago.fecha_pago|date:"d/m/Y" }}</td>
+          <td>{{ pago.get_metodo_pago_display }}</td>
+          <td class="text-muted small">{{ pago.referencia|default:"–" }}</td>
+          <td class="text-end fw-bold text-success">L {{ pago.monto|floatformat:2 }}</td>
+          <td class="text-muted small">{{ pago.notas|default:"–"|truncatechars:60 }}</td>
+          <td class="text-end px-3">
+            {% if perms.core.registrar_pago_factura %}
+            <form method="post" action="{% url 'factura_pago_borrar' pago.pk %}" class="d-inline"
+                  onsubmit="return confirm('¿Eliminar este pago?');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger" title="Borrar pago">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-center text-muted py-4">
+    <i class="bi bi-inbox fs-1 d-block mb-2"></i>Sin pagos registrados.
+  </div>
+  {% endif %}
+</div>
 {% endblock %}
