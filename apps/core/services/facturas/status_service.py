@@ -24,7 +24,7 @@ def calcular_estado_pago(documento):
 
 
 def actualizar_estado_pago(documento, *, guardar=True):
-    """Calcula y asigna el estado; persiste si guardar=True."""
+    """Calcula y asigna el estado; persiste si guardar=True. Si el estado no cambia, no se hace save (no-op intencional)."""
     nuevo = calcular_estado_pago(documento)
     if documento.estado_pago != nuevo:
         documento.estado_pago = nuevo

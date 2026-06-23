@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from django.test import TestCase
@@ -46,3 +46,12 @@ class StatusServiceTests(TestCase):
         status_service.actualizar_estado_pago(doc)
         doc.refresh_from_db()
         self.assertEqual(doc.estado_pago, 'pendiente')
+
+    def test_actualizar_no_persiste_si_guardar_false(self):
+        doc = self._doc('100.00', self.hoy - timedelta(days=1))  # vencida en DB tras crear
+        # estado en DB es 'pendiente' (default al crear); en memoria lo dejamos así
+        doc.refresh_from_db()
+        estado_dom = status_service.actualizar_estado_pago(doc, guardar=False)
+        self.assertEqual(estado_dom, 'vencida')   # cálculo correcto devuelto
+        recargado = type(doc).objects.get(pk=doc.pk)
+        self.assertEqual(recargado.estado_pago, 'pendiente')  # NO se persistió
