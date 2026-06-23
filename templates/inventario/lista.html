@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Inventario{% endblock %}
 
 {% block extra_head %}
@@ -53,13 +54,16 @@
 </form>
 
 <!-- Tabs -->
-<div class="tabs-scroll mb-3">
+<div class="tabs-scroll mb-3 d-flex align-items-center">
   <ul class="nav nav-pills gap-1" id="tabs-tipo">
+    {% for tab in tabs_ordenadas %}
+    {% if tab.clave == 'todos' %}
     <li class="nav-item">
       <button class="nav-link active tab-btn fw-semibold" data-tab="todos">
         Todos <span class="badge bg-white text-dark ms-1" id="cnt-todos">0</span>
       </button>
     </li>
+    {% elif tab.clave == 'producto' %}
     <li class="nav-item">
       <button class="nav-link tab-btn fw-semibold" data-tab="producto" style="--tab-color:#198754">
         <span class="d-inline-block rounded-circle me-1"
@@ -67,6 +71,7 @@
         Productos <span class="badge bg-success ms-1" id="cnt-producto">0</span>
       </button>
     </li>
+    {% elif tab.clave == 'repuesto' %}
     <li class="nav-item">
       <button class="nav-link tab-btn fw-semibold" data-tab="repuesto">
         <span class="d-inline-block rounded-circle me-1"
@@ -74,6 +79,7 @@
         Repuestos <span class="badge ms-1" style="background:#fd7e14" id="cnt-repuesto">0</span>
       </button>
     </li>
+    {% elif tab.clave == 'consumible' %}
     <li class="nav-item">
       <button class="nav-link tab-btn fw-semibold" data-tab="consumible">
         <span class="d-inline-block rounded-circle me-1"
@@ -81,13 +87,22 @@
         Consumibles <span class="badge ms-1" style="background:#0dcaf0;color:#000" id="cnt-consumible">0</span>
       </button>
     </li>
+    {% elif tab.clave == 'bajo_stock' %}
     <li class="nav-item">
       <button class="nav-link tab-btn fw-semibold text-danger" data-tab="bajo_stock">
         <i class="bi bi-exclamation-triangle-fill me-1"></i>
         Stock bajo <span class="badge bg-danger ms-1" id="cnt-bajo">0</span>
       </button>
     </li>
+    {% endif %}
+    {% endfor %}
   </ul>
+  {% if puede_ordenar_tabs %}
+  <button type="button" class="btn btn-sm btn-outline-secondary ms-2 flex-shrink-0"
+          data-bs-toggle="modal" data-bs-target="#modalOrdenTabs" title="Ordenar tabs">
+    <i class="bi bi-arrow-down-up"></i>
+  </button>
+  {% endif %}
 </div>
 
 <!-- Estado vacío -->
@@ -105,11 +120,31 @@
     <table class="table table-hover mb-0 table-inventario align-middle">
       <thead class="table-light">
         <tr>
-          <th>Código</th>
-          <th>Nombre</th>
-          <th>Tipo</th>
-          <th>Categoría</th>
-          <th class="text-end">Stock total</th>
+          <th>
+            <a href="?orden_col=codigo&orden_dir={% if orden_col == 'codigo' and orden_dir == 'asc' %}desc{% else %}asc{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" class="text-decoration-none text-reset">
+              Código{% if orden_col == 'codigo' %} <i class="bi bi-caret-{% if orden_dir == 'asc' %}up{% else %}down{% endif %}-fill small"></i>{% endif %}
+            </a>
+          </th>
+          <th>
+            <a href="?orden_col=nombre&orden_dir={% if orden_col == 'nombre' and orden_dir == 'asc' %}desc{% else %}asc{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" class="text-decoration-none text-reset">
+              Nombre{% if orden_col == 'nombre' %} <i class="bi bi-caret-{% if orden_dir == 'asc' %}up{% else %}down{% endif %}-fill small"></i>{% endif %}
+            </a>
+          </th>
+          <th>
+            <a href="?orden_col=tipo&orden_dir={% if orden_col == 'tipo' and orden_dir == 'asc' %}desc{% else %}asc{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" class="text-decoration-none text-reset">
+              Tipo{% if orden_col == 'tipo' %} <i class="bi bi-caret-{% if orden_dir == 'asc' %}up{% else %}down{% endif %}-fill small"></i>{% endif %}
+            </a>
+          </th>
+          <th>
+            <a href="?orden_col=categoria&orden_dir={% if orden_col == 'categoria' and orden_dir == 'asc' %}desc{% else %}asc{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" class="text-decoration-none text-reset">
+              Categoría{% if orden_col == 'categoria' %} <i class="bi bi-caret-{% if orden_dir == 'asc' %}up{% else %}down{% endif %}-fill small"></i>{% endif %}
+            </a>
+          </th>
+          <th class="text-end">
+            <a href="?orden_col=stock&orden_dir={% if orden_col == 'stock' and orden_dir == 'asc' %}desc{% else %}asc{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" class="text-decoration-none text-reset">
+              Stock total{% if orden_col == 'stock' %} <i class="bi bi-caret-{% if orden_dir == 'asc' %}up{% else %}down{% endif %}-fill small"></i>{% endif %}
+            </a>
+          </th>
           <th class="text-end">Mínimo</th>
           <th>Ubic. principal</th>
           <th>Estado</th>
@@ -187,6 +222,18 @@
 </div>
 
 <!-- ══ CARDS MOBILE ═══════════════════════════════════════════════════════ -->
+<div class="d-md-none mb-2">
+  <select class="form-select form-select-sm" id="orden-movil">
+    <option value="">Orden por defecto</option>
+    <option value="nombre|asc"    {% if orden_col == 'nombre' and orden_dir == 'asc' %}selected{% endif %}>Nombre ↑</option>
+    <option value="nombre|desc"   {% if orden_col == 'nombre' and orden_dir == 'desc' %}selected{% endif %}>Nombre ↓</option>
+    <option value="tipo|asc"      {% if orden_col == 'tipo' and orden_dir == 'asc' %}selected{% endif %}>Tipo ↑</option>
+    <option value="tipo|desc"     {% if orden_col == 'tipo' and orden_dir == 'desc' %}selected{% endif %}>Tipo ↓</option>
+    <option value="categoria|asc" {% if orden_col == 'categoria' and orden_dir == 'asc' %}selected{% endif %}>Categoría ↑</option>
+    <option value="stock|asc"     {% if orden_col == 'stock' and orden_dir == 'asc' %}selected{% endif %}>Stock ↑</option>
+    <option value="stock|desc"    {% if orden_col == 'stock' and orden_dir == 'desc' %}selected{% endif %}>Stock ↓</option>
+  </select>
+</div>
 <div id="lista-mobile" class="d-md-none">
   {% for r in items_data %}
   <div class="item-fila {% if r.bajo %}card-bajo-stock{% endif %} card mb-2"
@@ -267,9 +314,91 @@
 </div>
 
 {% include "includes/pagination.html" %}
+
+{% if puede_ordenar_tabs %}
+<div class="modal fade" id="modalOrdenTabs" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ordenar tabs del inventario</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">Arrastrá para reordenar. El orden aplica para todos.</p>
+        <ul class="list-group" id="sortable-tabs">
+          {% for tab in tabs_ordenadas %}
+          <li class="list-group-item d-flex align-items-center" data-clave="{{ tab.clave }}"
+              style="cursor:grab">
+            <i class="bi bi-grip-vertical me-2 text-muted"></i>{{ tab.etiqueta }}
+          </li>
+          {% endfor %}
+        </ul>
+        <div id="orden-tabs-error" class="text-danger small mt-2 d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnGuardarOrdenTabs">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/sortable.min.js' %}"></script>
+<script>
+(function () {
+  // ── Selector de orden en móvil ──
+  var selMovil = document.getElementById('orden-movil');
+  if (selMovil) {
+    selMovil.addEventListener('change', function () {
+      var url = new URL(window.location.href);
+      if (!this.value) {
+        url.searchParams.delete('orden_col');
+        url.searchParams.delete('orden_dir');
+      } else {
+        var parts = this.value.split('|');
+        url.searchParams.set('orden_col', parts[0]);
+        url.searchParams.set('orden_dir', parts[1]);
+      }
+      window.location.href = url.toString();
+    });
+  }
+
+  // ── Drag & drop de tabs (solo si el modal existe = con permiso) ──
+  var lista = document.getElementById('sortable-tabs');
+  if (lista && window.Sortable) {
+    Sortable.create(lista, { animation: 150, handle: '.bi-grip-vertical' });
+    var btn = document.getElementById('btnGuardarOrdenTabs');
+    var errBox = document.getElementById('orden-tabs-error');
+    btn.addEventListener('click', function () {
+      var orden = Array.prototype.map.call(
+        lista.querySelectorAll('li'), function (li) { return li.dataset.clave; }
+      );
+      fetch("{% url 'inventario_tabs_orden' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': "{{ csrf_token }}",
+        },
+        body: JSON.stringify({ orden: orden }),
+      })
+      .then(function (r) {
+        if (r.ok) { window.location.reload(); return; }
+        return r.text().then(function (t) {
+          errBox.textContent = t || 'No se pudo guardar el orden.';
+          errBox.classList.remove('d-none');
+        });
+      })
+      .catch(function () {
+        errBox.textContent = 'Error de red al guardar.';
+        errBox.classList.remove('d-none');
+      });
+    });
+  }
+})();
+</script>
 <script>
 // ── Datos: colectar items únicos del DOM ──────────────────────────────────
 const todosLosItems = new Map();

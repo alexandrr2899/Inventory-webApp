@@ -788,3 +788,37 @@ class InventarioListaOrdenTests(TestCase):
                                {'orden_col': 'inexistente', 'orden_dir': 'asc'})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.context['orden_col'], '')
+
+
+@override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
+class InventarioListaRenderTabsTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.perm_ver = Permission.objects.get(codename='ver_inventario')
+        self.perm_ord = Permission.objects.get(codename='ordenar_tabs_inventario')
+
+    def test_boton_ordenar_oculto_sin_permiso(self):
+        u = User.objects.create_user('v1', password='x')
+        u.user_permissions.add(self.perm_ver)
+        self.client.force_login(u)
+        resp = self.client.get(reverse('inventario_lista'))
+        self.assertNotContains(resp, 'modalOrdenTabs')
+
+    def test_boton_ordenar_visible_con_permiso(self):
+        u = User.objects.create_user('v2', password='x')
+        u.user_permissions.add(self.perm_ver, self.perm_ord)
+        self.client.force_login(u)
+        resp = self.client.get(reverse('inventario_lista'))
+        self.assertContains(resp, 'modalOrdenTabs')
+        self.assertContains(resp, 'sortable-tabs')
+
+    def test_tabs_se_renderizan_en_orden_guardado(self):
+        from apps.core.models import InventarioConfig
+        InventarioConfig.objects.create(
+            pk=1, orden_tabs=['bajo_stock', 'todos', 'producto', 'repuesto', 'consumible'])
+        u = User.objects.create_user('v3', password='x')
+        u.user_permissions.add(self.perm_ver)
+        self.client.force_login(u)
+        resp = self.client.get(reverse('inventario_lista'))
+        html = resp.content.decode()
+        self.assertLess(html.index('data-tab="bajo_stock"'), html.index('data-tab="producto"'))
