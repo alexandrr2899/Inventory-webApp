@@ -9,6 +9,7 @@ GRUPOS = {
         'aplicar_conciliacion', 'importar_excel', 'ver_reportes',
         'registrar_produccion',
         'editar_conteo', 'anular_conteo',
+        'ordenar_tabs_inventario',
         # Gestión de movimientos (solo admin)
         'editar_movimiento', 'anular_movimiento', 'eliminar_movimiento',
         'gestionar_backups',
@@ -17,6 +18,7 @@ GRUPOS = {
         'ver_inventario', 'registrar_entrada', 'registrar_salida',
         'registrar_conteo', 'aplicar_conciliacion', 'ver_reportes',
         'registrar_produccion',
+        'ordenar_tabs_inventario',
     ],
     'Operador': [
         'ver_inventario', 'registrar_conteo', 'registrar_produccion',
