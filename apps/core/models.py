@@ -450,3 +450,151 @@ class InventarioConfig(models.Model):
 
     def __str__(self):
         return 'Configuración de inventario'
+
+
+# ─── MÓDULO FACTURAS ──────────────────────────────────────────────────────────
+
+PRODUCTO_CHOICES = [
+    ('camiseta', 'Camiseta'),
+    ('lisa', 'Lisa'),
+    ('otro', 'Otro'),
+]
+
+
+class TarifaCliente(models.Model):
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='tarifas')
+    producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES)
+    precio_por_libra = models.DecimalField(max_digits=12, decimal_places=2)
+    activa = models.BooleanField(default=True)
+    fecha_inicio = models.DateField(default=timezone.now)
+    fecha_fin = models.DateField(null=True, blank=True)
+    notas = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = 'Tarifa de cliente'
+        verbose_name_plural = 'Tarifas de cliente'
+        ordering = ['cliente', 'producto', '-fecha_inicio']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cliente', 'producto'],
+                condition=models.Q(activa=True),
+                name='tarifa_unica_activa_por_cliente_producto',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.cliente.nombre} · {self.get_producto_display()} · L {self.precio_por_libra}/lb'
+
+    @classmethod
+    def activa_para(cls, cliente, producto):
+        """Tarifa activa vigente del cliente para el producto, o None."""
+        return cls.objects.filter(
+            cliente=cliente, producto=producto, activa=True,
+        ).order_by('-fecha_inicio').first()
+
+
+class DocumentoFactura(models.Model):
+    TIPO_CHOICES = [
+        ('factura', 'Factura'),
+        ('envio', 'Envío'),
+    ]
+    ESTADO_REVISION_CHOICES = [
+        ('pendiente', 'Pendiente'),
+        ('revisada', 'Revisada'),
+        ('error', 'Error'),
+    ]
+    ESTADO_PAGO_CHOICES = [
+        ('pendiente', 'Pendiente'),
+        ('pagada', 'Pagada'),
+        ('vencida', 'Vencida'),
+        ('anulada', 'Anulada'),
+    ]
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='documentos')
+    archivo_pdf = models.FileField(upload_to='facturas/%Y/%m/', null=True, blank=True)
+    tipo_documento = models.CharField(max_length=10, choices=TIPO_CHOICES)
+    numero_documento = models.CharField(max_length=60, blank=True)
+    fecha_documento = models.DateField(null=True, blank=True)
+    fecha_vencimiento = models.DateField(null=True, blank=True)
+    producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES, blank=True)
+
+    total_libras = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    precio_por_libra = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    isv = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='ISV')
+    monto_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    texto_extraido = models.TextField(blank=True)
+    estado_revision = models.CharField(max_length=12, choices=ESTADO_REVISION_CHOICES, default='pendiente')
+    estado_pago = models.CharField(max_length=12, choices=ESTADO_PAGO_CHOICES, default='pendiente')
+    notas = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Documento de factura'
+        verbose_name_plural = 'Documentos de factura'
+        ordering = ['-fecha_documento', '-created_at']
+        permissions = [
+            ('ver_facturas', 'Puede ver el módulo de facturas'),
+            ('gestionar_facturas', 'Puede crear y editar documentos de facturas'),
+            ('registrar_pago_factura', 'Puede registrar pagos de facturas'),
+            ('anular_factura', 'Puede anular documentos de facturas'),
+            ('gestionar_tarifas', 'Puede gestionar tarifas de cliente'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_tipo_documento_display()} {self.numero_documento or self.pk} · {self.cliente.nombre}'
+
+    @property
+    def monto_pagado(self):
+        from decimal import Decimal as _D
+        total = self.pagos.aggregate(s=models.Sum('monto'))['s']
+        return total if total is not None else _D('0.00')
+
+    @property
+    def saldo_pendiente(self):
+        return (self.monto_total or 0) - self.monto_pagado
+
+    @property
+    def es_pago_parcial(self):
+        return self.monto_pagado > 0 and self.saldo_pendiente > 0
+
+    @property
+    def vence_hoy(self):
+        return bool(self.fecha_vencimiento) and self.fecha_vencimiento == timezone.localdate()
+
+    @property
+    def vence_en_7_dias(self):
+        if not self.fecha_vencimiento:
+            return False
+        delta = (self.fecha_vencimiento - timezone.localdate()).days
+        return 0 <= delta <= 7
+
+
+class PagoFactura(models.Model):
+    METODO_CHOICES = [
+        ('efectivo', 'Efectivo'),
+        ('transferencia', 'Transferencia'),
+        ('deposito', 'Depósito'),
+        ('cheque', 'Cheque'),
+        ('tarjeta', 'Tarjeta'),
+        ('otro', 'Otro'),
+    ]
+    documento = models.ForeignKey(DocumentoFactura, on_delete=models.CASCADE, related_name='pagos')
+    fecha_pago = models.DateField(default=timezone.now)
+    metodo_pago = models.CharField(max_length=20, choices=METODO_CHOICES)
+    monto = models.DecimalField(max_digits=12, decimal_places=2)
+    referencia = models.CharField(max_length=120, blank=True)
+    comprobante = models.FileField(upload_to='facturas/pagos/%Y/%m/', null=True, blank=True)
+    notas = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Pago de factura'
+        verbose_name_plural = 'Pagos de factura'
+        ordering = ['-fecha_pago', '-created_at']
+
+    def __str__(self):
+        return f'Pago L {self.monto} · {self.documento}'
