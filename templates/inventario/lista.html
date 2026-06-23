@@ -316,11 +316,12 @@
 {% include "includes/pagination.html" %}
 
 {% if puede_ordenar_tabs %}
-<div class="modal fade" id="modalOrdenTabs" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modalOrdenTabs" tabindex="-1" aria-hidden="true"
+     aria-labelledby="modalOrdenTabsLabel">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Ordenar tabs del inventario</h5>
+        <h5 class="modal-title" id="modalOrdenTabsLabel">Ordenar tabs del inventario</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
@@ -346,7 +347,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/sortable.min.js' %}"></script>
+{% if puede_ordenar_tabs %}<script src="{% static 'js/sortable.min.js' %}"></script>{% endif %}
 <script>
 (function () {
   // ── Selector de orden en móvil ──
