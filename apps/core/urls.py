@@ -79,4 +79,13 @@ urlpatterns = [
     # API
     path('api/item/<int:pk>/info/', views.api_item_info, name='api_item_info'),
     path('api/categoria/nueva/', views.api_categoria_nueva, name='api_categoria_nueva'),
+
+    # ── Facturas ──────────────────────────────────────────────────────────────
+    path('facturas/', views.facturas_dashboard, name='facturas_dashboard'),
+    path('facturas/documentos/', views.facturas_lista, name='facturas_lista'),
+    path('facturas/documentos/nuevo/', views.factura_upload, name='factura_upload'),
+    path('facturas/documentos/<int:pk>/', views.factura_detalle, name='factura_detalle'),
+    path('facturas/documentos/<int:pk>/editar/', views.factura_editar, name='factura_editar'),
+    path('facturas/documentos/<int:pk>/revisar/', views.factura_revisar, name='factura_revisar'),
+    path('facturas/documentos/<int:pk>/anular/', views.factura_anular, name='factura_anular'),
 ]

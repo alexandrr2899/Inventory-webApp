@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Facturas{% endblock %}
+{% block content %}
+<div class="page-header"><h1><i class="bi bi-receipt me-2"></i>Facturas</h1></div>
+<div class="row g-3">
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body"><small>Documentos del mes</small><div class="fs-2">{{ total_docs_mes }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body"><small>Facturado</small><div class="fs-2">L {{ total_facturado }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body"><small>Cobrado</small><div class="fs-2">L {{ total_cobrado }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body"><small>Pendiente</small><div class="fs-2">L {{ total_pendiente }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body"><small>Vencido</small><div class="fs-2">L {{ total_vencido }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body"><small>Facturas pendientes</small><div class="fs-2">{{ facturas_pendientes }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body"><small>Envíos pendientes</small><div class="fs-2">{{ envios_pendientes }}</div></div></div></div>
+</div>
+<a href="{% url 'facturas_lista' %}" class="btn btn-primary mt-3">Ver documentos</a>
+<a href="{% url 'factura_upload' %}" class="btn btn-success mt-3">Subir PDF</a>
+{% endblock %}

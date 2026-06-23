@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Documento {{ doc.pk }}{% endblock %}
+{% block content %}
+<h1>Documento {{ doc.pk }}</h1>
+<dl>
+  <dt>Tipo</dt><dd>{{ doc.tipo_documento }}</dd>
+  <dt>Cliente</dt><dd>{{ doc.cliente }}</dd>
+  <dt>Número</dt><dd>{{ doc.numero_documento }}</dd>
+  <dt>Fecha</dt><dd>{{ doc.fecha_documento }}</dd>
+  <dt>Total</dt><dd>{{ doc.monto_total }}</dd>
+  <dt>Pagado</dt><dd>{{ doc.monto_pagado }}</dd>
+  <dt>Estado</dt><dd>{{ doc.estado_pago }}</dd>
+  <dt>Revisión</dt><dd>{{ doc.estado_revision }}</dd>
+</dl>
+<h2>Pagos</h2>
+<ul>
+  {% for p in pagos %}<li>{{ p.fecha_pago }} — {{ p.monto }}</li>
+  {% empty %}<li>Sin pagos registrados.</li>
+  {% endfor %}
+</ul>
+<a href="{% url 'factura_editar' doc.pk %}" class="btn btn-secondary">Editar</a>
+{% endblock %}

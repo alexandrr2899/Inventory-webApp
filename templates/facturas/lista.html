@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Documentos{% endblock %}
+{% block content %}
+<h1>Documentos</h1>
+<table class="table">
+  <thead><tr><th>#</th><th>Tipo</th><th>Cliente</th><th>Número</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead>
+  <tbody>
+    {% for doc in documentos %}
+    <tr>
+      <td>{{ doc.pk }}</td>
+      <td>{{ doc.tipo_documento }}</td>
+      <td>{{ doc.cliente }}</td>
+      <td>{{ doc.numero_documento }}</td>
+      <td>{{ doc.fecha_documento }}</td>
+      <td>{{ doc.monto_total }}</td>
+      <td>{{ doc.estado_pago }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="7">Sin documentos.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

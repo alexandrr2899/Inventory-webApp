@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
     Categoria, Item, Ubicacion, Stock, Maquina, Cliente,
-    MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle, BackupJob
+    MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle, BackupJob,
+    DocumentoFactura, TarifaCliente, PagoFactura,
 )
 
 admin.site.site_header = "Transformadora de Empaques"
@@ -109,3 +110,24 @@ class DetalleMovimientoAdmin(admin.ModelAdmin):
     search_fields = ['item__nombre', 'item__codigo']
 
 admin.site.register(DetalleMovimiento, DetalleMovimientoAdmin)
+
+
+@admin.register(DocumentoFactura)
+class DocumentoFacturaAdmin(admin.ModelAdmin):
+    list_display = ('id', 'tipo_documento', 'cliente', 'numero_documento',
+                    'fecha_documento', 'monto_total', 'estado_pago', 'estado_revision')
+    list_filter = ('tipo_documento', 'estado_pago', 'estado_revision', 'producto')
+    search_fields = ('numero_documento', 'cliente__nombre')
+
+
+@admin.register(TarifaCliente)
+class TarifaClienteAdmin(admin.ModelAdmin):
+    list_display = ('cliente', 'producto', 'precio_por_libra', 'activa', 'fecha_inicio')
+    list_filter = ('producto', 'activa')
+    search_fields = ('cliente__nombre',)
+
+
+@admin.register(PagoFactura)
+class PagoFacturaAdmin(admin.ModelAdmin):
+    list_display = ('documento', 'fecha_pago', 'metodo_pago', 'monto')
+    list_filter = ('metodo_pago',)
