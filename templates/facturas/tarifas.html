@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Tarifas — {{ cliente.nombre }}{% endblock %}
+{% block content %}
+<h1>Tarifas — {{ cliente.nombre }}</h1>
+<form method="post" class="card card-body mb-3">{% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn btn-primary" type="submit">Guardar tarifa</button>
+</form>
+<table class="table table-sm">
+  <thead><tr><th>Producto</th><th>Precio/lb</th><th>Activa</th><th>Desde</th><th></th></tr></thead>
+  <tbody>
+  {% for t in tarifas %}
+    <tr>
+      <td>{{ t.get_producto_display }}</td>
+      <td>L {{ t.precio_por_libra }}</td>
+      <td>{% if t.activa %}<span class="badge bg-success">Activa</span>{% else %}<span class="badge bg-secondary">Inactiva</span>{% endif %}</td>
+      <td>{{ t.fecha_inicio|date:"d/m/Y" }}</td>
+      <td>
+        <form method="post" action="{% url 'cliente_tarifa_toggle' t.pk %}">{% csrf_token %}
+          <button class="btn btn-sm btn-outline-secondary" type="submit">{% if t.activa %}Desactivar{% else %}Activar{% endif %}</button>
+        </form>
+      </td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="5" class="text-muted">Sin tarifas.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

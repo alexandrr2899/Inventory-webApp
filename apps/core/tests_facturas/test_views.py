@@ -96,3 +96,22 @@ class FacturasPagoTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.estado_pago, 'pagada')
+
+
+class FacturasTarifasTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(username='admin3', password='pass12345')
+        for p in Permission.objects.filter(codename__in=['ver_facturas', 'gestionar_tarifas']):
+            self.admin.user_permissions.add(p)
+        self.cliente = Cliente.objects.create(nombre='Cli')
+
+    @override_settings(FACTURAS_MODULE_ENABLED=True)
+    def test_crear_tarifa(self):
+        from apps.core.models import TarifaCliente
+        self.client.force_login(self.admin)
+        resp = self.client.post(reverse('cliente_tarifas', args=[self.cliente.pk]), {
+            'producto': 'camiseta', 'precio_por_libra': '32.00', 'activa': 'on',
+            'fecha_inicio': timezone.localdate().isoformat(),
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(TarifaCliente.objects.filter(cliente=self.cliente, producto='camiseta').exists())
