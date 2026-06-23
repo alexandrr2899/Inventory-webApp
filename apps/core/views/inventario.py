@@ -92,6 +92,14 @@ def inventario_lista(request):
     if q:
         qs = qs.filter(Q(nombre__icontains=q) | Q(codigo__icontains=q))
 
+    # ── Orden por columna (server-side). Default: orden manual (orden, nombre). ──
+    orden_col = request.GET.get('orden_col', '')
+    orden_dir = request.GET.get('orden_dir', 'asc')
+    campo = ORDEN_COLS.get(orden_col)
+    if campo:
+        prefijo = '-' if orden_dir == 'desc' else ''
+        qs = qs.order_by(f'{prefijo}{campo}')
+
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get('page'))
     page_items = list(page_obj.object_list)
@@ -136,7 +144,15 @@ def inventario_lista(request):
         for item in page_items
     ]
 
-    context = {'items_data': items_data, 'q': q, 'page_obj': page_obj}
+    context = {
+        'items_data': items_data,
+        'q': q,
+        'page_obj': page_obj,
+        'tabs_ordenadas': get_orden_tabs(),
+        'puede_ordenar_tabs': request.user.has_perm(_perm('ordenar_tabs_inventario')),
+        'orden_col': orden_col if campo else '',
+        'orden_dir': orden_dir if orden_dir in ('asc', 'desc') else 'asc',
+    }
     return render(request, 'inventario/lista.html', context)
 
 

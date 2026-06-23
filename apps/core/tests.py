@@ -750,3 +750,41 @@ class GuardarOrdenTabsTests(TestCase):
         resp = self._post(self.editor,
                           ['todos', 'producto', 'repuesto', 'consumible', 'XXX'])
         self.assertEqual(resp.status_code, 400)
+
+
+@override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
+class InventarioListaOrdenTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user('op2', password='x')
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
+        self.ub = Ubicacion.objects.create(nombre='Bodega', tipo='bodega')
+        for codigo, nombre, tipo in (
+            ('A', 'Alfa', 'producto'),
+            ('B', 'Beta', 'repuesto'),
+            ('C', 'Gamma', 'consumible'),
+        ):
+            Item.objects.create(codigo=codigo, nombre=nombre, tipo=tipo,
+                                unidad_medida='u', stock_minimo=Decimal('0'))
+
+    def test_contexto_incluye_tabs_y_permiso(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('inventario_lista'))
+        self.assertEqual(resp.status_code, 200)
+        claves = [t['clave'] for t in resp.context['tabs_ordenadas']]
+        self.assertEqual(len(claves), 5)
+        self.assertFalse(resp.context['puede_ordenar_tabs'])
+
+    def test_orden_por_tipo_desc(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('inventario_lista'),
+                               {'orden_col': 'tipo', 'orden_dir': 'desc'})
+        tipos = [d['item'].tipo for d in resp.context['items_data']]
+        self.assertEqual(tipos, sorted(tipos, reverse=True))
+
+    def test_orden_col_invalida_cae_a_default(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('inventario_lista'),
+                               {'orden_col': 'inexistente', 'orden_dir': 'asc'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['orden_col'], '')
