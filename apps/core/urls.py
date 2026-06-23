@@ -88,4 +88,6 @@ urlpatterns = [
     path('facturas/documentos/<int:pk>/editar/', views.factura_editar, name='factura_editar'),
     path('facturas/documentos/<int:pk>/revisar/', views.factura_revisar, name='factura_revisar'),
     path('facturas/documentos/<int:pk>/anular/', views.factura_anular, name='factura_anular'),
+    path('facturas/documentos/<int:pk>/pago/', views.factura_pago_nuevo, name='factura_pago_nuevo'),
+    path('facturas/pagos/<int:pk>/borrar/', views.factura_pago_borrar, name='factura_pago_borrar'),
 ]
