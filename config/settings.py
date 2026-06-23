@@ -92,6 +92,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'django.template.context_processors.tz',
+                'apps.core.context_processors.facturas_flags',
             ],
         },
     },
@@ -169,6 +170,11 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# ─── MÓDULO FACTURAS ──────────────────────────────────────────────────────────
+# Interruptor del módulo Facturas (Factura + Envío). Apagarlo lo oculta por
+# completo (menú, tab de cliente y rutas → 404). No afecta inventario ni stock.
+FACTURAS_MODULE_ENABLED = config('FACTURAS_MODULE_ENABLED', default=True, cast=bool)
 
 # ─── MISC ─────────────────────────────────────────────────────────────────────
 
