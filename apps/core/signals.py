@@ -1,7 +1,24 @@
 import logging
 
 from django.contrib.auth.signals import user_login_failed
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
+
+from .models import PagoFactura
+from .services.facturas import status_service
+
+
+@receiver(post_save, sender=PagoFactura)
+def _pago_guardado(sender, instance, **kwargs):
+    status_service.actualizar_estado_pago(instance.documento)
+
+
+@receiver(post_delete, sender=PagoFactura)
+def _pago_borrado(sender, instance, **kwargs):
+    # El documento puede haberse borrado en cascada; protegerse.
+    from .models import DocumentoFactura
+    if DocumentoFactura.objects.filter(pk=instance.documento_id).exists():
+        status_service.actualizar_estado_pago(instance.documento)
 
 security_log = logging.getLogger('security')
 
