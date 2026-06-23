@@ -822,3 +822,7 @@ class InventarioListaRenderTabsTests(TestCase):
         resp = self.client.get(reverse('inventario_lista'))
         html = resp.content.decode()
         self.assertLess(html.index('data-tab="bajo_stock"'), html.index('data-tab="producto"'))
+        # La PRIMERA tab del orden queda preseleccionada (active + estado JS).
+        self.assertIn("let tabActual = 'bajo_stock'", html)
+        primer_btn = html.index('data-tab="bajo_stock"')
+        self.assertIn('active', html[primer_btn - 80:primer_btn])

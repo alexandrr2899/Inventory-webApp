@@ -59,13 +59,13 @@
     {% for tab in tabs_ordenadas %}
     {% if tab.clave == 'todos' %}
     <li class="nav-item">
-      <button class="nav-link active tab-btn fw-semibold" data-tab="todos">
+      <button class="nav-link tab-btn fw-semibold{% if forloop.first %} active{% endif %}" data-tab="todos">
         Todos <span class="badge bg-white text-dark ms-1" id="cnt-todos">0</span>
       </button>
     </li>
     {% elif tab.clave == 'producto' %}
     <li class="nav-item">
-      <button class="nav-link tab-btn fw-semibold" data-tab="producto" style="--tab-color:#198754">
+      <button class="nav-link tab-btn fw-semibold{% if forloop.first %} active{% endif %}" data-tab="producto" style="--tab-color:#198754">
         <span class="d-inline-block rounded-circle me-1"
               style="width:8px;height:8px;background:#198754"></span>
         Productos <span class="badge bg-success ms-1" id="cnt-producto">0</span>
@@ -73,7 +73,7 @@
     </li>
     {% elif tab.clave == 'repuesto' %}
     <li class="nav-item">
-      <button class="nav-link tab-btn fw-semibold" data-tab="repuesto">
+      <button class="nav-link tab-btn fw-semibold{% if forloop.first %} active{% endif %}" data-tab="repuesto">
         <span class="d-inline-block rounded-circle me-1"
               style="width:8px;height:8px;background:#fd7e14"></span>
         Repuestos <span class="badge ms-1" style="background:#fd7e14" id="cnt-repuesto">0</span>
@@ -81,7 +81,7 @@
     </li>
     {% elif tab.clave == 'consumible' %}
     <li class="nav-item">
-      <button class="nav-link tab-btn fw-semibold" data-tab="consumible">
+      <button class="nav-link tab-btn fw-semibold{% if forloop.first %} active{% endif %}" data-tab="consumible">
         <span class="d-inline-block rounded-circle me-1"
               style="width:8px;height:8px;background:#0dcaf0"></span>
         Consumibles <span class="badge ms-1" style="background:#0dcaf0;color:#000" id="cnt-consumible">0</span>
@@ -89,7 +89,7 @@
     </li>
     {% elif tab.clave == 'bajo_stock' %}
     <li class="nav-item">
-      <button class="nav-link tab-btn fw-semibold text-danger" data-tab="bajo_stock">
+      <button class="nav-link tab-btn fw-semibold text-danger{% if forloop.first %} active{% endif %}" data-tab="bajo_stock">
         <i class="bi bi-exclamation-triangle-fill me-1"></i>
         Stock bajo <span class="badge bg-danger ms-1" id="cnt-bajo">0</span>
       </button>
@@ -415,7 +415,8 @@ document.querySelectorAll('.item-fila[data-item-id]').forEach(el => {
 });
 
 // ── Estado ────────────────────────────────────────────────────────────────
-let tabActual = 'todos';
+// La tab preseleccionada es la PRIMERA del orden configurado (no siempre 'todos').
+let tabActual = '{{ tabs_ordenadas.0.clave|default:"todos"|escapejs }}';
 let busquedaActual = '{{ q|lower|escapejs }}';
 
 // ── Filtrar ───────────────────────────────────────────────────────────────
