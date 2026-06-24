@@ -5,6 +5,7 @@ from django.db import transaction
 
 from apps.core.models import DocumentoFactura, TarifaCliente
 from . import pdf_service, status_service
+from .pdf_extractors import filename_extractor
 
 
 # Campos que un extractor puede aportar y que se copian directo al documento.
@@ -15,9 +16,34 @@ _CAMPOS_DIRECTOS = (
 
 
 def previsualizar(tipo_documento, archivo):
-    """Extrae texto y datos del PDF sin guardar nada."""
+    """Extrae texto y datos del PDF sin guardar nada.
+
+    Usa un enfoque híbrido: nombre del archivo para numero/tipo/producto/cliente_nombre;
+    texto del PDF para fecha, montos y libras.
+    """
     texto = pdf_service.extraer_texto(archivo)
-    datos = pdf_service.get_extractor(tipo_documento).extraer(texto)
+    datos_texto = pdf_service.get_extractor(tipo_documento).extraer(texto)
+
+    nombre = getattr(archivo, 'name', '') or ''
+    datos_nombre = filename_extractor.extraer_de_nombre(nombre)
+
+    datos = dict(datos_nombre)          # base: lo fiable del nombre (numero, producto, cliente_nombre)
+    for k, v in datos_texto.items():
+        if k == '_enteros':
+            continue
+        # el texto manda para fecha/subtotal/isv/monto_total; para numero NO sobreescribe el del nombre
+        if k == 'numero_documento' and datos.get('numero_documento'):
+            continue
+        datos[k] = v
+
+    # Envío: corregir total_libras si el mayor entero es en realidad el número del documento
+    if tipo_documento == 'envio':
+        enteros = datos_texto.get('_enteros') or []
+        numero = datos.get('numero_documento')
+        if enteros and numero and str(enteros[0]) == str(numero) and len(enteros) > 1:
+            datos['total_libras'] = Decimal(enteros[1])
+
+    datos.pop('_enteros', None)
     return {'texto_extraido': texto, 'datos': datos}
 
 

@@ -1,3 +1,5 @@
+import os
+import unittest
 from datetime import date
 from decimal import Decimal
 
@@ -6,27 +8,32 @@ from django.test import TestCase
 from apps.core.services.facturas.pdf_extractors.factura_extractor import FacturaExtractor
 from apps.core.services.facturas.pdf_extractors.envio_extractor import EnvioExtractor
 from apps.core.services.facturas.pdf_extractors import base_extractor
+from apps.core.services.facturas.pdf_extractors import filename_extractor
 
 
-TEXTO_FACTURA = """
-EMPRESA TEXTIL S. DE R.L.
-Factura No. F-2026-0042
-Fecha: 03/06/2026
-Cliente: Renato Díaz
-Subtotal: L 1,000.00
-ISV (15%): L 150.00
-Total: L 1,150.00
-"""
+# ---------------------------------------------------------------------------
+# Fixtures reales extraídos con PyMuPDF de los PDFs de muestra
+# ---------------------------------------------------------------------------
 
-TEXTO_ENVIO = """
-COMPROBANTE DE ENVÍO
-Envío No. E-2026-0117
-Fecha: 04/06/2026
-Cliente: Renato Díaz
-Producto: Camiseta
-Total Libras: 85.50
-"""
+REAL_FACTURA = (
+    " \n2\n20x30\n1\n34.78\n1391.30\n24x37\n1\n34.78\n1391.30\n"
+    "-----------\n-----------\n2,782.61\n--------\n417.39\n--------\n3,200.00\n"
+    "0801-9019-164281\nInversiones Zaga\nTotal Unitario\nLb Bolsa Lisa\n"
+    " TRES MIL DOSCIENTOS 00/100 \n23/06/2026\n80 \nLb Bolsa Lisa\n40\n40\n"
+)
 
+REAL_ENVIO = (
+    " \nDIA\nMES\nAÑO\nCLIENTE\nSEÑOR(ES): \nTEL:\nDIRECCION: \nCANTIDAD\nFardos\n"
+    "Grande\n7\nGrande Negra\n3\nMediana\n10\nTotal Lbs\n20\n126\n"
+    "Certificado de Entrega\n23/06/2026\nRENATO DIAZ\nPRODUCTO\nTAMAÑO\nCANTIDAD\nLBS\n"
+    "Camiseta\n350\nCamiseta\n150\nCamiseta\n500\nENTREGADO POR\nFIRMA ACEPTADO CLIENTE\n"
+    "1000\nMarvin Reyes\n"
+)
+
+
+# ---------------------------------------------------------------------------
+# HelpersTests — mantener (siguen válidos)
+# ---------------------------------------------------------------------------
 
 class HelpersTests(TestCase):
     def test_parse_decimal_con_separador_miles(self):
@@ -39,19 +46,104 @@ class HelpersTests(TestCase):
         self.assertEqual(base_extractor.parse_fecha('03/06/2026'), date(2026, 6, 3))
 
 
-class FacturaExtractorTests(TestCase):
-    def test_extrae_campos_clave(self):
-        datos = FacturaExtractor().extraer(TEXTO_FACTURA)
-        self.assertEqual(datos['numero_documento'], 'F-2026-0042')
-        self.assertEqual(datos['fecha_documento'], date(2026, 6, 3))
-        self.assertEqual(datos['subtotal'], Decimal('1000.00'))
-        self.assertEqual(datos['isv'], Decimal('150.00'))
-        self.assertEqual(datos['monto_total'], Decimal('1150.00'))
+# ---------------------------------------------------------------------------
+# FilenameExtractorTests
+# ---------------------------------------------------------------------------
+
+class FilenameExtractorTests(TestCase):
+    def test_factura(self):
+        d = filename_extractor.extraer_de_nombre('Fact 9543 Inversiones Zaga.pdf')
+        self.assertEqual(d['tipo_documento'], 'factura')
+        self.assertEqual(d['numero_documento'], '9543')
+        self.assertEqual(d['cliente_nombre'], 'Inversiones Zaga')
+
+    def test_envio(self):
+        d = filename_extractor.extraer_de_nombre('RENATO DIAZ Envio camiseta 126.pdf')
+        self.assertEqual(d['tipo_documento'], 'envio')
+        self.assertEqual(d['numero_documento'], '126')
+        self.assertEqual(d['producto'], 'camiseta')
+        self.assertEqual(d['cliente_nombre'], 'RENATO DIAZ')
 
 
-class EnvioExtractorTests(TestCase):
-    def test_extrae_total_libras_y_numero(self):
-        datos = EnvioExtractor().extraer(TEXTO_ENVIO)
-        self.assertEqual(datos['numero_documento'], 'E-2026-0117')
-        self.assertEqual(datos['fecha_documento'], date(2026, 6, 4))
-        self.assertEqual(datos['total_libras'], Decimal('85.50'))
+# ---------------------------------------------------------------------------
+# FacturaRealTests — texto posicional real
+# ---------------------------------------------------------------------------
+
+class FacturaRealTests(TestCase):
+    def test_montos(self):
+        d = FacturaExtractor().extraer(REAL_FACTURA)
+        self.assertEqual(d['fecha_documento'], date(2026, 6, 23))
+        self.assertEqual(d['monto_total'], Decimal('3200.00'))
+        self.assertEqual(d['subtotal'], Decimal('2782.61'))
+        self.assertEqual(d['isv'], Decimal('417.39'))
+
+
+# ---------------------------------------------------------------------------
+# EnvioRealTests — texto posicional real
+# ---------------------------------------------------------------------------
+
+class EnvioRealTests(TestCase):
+    def test_libras_y_fecha(self):
+        d = EnvioExtractor().extraer(REAL_ENVIO)
+        self.assertEqual(d['fecha_documento'], date(2026, 6, 23))
+        self.assertEqual(d['total_libras'], Decimal('1000'))
+
+
+# ---------------------------------------------------------------------------
+# Integración opcional (skip si los PDFs de muestra no están presentes)
+# ---------------------------------------------------------------------------
+
+_BASE = os.path.join(
+    os.path.dirname(__file__),
+    '..', '..', '..', 'docs', 'facturas', 'samples',
+)
+_PDF_FACTURA = os.path.normpath(os.path.join(_BASE, 'Fact 9543 Inversiones Zaga.pdf'))
+_PDF_ENVIO = os.path.normpath(os.path.join(_BASE, 'RENATO DIAZ Envio camiseta 126.pdf'))
+
+
+class IntegracionFacturaTests(TestCase):
+    @unittest.skipUnless(os.path.exists(_PDF_FACTURA), 'sample PDF ausente')
+    def test_previsualizar_factura(self):
+        from apps.core.services.facturas import invoice_service
+
+        class FakeFile:
+            name = _PDF_FACTURA
+
+            def read(self):
+                with open(_PDF_FACTURA, 'rb') as f:
+                    return f.read()
+
+            def tell(self):
+                return 0
+
+            def seek(self, pos):
+                pass
+
+        result = invoice_service.previsualizar('factura', FakeFile())
+        datos = result['datos']
+        self.assertEqual(datos.get('numero_documento'), '9543')
+        self.assertEqual(datos.get('monto_total'), Decimal('3200.00'))
+        self.assertEqual(datos.get('subtotal'), Decimal('2782.61'))
+        self.assertEqual(datos.get('isv'), Decimal('417.39'))
+
+    @unittest.skipUnless(os.path.exists(_PDF_ENVIO), 'sample PDF ausente')
+    def test_previsualizar_envio(self):
+        from apps.core.services.facturas import invoice_service
+
+        class FakeFile:
+            name = _PDF_ENVIO
+
+            def read(self):
+                with open(_PDF_ENVIO, 'rb') as f:
+                    return f.read()
+
+            def tell(self):
+                return 0
+
+            def seek(self, pos):
+                pass
+
+        result = invoice_service.previsualizar('envio', FakeFile())
+        datos = result['datos']
+        self.assertEqual(datos.get('numero_documento'), '126')
+        self.assertEqual(datos.get('total_libras'), Decimal('1000'))

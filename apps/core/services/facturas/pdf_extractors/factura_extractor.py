@@ -1,33 +1,43 @@
-"""factura_extractor — extrae datos de una Factura desde texto plano."""
+"""factura_extractor — datos de una Factura desde texto posicional."""
+import re
+from decimal import Decimal
 from .base_extractor import BaseExtractor, parse_decimal, parse_fecha
+
+
+_MONTO_RE = re.compile(r'\d{1,3}(?:,\d{3})*\.\d{2}')
+_FECHA_RE = re.compile(r'\d{2}/\d{2}/\d{4}')
 
 
 class FacturaExtractor(BaseExtractor):
     def extraer(self, texto):
         datos = {}
 
-        numero = self._buscar(r'Factura\s*(?:No\.?|N[º°]\.?|#)?\s*[:]?\s*([A-Z0-9\-]+)', texto)
-        if numero:
-            datos['numero_documento'] = numero
+        mf = _FECHA_RE.search(texto or '')
+        if mf:
+            f = parse_fecha(mf.group(0))
+            if f:
+                datos['fecha_documento'] = f
 
-        fecha = parse_fecha(self._buscar(r'Fecha\s*[:]?\s*([0-9]{1,2}[/\-][0-9]{1,2}[/\-][0-9]{2,4})', texto))
-        if fecha:
-            datos['fecha_documento'] = fecha
+        montos = []
+        for s in _MONTO_RE.findall(texto or ''):
+            d = parse_decimal(s)
+            if d is not None and d not in montos:
+                montos.append(d)
 
-        cliente = self._buscar(r'Cliente\s*[:]?\s*(.+)', texto)
-        if cliente:
-            datos['cliente'] = cliente
-
-        subtotal = parse_decimal(self._buscar(r'Subtotal\s*[:]?\s*([L$\s\d.,]+)', texto))
-        if subtotal is not None:
-            datos['subtotal'] = subtotal
-
-        isv = parse_decimal(self._buscar(r'ISV[^:\n]*[:]?\s*([L$\s\d.,]+)', texto))
-        if isv is not None:
-            datos['isv'] = isv
-
-        total = parse_decimal(self._buscar(r'(?<!Sub)Total\s*[:]?\s*([L$\s\d.,]+)', texto))
-        if total is not None:
+        if montos:
+            total = max(montos)
             datos['monto_total'] = total
+            resto = [m for m in montos if m != total]
+            par = None
+            for i in range(len(resto)):
+                for j in range(i, len(resto)):
+                    if resto[i] + resto[j] == total:
+                        par = (resto[i], resto[j])
+                        break
+                if par:
+                    break
+            if par:
+                datos['subtotal'] = max(par)
+                datos['isv'] = min(par)
 
         return datos

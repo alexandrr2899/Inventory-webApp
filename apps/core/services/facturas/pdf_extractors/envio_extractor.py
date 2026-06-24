@@ -1,29 +1,27 @@
-"""envio_extractor — extrae datos de un Envío desde texto plano."""
-from .base_extractor import BaseExtractor, parse_decimal, parse_fecha
+"""envio_extractor — datos de un Envío desde texto posicional."""
+import re
+from decimal import Decimal
+from .base_extractor import BaseExtractor, parse_fecha
+
+
+_FECHA_RE = re.compile(r'\d{2}/\d{2}/\d{4}')
+_ENTERO_RE = re.compile(r'(?<![\d/.,])\d+(?![\d/.,])')
 
 
 class EnvioExtractor(BaseExtractor):
     def extraer(self, texto):
         datos = {}
+        texto = texto or ''
 
-        numero = self._buscar(r'Env[íi]o\s+(?:No\.?|N[º°]\.?|#)\s*[:]?\s*([A-Z0-9][A-Z0-9\-]+)', texto)
-        if numero:
-            datos['numero_documento'] = numero
+        mf = _FECHA_RE.search(texto)
+        if mf:
+            f = parse_fecha(mf.group(0))
+            if f:
+                datos['fecha_documento'] = f
 
-        fecha = parse_fecha(self._buscar(r'Fecha\s*[:]?\s*([0-9]{1,2}[/\-][0-9]{1,2}[/\-][0-9]{2,4})', texto))
-        if fecha:
-            datos['fecha_documento'] = fecha
-
-        cliente = self._buscar(r'Cliente\s*[:]?\s*(.+)', texto)
-        if cliente:
-            datos['cliente'] = cliente
-
-        producto = self._buscar(r'Producto\s*[:]?\s*(Camiseta|Lisa|Otro)', texto)
-        if producto:
-            datos['producto'] = producto.lower()
-
-        libras = parse_decimal(self._buscar(r'(?:Total\s*)?Libras\s*[:]?\s*([\d.,]+)', texto))
-        if libras is not None:
-            datos['total_libras'] = libras
+        enteros = sorted({int(x) for x in _ENTERO_RE.findall(texto)}, reverse=True)
+        if enteros:
+            datos['_enteros'] = enteros          # auxiliar para invoice_service
+            datos['total_libras'] = Decimal(enteros[0])
 
         return datos
