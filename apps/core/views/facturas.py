@@ -83,7 +83,6 @@ def factura_detalle(request, pk):
 @permission_required(_perm('gestionar_facturas'), raise_exception=True)
 @facturas_enabled
 def factura_upload(request):
-    datos_previos = None
     texto_extraido = ''
     if request.method == 'POST':
         form = DocumentoUploadForm(request.POST, request.FILES)

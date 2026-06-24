@@ -549,9 +549,8 @@ class DocumentoFactura(models.Model):
 
     @property
     def monto_pagado(self):
-        from decimal import Decimal as _D
         total = self.pagos.aggregate(s=models.Sum('monto'))['s']
-        return total if total is not None else _D('0.00')
+        return total if total is not None else Decimal('0.00')
 
     @property
     def saldo_pendiente(self):
