@@ -30,6 +30,29 @@ REAL_ENVIO = (
     "1000\nMarvin Reyes\n"
 )
 
+# Factura con 14 ítems (Fact 9541 ASOVEMEZB-- Milton): valida que la heurística
+# del par-suma identifique subtotal+ISV=total pese a muchos precios repetidos.
+REAL_FACTURA_9541 = (
+    " \n64\n4x8\n5\n32.61\n6521.74\n5x11\n5\n32.61\n6521.74\n5x8\n3\n32.61\n3913.04\n"
+    "6x10\n3\n32.61\n3913.04\n6x12\n5\n32.61\n6521.74\n7x14\n5\n32.61\n6521.74\n"
+    "8x14\n2\n32.61\n2608.70\n9x16\n8\n32.61\n10434.78\n9x14\n2\n32.61\n2608.70\n"
+    "10x16\n4\n32.61\n5217.39\n10x14\n5\n32.61\n6521.74\n11x18\n5\n32.61\n6521.74\n"
+    "12x18\n5\n32.61\n6521.74\n15x25\n7\n32.61\n9130.43\n"
+    "-----------\n-----------\n83,478.26\n--------\n12,521.74\n--------\n96,000.00\n"
+    "200\n280\n0801-9008-164218\nASOVEMEZB-- Milton\nTotal Unitario\n"
+    " NOVENTA Y SEIS MIL 00/100 \n19/06/2026\n2,080 \n"
+)
+
+# Envío con 7 ítems (Walter Aguilera Envio Camiseta 98): total libras (5000) debe
+# elegirse sobre las líneas individuales y sobre los fardos (100).
+REAL_ENVIO_98 = (
+    "DIA\nMES\nAÑO\nCLIENTE\nSEÑOR(ES): \nTEL:\nDIRECCION: \n"
+    "Mediana\n10\n500\nPequeña\n10\n500\nMediana\n60\n3000\nGrande\n5\n250\n"
+    "Pequeña Negra\n5\n250\nMediana Negra\n5\n250\nGrande Negra\n5\n250\n"
+    "Total Lbs\n100\n5000\n98\nCertificado de Entrega\n18/06/2026\nWalter Aguilera\n"
+    "PRODUCTO\nTAMAÑO\nFardos\nLBS\nBolsa Camiseta\nMarvin Reyes\n"
+)
+
 
 # ---------------------------------------------------------------------------
 # HelpersTests — mantener (siguen válidos)
@@ -64,6 +87,20 @@ class FilenameExtractorTests(TestCase):
         self.assertEqual(d['producto'], 'camiseta')
         self.assertEqual(d['cliente_nombre'], 'RENATO DIAZ')
 
+    def test_factura_nombre_compuesto(self):
+        # Cliente con doble guion y nombre compuesto.
+        d = filename_extractor.extraer_de_nombre('Fact 9541 ASOVEMEZB-- Milton.pdf')
+        self.assertEqual(d['tipo_documento'], 'factura')
+        self.assertEqual(d['numero_documento'], '9541')
+        self.assertEqual(d['cliente_nombre'], 'ASOVEMEZB-- Milton')
+
+    def test_envio_producto_capitalizado(self):
+        d = filename_extractor.extraer_de_nombre('Walter Aguilera Envio Camiseta 98.pdf')
+        self.assertEqual(d['tipo_documento'], 'envio')
+        self.assertEqual(d['numero_documento'], '98')
+        self.assertEqual(d['producto'], 'camiseta')
+        self.assertEqual(d['cliente_nombre'], 'Walter Aguilera')
+
 
 # ---------------------------------------------------------------------------
 # FacturaRealTests — texto posicional real
@@ -76,6 +113,14 @@ class FacturaRealTests(TestCase):
         self.assertEqual(d['monto_total'], Decimal('3200.00'))
         self.assertEqual(d['subtotal'], Decimal('2782.61'))
         self.assertEqual(d['isv'], Decimal('417.39'))
+
+    def test_montos_factura_14_items(self):
+        # Par-suma correcto pese a 14 líneas con precios repetidos.
+        d = FacturaExtractor().extraer(REAL_FACTURA_9541)
+        self.assertEqual(d['fecha_documento'], date(2026, 6, 19))
+        self.assertEqual(d['monto_total'], Decimal('96000.00'))
+        self.assertEqual(d['subtotal'], Decimal('83478.26'))
+        self.assertEqual(d['isv'], Decimal('12521.74'))
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +137,12 @@ class EnvioRealTests(TestCase):
         texto = REAL_ENVIO + "\nRTN 0801-9019-164281\n"
         d = EnvioExtractor().extraer(texto)
         self.assertEqual(d['total_libras'], Decimal('1000'))
+
+    def test_libras_envio_7_items(self):
+        # 5000 (total) debe elegirse sobre líneas individuales y fardos (100).
+        d = EnvioExtractor().extraer(REAL_ENVIO_98)
+        self.assertEqual(d['fecha_documento'], date(2026, 6, 18))
+        self.assertEqual(d['total_libras'], Decimal('5000'))
 
 
 # ---------------------------------------------------------------------------
