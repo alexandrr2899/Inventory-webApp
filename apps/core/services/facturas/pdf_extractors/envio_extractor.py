@@ -5,7 +5,7 @@ from .base_extractor import BaseExtractor, parse_fecha
 
 
 _FECHA_RE = re.compile(r'\d{2}/\d{2}/\d{4}')
-_ENTERO_RE = re.compile(r'(?<![\d/.,])\d+(?![\d/.,])')
+_ENTERO_RE = re.compile(r'(?<![\d/.,\-])\d+(?![\d/.,\-])')
 
 
 class EnvioExtractor(BaseExtractor):

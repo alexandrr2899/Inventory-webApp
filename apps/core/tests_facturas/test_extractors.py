@@ -88,6 +88,11 @@ class EnvioRealTests(TestCase):
         self.assertEqual(d['fecha_documento'], date(2026, 6, 23))
         self.assertEqual(d['total_libras'], Decimal('1000'))
 
+    def test_rtn_no_corrompe_libras(self):
+        texto = REAL_ENVIO + "\nRTN 0801-9019-164281\n"
+        d = EnvioExtractor().extraer(texto)
+        self.assertEqual(d['total_libras'], Decimal('1000'))
+
 
 # ---------------------------------------------------------------------------
 # Integración opcional (skip si los PDFs de muestra no están presentes)
