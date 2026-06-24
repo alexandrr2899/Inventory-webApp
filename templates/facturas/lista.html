@@ -72,6 +72,9 @@
           <th class="px-3">Tipo</th>
           <th>Cliente</th>
           <th>Número</th>
+          <th>Producto</th>
+          <th class="text-end">Libras</th>
+          <th class="text-end">Precio/lb</th>
           <th>Fecha</th>
           <th>Vencimiento</th>
           <th class="text-end">Subtotal</th>
@@ -91,6 +94,9 @@
           </td>
           <td class="fw-semibold">{{ doc.cliente.nombre }}</td>
           <td class="text-muted small">{{ doc.numero_documento|default:"–" }}</td>
+          <td>{{ doc.get_producto_display|default:"—" }}</td>
+          <td class="text-end">{{ doc.total_libras|default:"—" }}</td>
+          <td class="text-end">{{ doc.precio_por_libra|default:"—" }}</td>
           <td class="text-nowrap">{{ doc.fecha_documento|date:"d/m/Y"|default:"–" }}</td>
           <td class="text-nowrap">{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"–" }}</td>
           <td class="text-end">{{ doc.subtotal|floatformat:2 }}</td>
@@ -118,7 +124,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="12" class="text-center text-muted py-4">Sin documentos.</td></tr>
+        <tr><td colspan="15" class="text-center text-muted py-4">Sin documentos.</td></tr>
         {% endfor %}
       </tbody>
     </table>
