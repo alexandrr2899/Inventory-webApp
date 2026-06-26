@@ -1,62 +1,124 @@
 {% extends "base.html" %}
-{% block title %}Documentos de Facturas{% endblock %}
+{% load facturas_extras %}
+{% block title %}Facturas{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center" style="background:linear-gradient(135deg,#0d6efd,#198754);">
   <div>
-    <h1><i class="bi bi-receipt me-2"></i>Documentos</h1>
-    <small class="opacity-75">Listado de facturas y envíos</small>
+    <h1><i class="bi bi-receipt me-2"></i>Facturas</h1>
+    <small class="opacity-75">Facturas y envíos · {{ resumen.total_documentos }} documento{{ resumen.total_documentos|pluralize }}</small>
   </div>
   {% if perms.core.gestionar_facturas %}
-  <a href="{% url 'factura_upload' %}" class="btn btn-light btn-sm fw-semibold">
-    <i class="bi bi-plus-circle-fill me-1"></i>Subir PDF
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{% url 'factura_lote' %}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-files me-1"></i>Subir en bloque
+    </a>
+    <a href="{% url 'factura_upload' %}" class="btn btn-outline-light btn-sm fw-semibold">
+      <i class="bi bi-cloud-upload me-1"></i>Uno
+    </a>
+  </div>
   {% endif %}
 </div>
 
-<div class="card mb-4 filters-card">
+{# ── Pestañas de estado ─────────────────────────────────────────────────────── #}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <ul class="nav nav-pills flex-nowrap overflow-auto gap-1 mb-0">
+    <li class="nav-item"><a class="nav-link estado-tab {% if not filtros.estado and not filtros.revision %}active{% endif %}" data-estado="" role="button">Todas</a></li>
+    <li class="nav-item"><a class="nav-link estado-tab {% if filtros.estado == 'pendiente' %}active{% endif %}" data-estado="pendiente" role="button">Pendientes</a></li>
+    <li class="nav-item"><a class="nav-link estado-tab {% if filtros.estado == 'vencida' %}active bg-danger{% endif %}" data-estado="vencida" role="button"><i class="bi bi-exclamation-triangle me-1"></i>Vencidas</a></li>
+    <li class="nav-item"><a class="nav-link estado-tab {% if filtros.estado == 'pagada' %}active bg-success{% endif %}" data-estado="pagada" role="button">Pagadas</a></li>
+    <li class="nav-item"><a class="nav-link estado-tab {% if filtros.estado == 'anulada' %}active bg-dark{% endif %}" data-estado="anulada" role="button">Anuladas</a></li>
+  </ul>
+  <a class="btn btn-sm {% if filtros.revision == 'pendiente' %}btn-warning{% else %}btn-outline-warning{% endif %}" id="btn-por-revisar" role="button">
+    <i class="bi bi-clipboard-check me-1"></i>Por revisar{% if por_revisar %} <span class="badge bg-dark ms-1">{{ por_revisar }}</span>{% endif %}
+  </a>
+</div>
+
+{# ── Resumen (refleja los filtros aplicados) ───────────────────────────────── #}
+<div class="row g-2 g-md-3 mb-3">
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Facturado</div>
+      <div class="fs-5 fw-bold">L {{ resumen.total_facturado|moneda }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Cobrado</div>
+      <div class="fs-5 fw-bold text-success">L {{ resumen.total_cobrado|moneda }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Pendiente</div>
+      <div class="fs-5 fw-bold {% if resumen.total_pendiente > 0 %}text-warning{% endif %}">L {{ resumen.total_pendiente|moneda }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Vencido</div>
+      <div class="fs-5 fw-bold {% if resumen.total_vencido > 0 %}text-danger{% endif %}">L {{ resumen.total_vencido|moneda }}</div>
+    </div></div>
+  </div>
+</div>
+
+{# ── Filtros ────────────────────────────────────────────────────────────────── #}
+<div class="card mb-3 filters-card">
   <div class="card-body py-2 px-3">
-    <form method="get" class="row g-2 align-items-end">
+    {# Buscador rápido #}
+    <form method="get" class="mb-2">
+      <input type="hidden" name="estado" value="{{ filtros.estado }}">
+      <input type="hidden" name="revision" value="{{ filtros.revision }}">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="q" class="form-control" placeholder="Buscar por número o cliente…" value="{{ filtros.q }}">
+        {% if filtros.q %}<a href="{% url 'facturas_lista' %}" class="btn btn-outline-secondary">Limpiar</a>{% endif %}
+        <button class="btn btn-primary" type="submit">Buscar</button>
+      </div>
+    </form>
+    {# Presets rápidos de fecha #}
+    <div class="d-flex flex-wrap gap-1 mb-2">
+      <span class="text-muted small me-1 align-self-center">Periodo:</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary preset-fecha" data-rango="hoy">Hoy</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary preset-fecha" data-rango="semana">Esta semana</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary preset-fecha" data-rango="mes">Este mes</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary preset-fecha" data-rango="anio">Este año</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary preset-fecha" data-rango="todo">Todo</button>
+    </div>
+    <form method="get" id="filtros-form" class="row g-2 align-items-end">
       <div class="col-6 col-md-2">
         <label class="form-label">Tipo</label>
         <select name="tipo" class="form-select">
           <option value="">Todos</option>
-          <option value="factura" {% if request.GET.tipo == 'factura' %}selected{% endif %}>Factura</option>
-          <option value="envio" {% if request.GET.tipo == 'envio' %}selected{% endif %}>Envío</option>
+          <option value="factura" {% if filtros.tipo == 'factura' %}selected{% endif %}>Factura</option>
+          <option value="envio" {% if filtros.tipo == 'envio' %}selected{% endif %}>Envío</option>
         </select>
       </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label">Estado</label>
-        <select name="estado" class="form-select">
-          <option value="">Todos</option>
-          <option value="pendiente" {% if request.GET.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
-          <option value="pagada" {% if request.GET.estado == 'pagada' %}selected{% endif %}>Pagada</option>
-          <option value="vencida" {% if request.GET.estado == 'vencida' %}selected{% endif %}>Vencida</option>
-          <option value="anulada" {% if request.GET.estado == 'anulada' %}selected{% endif %}>Anulada</option>
-        </select>
-      </div>
-      <div class="col-12 col-md-2">
+      <input type="hidden" name="estado" id="f-estado" value="{{ filtros.estado }}">
+      <input type="hidden" name="revision" id="f-revision" value="{{ filtros.revision }}">
+      <input type="hidden" name="q" id="f-q" value="{{ filtros.q }}">
+      <div class="col-12 col-md-4">
         <label class="form-label">Cliente</label>
         <select name="cliente" class="form-select">
           <option value="">Todos los clientes</option>
           {% for c in clientes %}
-          <option value="{{ c.pk }}" {% if request.GET.cliente == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.nombre }}</option>
+          <option value="{{ c.pk }}" {% if filtros.cliente == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.nombre }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="col-6 col-md-2">
         <label class="form-label">Desde</label>
-        <input type="date" name="fecha_inicio" class="form-control" value="{{ request.GET.fecha_inicio }}">
+        <input type="date" name="desde" id="f-desde" class="form-control" value="{{ filtros.desde }}">
       </div>
       <div class="col-6 col-md-2">
         <label class="form-label">Hasta</label>
-        <input type="date" name="fecha_fin" class="form-control" value="{{ request.GET.fecha_fin }}">
+        <input type="date" name="hasta" id="f-hasta" class="form-control" value="{{ filtros.hasta }}">
       </div>
       <div class="col-12 col-md-2 d-flex gap-2">
         <button type="submit" class="btn btn-primary flex-fill">
           <i class="bi bi-search me-1"></i>Buscar
         </button>
-        <a href="{% url 'facturas_lista' %}" class="btn btn-outline-secondary">
+        <a href="{% url 'facturas_lista' %}" class="btn btn-outline-secondary" title="Limpiar filtros">
           <i class="bi bi-x-lg"></i>
         </a>
       </div>
@@ -64,7 +126,7 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card border-0 shadow-sm">
   <div class="table-responsive">
     <table class="table table-sm table-hover mb-0 align-middle">
       <thead class="table-light">
@@ -88,46 +150,120 @@
       </thead>
       <tbody>
         {% for doc in documentos %}
-        <tr>
+        <tr class="fac-row" style="cursor:pointer{% if doc.producto == 'camiseta' %};border-left:4px solid #fd7e14{% endif %}" data-href="{% url 'factura_detalle' doc.pk %}">
           <td class="px-3">
-            <span class="badge bg-secondary">{{ doc.get_tipo_documento_display }}</span>
+            {% if doc.tipo_documento == 'envio' %}
+            <span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-truck me-1"></i>Envío</span>
+            {% else %}
+            <span class="badge bg-primary-subtle text-primary-emphasis"><i class="bi bi-receipt me-1"></i>Factura</span>
+            {% endif %}
           </td>
           <td class="fw-semibold">{{ doc.cliente.nombre }}</td>
           <td class="text-muted small">{{ doc.numero_documento|default:"–" }}</td>
-          <td>{{ doc.get_producto_display|default:"—" }}</td>
+          <td>{% include "facturas/_producto.html" with doc=doc %}</td>
           <td class="text-end">{{ doc.total_libras|default:"—" }}</td>
           <td class="text-end">{{ doc.precio_por_libra|default:"—" }}</td>
           <td class="text-nowrap">{{ doc.fecha_documento|date:"d/m/Y"|default:"–" }}</td>
           <td class="text-nowrap">{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"–" }}</td>
-          <td class="text-end">{{ doc.subtotal|floatformat:2 }}</td>
-          <td class="text-end">{{ doc.isv|floatformat:2 }}</td>
-          <td class="text-end fw-bold">{{ doc.monto_total|floatformat:2 }}</td>
-          <td class="text-end text-success">{{ doc.monto_pagado|floatformat:2 }}</td>
-          <td class="text-end {% if doc.saldo_pendiente > 0 %}text-danger fw-bold{% endif %}">{{ doc.saldo_pendiente|floatformat:2 }}</td>
+          <td class="text-end">{{ doc.subtotal|moneda }}</td>
+          <td class="text-end">{{ doc.isv|moneda }}</td>
+          <td class="text-end fw-bold">{{ doc.monto_total|moneda }}</td>
+          <td class="text-end text-success">{{ doc.monto_pagado|moneda }}</td>
+          <td class="text-end {% if doc.saldo_pendiente > 0 %}text-danger fw-bold{% endif %}">{{ doc.saldo_pendiente|moneda }}</td>
           <td>{% include "facturas/_badges.html" with doc=doc %}</td>
-          <td class="text-center px-3">
+          <td class="text-center px-3" data-norow="1">
             <div class="d-flex gap-1 justify-content-center flex-wrap">
               <a href="{% url 'factura_detalle' doc.pk %}" class="btn btn-sm btn-outline-primary" title="Ver detalle">
                 <i class="bi bi-eye"></i>
               </a>
               {% if doc.archivo_pdf %}
-              <a href="{{ doc.archivo_pdf.url }}" class="btn btn-sm btn-outline-secondary" target="_blank" title="PDF">
+              <a href="{% url 'factura_pdf' doc.pk %}" class="btn btn-sm btn-outline-secondary" target="_blank" title="PDF">
                 <i class="bi bi-file-earmark-pdf-fill text-danger"></i>
               </a>
               {% endif %}
               {% if perms.core.registrar_pago_factura and doc.estado_pago != 'anulada' and doc.estado_pago != 'pagada' %}
-              <a href="{% url 'factura_pago_nuevo' doc.pk %}" class="btn btn-sm btn-outline-success" title="Registrar pago">
+              <button type="button" class="btn btn-sm btn-outline-success btn-pago" title="Registrar pago"
+                      data-url="{% url 'factura_pago_nuevo' doc.pk %}"
+                      data-saldo="{{ doc.saldo_pendiente|stringformat:'.2f' }}"
+                      data-info="{{ doc.get_tipo_documento_display }} {{ doc.numero_documento }} · {{ doc.cliente.nombre }}">
                 <i class="bi bi-cash-coin"></i>
-              </a>
+              </button>
               {% endif %}
             </div>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="15" class="text-center text-muted py-4">Sin documentos.</td></tr>
+        <tr><td colspan="15" class="text-center text-muted py-4">
+          <i class="bi bi-inbox fs-3 d-block mb-2"></i>Sin documentos para los filtros seleccionados.
+        </td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% include "facturas/_modal_pago.html" %}
+<script>
+// Helper compartido: calcula {desde, hasta} (YYYY-MM-DD, hora local) para un preset.
+window.facturasRangoFechas = function (rango) {
+  function iso(d) {
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+  }
+  var hoy = new Date();
+  if (rango === 'todo') return { desde: '', hasta: '' };
+  if (rango === 'hoy') return { desde: iso(hoy), hasta: iso(hoy) };
+  if (rango === 'semana') {
+    var d = new Date(hoy);
+    var dow = (d.getDay() + 6) % 7; // lunes = 0
+    d.setDate(d.getDate() - dow);
+    return { desde: iso(d), hasta: iso(hoy) };
+  }
+  if (rango === 'mes') {
+    return { desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso(hoy) };
+  }
+  if (rango === 'anio') {
+    return { desde: iso(new Date(hoy.getFullYear(), 0, 1)), hasta: iso(hoy) };
+  }
+  return { desde: '', hasta: '' };
+};
+(function () {
+  // Presets de periodo: rellenan Desde/Hasta y envían el formulario.
+  var form = document.getElementById('filtros-form');
+  // Pestañas de estado: setean el estado oculto, limpian "revisión" y envían.
+  document.querySelectorAll('.estado-tab').forEach(function (a) {
+    a.addEventListener('click', function () {
+      document.getElementById('f-estado').value = a.getAttribute('data-estado');
+      document.getElementById('f-revision').value = '';
+      form.submit();
+    });
+  });
+  // "Por revisar": alterna el filtro de revisión pendiente (y limpia estado).
+  var btnRev = document.getElementById('btn-por-revisar');
+  if (btnRev) btnRev.addEventListener('click', function () {
+    var actual = document.getElementById('f-revision').value;
+    document.getElementById('f-revision').value = actual === 'pendiente' ? '' : 'pendiente';
+    document.getElementById('f-estado').value = '';
+    form.submit();
+  });
+  document.querySelectorAll('.preset-fecha').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var r = window.facturasRangoFechas(b.getAttribute('data-rango'));
+      document.getElementById('f-desde').value = r.desde;
+      document.getElementById('f-hasta').value = r.hasta;
+      form.submit();
+    });
+  });
+  // Click en la fila abre el detalle (excepto en la celda de acciones).
+  document.querySelectorAll('.fac-row').forEach(function (tr) {
+    tr.addEventListener('click', function (e) {
+      if (e.target.closest('[data-norow]')) return;
+      window.location = tr.getAttribute('data-href');
+    });
+  });
+})();
+</script>
 {% endblock %}

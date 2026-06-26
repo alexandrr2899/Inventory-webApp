@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load facturas_extras %}
 {% block title %}{{ doc.get_tipo_documento_display }} {{ doc.numero_documento|default:doc.pk }}{% endblock %}
 
 {% block content %}
@@ -15,9 +16,12 @@
 {# Action buttons #}
 <div class="d-flex flex-wrap gap-2 mb-4">
   {% if perms.core.registrar_pago_factura and doc.estado_pago != 'anulada' and doc.estado_pago != 'pagada' %}
-  <a href="{% url 'factura_pago_nuevo' doc.pk %}" class="btn btn-success">
+  <button type="button" class="btn btn-success btn-pago"
+          data-url="{% url 'factura_pago_nuevo' doc.pk %}"
+          data-saldo="{{ doc.saldo_pendiente|stringformat:'.2f' }}"
+          data-info="{{ doc.get_tipo_documento_display }} {{ doc.numero_documento }} · {{ doc.cliente.nombre }}">
     <i class="bi bi-cash-coin me-1"></i>Registrar pago
-  </a>
+  </button>
   {% endif %}
   {% if perms.core.gestionar_facturas and doc.estado_pago != 'anulada' %}
   <a href="{% url 'factura_editar' doc.pk %}" class="btn btn-outline-primary">
@@ -40,8 +44,8 @@
   </form>
   {% endif %}
   {% if doc.archivo_pdf %}
-  <a href="{{ doc.archivo_pdf.url }}" class="btn btn-outline-secondary" target="_blank">
-    <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>Descargar PDF
+  <a href="{% url 'factura_pdf' doc.pk %}" class="btn btn-outline-secondary" target="_blank">
+    <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>Abrir PDF
   </a>
   {% endif %}
 </div>
@@ -80,19 +84,19 @@
           <dd class="col-7">{{ doc.precio_por_libra|floatformat:2|default:"–" }}</dd>
 
           <dt class="col-5">Subtotal</dt>
-          <dd class="col-7">{{ doc.subtotal|floatformat:2 }}</dd>
+          <dd class="col-7">{{ doc.subtotal|moneda }}</dd>
 
           <dt class="col-5">ISV</dt>
-          <dd class="col-7">{{ doc.isv|floatformat:2 }}</dd>
+          <dd class="col-7">{{ doc.isv|moneda }}</dd>
 
           <dt class="col-5">Total</dt>
-          <dd class="col-7 fw-bold fs-5">L {{ doc.monto_total|floatformat:2 }}</dd>
+          <dd class="col-7 fw-bold fs-5">L {{ doc.monto_total|moneda }}</dd>
 
           <dt class="col-5">Pagado</dt>
-          <dd class="col-7 text-success fw-semibold">L {{ doc.monto_pagado|floatformat:2 }}</dd>
+          <dd class="col-7 text-success fw-semibold">L {{ doc.monto_pagado|moneda }}</dd>
 
           <dt class="col-5">Saldo</dt>
-          <dd class="col-7 {% if doc.saldo_pendiente > 0 %}text-danger fw-bold{% endif %}">L {{ doc.saldo_pendiente|floatformat:2 }}</dd>
+          <dd class="col-7 {% if doc.saldo_pendiente > 0 %}text-danger fw-bold{% endif %}">L {{ doc.saldo_pendiente|moneda }}</dd>
 
           <dt class="col-5">Estado pago</dt>
           <dd class="col-7">{% include "facturas/_badges.html" with doc=doc %}</dd>
@@ -162,7 +166,7 @@
           <td class="px-3 text-nowrap">{{ pago.fecha_pago|date:"d/m/Y" }}</td>
           <td>{{ pago.get_metodo_pago_display }}</td>
           <td class="text-muted small">{{ pago.referencia|default:"–" }}</td>
-          <td class="text-end fw-bold text-success">L {{ pago.monto|floatformat:2 }}</td>
+          <td class="text-end fw-bold text-success">L {{ pago.monto|moneda }}</td>
           <td class="text-muted small">{{ pago.notas|default:"–"|truncatechars:60 }}</td>
           <td class="text-end px-3">
             {% if perms.core.registrar_pago_factura %}
@@ -186,4 +190,8 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% include "facturas/_modal_pago.html" %}
 {% endblock %}

@@ -1,10 +1,178 @@
 {% extends "base.html" %}
-{% block title %}Editar documento {{ doc.pk }}{% endblock %}
+{% block title %}Editar documento{% endblock %}
+
 {% block content %}
-<h1>Editar documento {{ doc.pk }}</h1>
-<form method="post">{% csrf_token %}
-  {{ form.as_p }}
-  <button class="btn btn-primary" type="submit">Guardar</button>
-  <a href="{% url 'factura_detalle' doc.pk %}" class="btn btn-secondary">Cancelar</a>
+<div class="page-header d-flex justify-content-between align-items-center" style="background:linear-gradient(135deg,#0d6efd,#198754);">
+  <div>
+    <h1><i class="bi bi-pencil-square me-2"></i>Editar documento</h1>
+    <small class="opacity-75">Revisá los datos extraídos y corregí lo que haga falta</small>
+  </div>
+  <a href="{% url 'factura_detalle' doc.pk %}" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<form method="post" id="doc-form">{% csrf_token %}
+  <div class="row g-3">
+    {% if doc.archivo_pdf %}
+    {# Preview del PDF original para revisar mientras se editan los datos #}
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm sticky-lg-top" style="top:1rem">
+        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>PDF original</span>
+          <a href="{% url 'factura_pdf' doc.pk %}" target="_blank" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Abrir
+          </a>
+        </div>
+        <iframe src="{% url 'factura_pdf' doc.pk %}" title="PDF" style="width:100%;height:78vh;border:0"></iframe>
+      </div>
+    </div>
+    {% endif %}
+    <div class="{% if doc.archivo_pdf %}col-lg-7{% else %}col-lg-8{% endif %}">
+      {# Total destacado + acciones (siempre visible arriba) #}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <div class="text-muted text-uppercase small">Total del documento</div>
+            <div class="h3 fw-bold text-success mb-0" id="total-display">L 0.00</div>
+          </div>
+          <div style="max-width:180px">
+            <label class="form-label small mb-0">Monto total (editable)</label>{{ form.monto_total }}
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-success" type="submit" name="accion" value="guardar_revisar" title="Guardar y marcar como revisado">
+              <i class="bi bi-check2-all me-1"></i>Guardar y revisar
+            </button>
+            <button class="btn btn-outline-primary" type="submit"><i class="bi bi-check-lg me-1"></i>Solo guardar</button>
+            <a href="{% url 'factura_detalle' doc.pk %}" class="btn btn-outline-secondary">Cancelar</a>
+          </div>
+        </div>
+      </div>
+
+      {# Datos generales #}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold"><i class="bi bi-info-circle me-1"></i>Datos del documento</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Cliente</label>{{ form.cliente }}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Tipo de documento</label>{{ form.tipo_documento }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Número</label>{{ form.numero_documento }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Fecha</label>{{ form.fecha_documento }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Vencimiento</label>{{ form.fecha_vencimiento }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Producto</label>{{ form.producto }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# Sección Envío (libras × precio) #}
+      <div class="card border-0 shadow-sm mb-3" id="grp-envio">
+        <div class="card-header bg-white fw-semibold"><i class="bi bi-truck me-1"></i>Envío — cálculo por libras</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Total libras</label>{{ form.total_libras }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Precio por libra</label>{{ form.precio_por_libra }}
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <div class="text-muted small"><i class="bi bi-calculator me-1"></i>El total se calcula solo: libras × precio.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# Sección Factura (subtotal + ISV) #}
+      <div class="card border-0 shadow-sm mb-3" id="grp-factura">
+        <div class="card-header bg-white fw-semibold"><i class="bi bi-receipt me-1"></i>Factura — montos</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Subtotal</label>{{ form.subtotal }}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">ISV</label>{{ form.isv }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+          <label class="form-label">Notas</label>{{ form.notas }}
+          <div class="mt-2"><label class="form-label">Estado de revisión</label>{{ form.estado_revision }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // Vencimiento en vivo = fecha + días de crédito del cliente.
+  var DIAS = {{ dias_credito_json|safe }};
+  var cli = document.getElementById('id_cliente');
+  var fecha = document.getElementById('id_fecha_documento');
+  var venc = document.getElementById('id_fecha_vencimiento');
+  function calcVenc() {
+    if (!cli || !fecha || !venc || !fecha.value) return;
+    var d = parseInt(DIAS[cli.value] || 0, 10);
+    var base = new Date(fecha.value + 'T00:00:00');
+    base.setDate(base.getDate() + d);
+    venc.value = base.getFullYear() + '-' +
+      String(base.getMonth() + 1).padStart(2, '0') + '-' +
+      String(base.getDate()).padStart(2, '0');
+  }
+  if (fecha) fecha.addEventListener('change', calcVenc);
+  if (cli) cli.addEventListener('change', calcVenc);
+})();
+(function () {
+  function num(id) { var e = document.getElementById(id); return e ? (parseFloat(e.value) || 0) : 0; }
+  var tipo    = document.getElementById('id_tipo_documento');
+  var total   = document.getElementById('id_monto_total');
+  var display = document.getElementById('total-display');
+  var grpEnvio   = document.getElementById('grp-envio');
+  var grpFactura = document.getElementById('grp-factura');
+
+  function esEnvio() { return tipo && tipo.value === 'envio'; }
+
+  function recalc() {
+    if (esEnvio()) {
+      total.value = (num('id_total_libras') * num('id_precio_por_libra')).toFixed(2);
+    } else {
+      total.value = (num('id_subtotal') + num('id_isv')).toFixed(2);
+    }
+    display.textContent = 'L ' + (parseFloat(total.value) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  function toggleSecciones() {
+    if (grpEnvio)   grpEnvio.style.display   = esEnvio() ? '' : 'none';
+    if (grpFactura) grpFactura.style.display = esEnvio() ? 'none' : '';
+  }
+
+  ['id_total_libras', 'id_precio_por_libra', 'id_subtotal', 'id_isv'].forEach(function (id) {
+    var e = document.getElementById(id);
+    if (e) e.addEventListener('input', recalc);
+  });
+  if (tipo) tipo.addEventListener('change', function () { toggleSecciones(); recalc(); });
+
+  // Estado inicial: mostrar la sección correcta y reflejar el total existente.
+  toggleSecciones();
+  if (total) display.textContent = 'L ' + (parseFloat(total.value) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+})();
+</script>
 {% endblock %}

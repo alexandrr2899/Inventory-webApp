@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Revisar lote{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center" style="background:linear-gradient(135deg,#0d6efd,#198754);">
+  <div>
+    <h1><i class="bi bi-list-check me-2"></i>Revisar lote</h1>
+    <small class="opacity-75">{{ filas|length }} archivo(s) · confirmá el cliente de cada uno y corregí lo que haga falta</small>
+  </div>
+  <a href="{% url 'factura_lote' %}" class="btn btn-light btn-sm fw-semibold">
+    <i class="bi bi-arrow-left me-1"></i>Otro lote
+  </a>
+</div>
+
+<form method="post" action="{% url 'factura_lote_confirmar' %}">{% csrf_token %}
+  <input type="hidden" name="batch_id" value="{{ batch_id }}">
+  <input type="hidden" name="total_filas" value="{{ filas|length }}">
+
+  <div class="alert alert-info py-2 small">
+    <i class="bi bi-info-circle me-1"></i>Las filas resaltadas en amarillo no pudieron emparejar cliente automáticamente: elegilo antes de confirmar.
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Archivo</th><th>Cliente</th><th>Tipo</th><th>Número</th>
+            <th>Fecha</th><th>Producto</th><th class="text-end">Libras / Total</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for fila in filas %}
+          <tr {% if not fila.cliente_id %}class="table-warning"{% endif %}>
+            <td class="small text-muted" style="max-width:180px">
+              <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>{{ fila.nombre_original }}
+              <input type="hidden" name="fila-{{ forloop.counter0 }}-archivo" value="{{ fila.archivo }}">
+              <input type="hidden" name="fila-{{ forloop.counter0 }}-total_libras" value="{{ fila.total_libras }}">
+              <input type="hidden" name="fila-{{ forloop.counter0 }}-subtotal" value="{{ fila.subtotal }}">
+              <input type="hidden" name="fila-{{ forloop.counter0 }}-isv" value="{{ fila.isv }}">
+              <input type="hidden" name="fila-{{ forloop.counter0 }}-monto_total" value="{{ fila.monto_total }}">
+            </td>
+            <td style="min-width:170px">
+              <select name="fila-{{ forloop.counter0 }}-cliente" class="form-select form-select-sm" required>
+                <option value="">— elegir —</option>
+                {% for c in clientes %}
+                <option value="{{ c.pk }}" {% if c.pk|stringformat:'s' == fila.cliente_id|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>
+                {% endfor %}
+              </select>
+              {% if fila.cliente_sugerido and not fila.cliente_id %}
+              <div class="small text-muted">Del archivo: "{{ fila.cliente_sugerido }}"</div>
+              {% endif %}
+            </td>
+            <td style="min-width:110px">
+              <select name="fila-{{ forloop.counter0 }}-tipo" class="form-select form-select-sm">
+                {% for v, label in tipo_choices %}
+                <option value="{{ v }}" {% if v == fila.tipo %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td style="min-width:110px">
+              <input type="text" name="fila-{{ forloop.counter0 }}-numero_documento" class="form-control form-control-sm" value="{{ fila.numero_documento }}">
+            </td>
+            <td style="min-width:150px">
+              <input type="date" name="fila-{{ forloop.counter0 }}-fecha_documento" class="form-control form-control-sm" value="{{ fila.fecha_documento }}">
+            </td>
+            <td style="min-width:120px">
+              <select name="fila-{{ forloop.counter0 }}-producto" class="form-select form-select-sm">
+                <option value="">—</option>
+                {% for v, label in producto_choices %}
+                <option value="{{ v }}" {% if v == fila.producto %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td class="text-end small">
+              {% if fila.tipo == 'envio' %}{{ fila.total_libras|default:"—" }} lb{% else %}L {{ fila.monto_total|default:"—" }}{% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7" class="text-center text-muted py-3">No se procesó ningún archivo.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="d-grid d-md-flex gap-2 mt-3">
+    <button class="btn btn-success" type="submit"><i class="bi bi-check2-all me-1"></i>Crear {{ filas|length }} documento(s)</button>
+    <a href="{% url 'factura_lote' %}" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

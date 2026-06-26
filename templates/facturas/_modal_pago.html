@@ -1,0 +1,83 @@
+{# Modal reutilizable de pago rápido. Los botones .btn-pago lo abren con data-url/data-saldo/data-info. #}
+<div class="modal fade" id="modalPago" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" id="form-pago-rapido">{% csrf_token %}
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Registrar pago</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-1 text-muted small">Documento</div>
+          <div class="fw-semibold mb-2" id="pago-doc-info">—</div>
+          <div class="alert alert-light border d-flex justify-content-between align-items-center py-2">
+            <span class="text-muted">Saldo pendiente</span>
+            <strong class="text-danger fs-5" id="pago-saldo-info">L 0.00</strong>
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">Fecha</label>
+              <input type="date" name="fecha_pago" id="pago-fecha" class="form-control" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Método</label>
+              <select name="metodo_pago" class="form-select">
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="deposito">Depósito</option>
+                <option value="cheque">Cheque</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Monto</label>
+              <div class="input-group">
+                <span class="input-group-text">L</span>
+                <input type="number" step="0.01" min="0" name="monto" id="pago-monto" class="form-control" required>
+                <button type="button" class="btn btn-outline-success" id="btn-pagar-todo">Pagar todo</button>
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Referencia <span class="text-muted small">(opcional)</span></label>
+              <input type="text" name="referencia" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Registrar pago</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modalEl = document.getElementById('modalPago');
+  if (!modalEl || typeof bootstrap === 'undefined') return;
+  var modal = new bootstrap.Modal(modalEl);
+  var form = document.getElementById('form-pago-rapido');
+  var monto = document.getElementById('pago-monto');
+  var saldoActual = 0;
+
+  function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+  document.querySelectorAll('.btn-pago').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      form.action = b.getAttribute('data-url');
+      saldoActual = parseFloat(b.getAttribute('data-saldo')) || 0;
+      document.getElementById('pago-doc-info').textContent = b.getAttribute('data-info') || '';
+      document.getElementById('pago-saldo-info').textContent = 'L ' + saldoActual.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      document.getElementById('pago-fecha').value = iso(new Date());
+      monto.value = saldoActual ? saldoActual.toFixed(2) : '';
+      monto.max = saldoActual || '';
+      modal.show();
+    });
+  });
+  var btnTodo = document.getElementById('btn-pagar-todo');
+  if (btnTodo) btnTodo.addEventListener('click', function () { monto.value = saldoActual.toFixed(2); });
+})();
+</script>

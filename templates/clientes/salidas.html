@@ -18,12 +18,19 @@
   <div>
     <h1><i class="bi bi-person-lines-fill me-2"></i>{{ cliente.nombre }}</h1>
     <small class="opacity-75">
-      Salidas por fecha de movimiento · {{ fecha_inicio|date:"d/m/Y" }} → {{ fecha_fin|date:"d/m/Y" }}
+      Ficha del cliente
+      {% if cliente.dias_credito %}· <i class="bi bi-credit-card me-1"></i>{{ cliente.dias_credito }} días de crédito{% else %}· contado{% endif %}
+      {% if cliente.telefono %}· <i class="bi bi-telephone me-1"></i>{{ cliente.telefono }}{% endif %}
     </small>
   </div>
-  <a href="{% url 'cliente_lista' %}" class="btn btn-light btn-sm fw-semibold">
-    <i class="bi bi-arrow-left me-1"></i>Clientes
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{% url 'cliente_editar' cliente.pk %}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-pencil me-1"></i>Editar
+    </a>
+    <a href="{% url 'cliente_lista' %}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-arrow-left me-1"></i>Clientes
+    </a>
+  </div>
 </div>
 
 {% if facturas_enabled and perms.core.ver_facturas %}
@@ -275,27 +282,65 @@
 (function () {
   var btn = document.getElementById('tab-facturas-btn');
   var cont = document.getElementById('facturas-cont');
+  if (!btn) return;
+  var base = btn.getAttribute('data-url');
   var cargado = false;
-  function cargar(url) {
-    fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+
+  function rangoFechas(rango) {
+    function iso(d) {
+      return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+    }
+    var hoy = new Date();
+    if (rango === 'hoy')   return { desde: iso(hoy), hasta: iso(hoy) };
+    if (rango === 'semana') {
+      var d = new Date(hoy); d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return { desde: iso(d), hasta: iso(hoy) };
+    }
+    if (rango === 'mes')  return { desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso(hoy) };
+    if (rango === 'anio') return { desde: iso(new Date(hoy.getFullYear(), 0, 1)), hasta: iso(hoy) };
+    return { desde: '', hasta: '' };
+  }
+
+  function cargar(qs) {
+    cont.innerHTML = '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Cargando…</div>';
+    fetch(base + (qs ? ('?' + qs) : ''), {headers: {'X-Requested-With': 'XMLHttpRequest'}})
       .then(function (r) { return r.text(); })
-      .then(function (html) { cont.innerHTML = html; bindFiltros(); })
+      .then(function (html) { cont.innerHTML = html; bind(); })
       .catch(function () { cont.innerHTML = '<div class="alert alert-danger">Error al cargar.</div>'; });
   }
-  function bindFiltros() {
+
+  function recargar() {
+    var form = cont.querySelector('#fac-filtros');
+    cargar(new URLSearchParams(new FormData(form)).toString());
+  }
+
+  function bind() {
+    var form = cont.querySelector('#fac-filtros');
+    if (!form) return;
     cont.querySelectorAll('.filtro-fac').forEach(function (b) {
       b.addEventListener('click', function () {
-        var base = btn.getAttribute('data-url');
-        var tipo = b.getAttribute('data-tipo');
-        cargar(base + (tipo ? ('?tipo=' + tipo) : ''));
+        cont.querySelector('#fac-tipo').value = b.getAttribute('data-tipo');
+        recargar();
       });
     });
-  }
-  if (btn) {
-    btn.addEventListener('shown.bs.tab', function () {
-      if (!cargado) { cargado = true; cargar(btn.getAttribute('data-url')); }
+    cont.querySelectorAll('.preset-fac').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var r = rangoFechas(b.getAttribute('data-rango'));
+        form.querySelector('[name=desde]').value = r.desde;
+        form.querySelector('[name=hasta]').value = r.hasta;
+        recargar();
+      });
+    });
+    cont.querySelectorAll('.fac-fecha').forEach(function (i) {
+      i.addEventListener('change', recargar);
     });
   }
+
+  btn.addEventListener('shown.bs.tab', function () {
+    if (!cargado) { cargado = true; cargar(''); }
+  });
 })();
 </script>
 {% endif %}
