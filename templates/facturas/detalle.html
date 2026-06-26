@@ -50,10 +50,25 @@
   {% endif %}
 </div>
 
-<div class="row g-4">
+<div class="row g-4 align-items-start">
+  {% if doc.archivo_pdf %}
+  {# Preview del PDF original para revisar el documento sin salir del detalle #}
+  <div class="col-12 col-xl-7">
+    <div class="card sticky-xl-top" style="top:1rem">
+      <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-file-earmark-pdf-fill text-danger me-2"></i>PDF original</span>
+        <a href="{% url 'factura_pdf' doc.pk %}" class="btn btn-sm btn-outline-secondary" target="_blank">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Abrir
+        </a>
+      </div>
+      <iframe src="{% url 'factura_pdf' doc.pk %}#toolbar=0&navpanes=0&view=Fit" title="PDF {{ doc.get_tipo_documento_display }} {{ doc.numero_documento|default:doc.pk }}" style="width:100%;height:52vh;min-height:360px;max-height:560px;border:0"></iframe>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="{% if doc.archivo_pdf %}col-12 col-xl-5{% else %}col-12{% endif %}">
   {# Document details card #}
-  <div class="col-12 col-lg-6">
-    <div class="card h-100">
+    <div class="card">
       <div class="card-header bg-white fw-bold">
         <i class="bi bi-file-text me-2 text-primary"></i>Datos del documento
       </div>
@@ -125,12 +140,10 @@
         </dl>
       </div>
     </div>
-  </div>
 
   {# Texto extraído #}
   {% if doc.texto_extraido %}
-  <div class="col-12 col-lg-6">
-    <div class="card h-100">
+    <div class="card mt-4">
       <div class="card-header bg-white fw-bold">
         <i class="bi bi-file-earmark-text me-2 text-secondary"></i>Texto extraído del PDF
       </div>
@@ -138,8 +151,8 @@
         <pre class="m-0 p-3" style="font-size:.78rem;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">{{ doc.texto_extraido }}</pre>
       </div>
     </div>
-  </div>
   {% endif %}
+  </div>
 </div>
 
 {# Historial de pagos #}
