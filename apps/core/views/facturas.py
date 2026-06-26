@@ -1,11 +1,24 @@
 """facturas.py — Vistas del módulo Facturas (dashboard, listado, detalle, alta)."""
 from .common import *  # noqa: F401,F403
 
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
 from ..models import DocumentoFactura, TarifaCliente, PagoFactura
 from ..forms import DocumentoUploadForm, DocumentoEditarForm
 from ..services.facturas import invoice_service, status_service
+
+
+def _safe_return_url(request):
+    fallback = reverse('facturas_lista')
+    url = request.POST.get('next') or request.GET.get('next') or request.META.get('HTTP_REFERER') or ''
+    if url_has_allowed_host_and_scheme(
+        url=url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return url
+    return fallback
 
 
 @login_required
@@ -92,6 +105,7 @@ def factura_detalle(request, pk):
     return render(request, 'facturas/detalle.html', {
         'doc': doc,
         'pagos': doc.pagos.all(),
+        'return_url': _safe_return_url(request),
     })
 
 
@@ -160,6 +174,7 @@ def factura_upload(request):
 @facturas_enabled
 def factura_editar(request, pk):
     doc = get_object_or_404(DocumentoFactura, pk=pk)
+    return_url = _safe_return_url(request)
     if request.method == 'POST':
         form = DocumentoEditarForm(request.POST, instance=doc)
         if form.is_valid():
@@ -168,6 +183,8 @@ def factura_editar(request, pk):
                 doc.estado_revision = 'revisada'
                 doc.save(update_fields=['estado_revision', 'updated_at'])
                 messages.success(request, 'Documento actualizado y marcado como revisado.')
+                status_service.actualizar_estado_pago(doc)
+                return redirect(return_url)
             else:
                 messages.success(request, 'Documento actualizado.')
             status_service.actualizar_estado_pago(doc)
@@ -178,6 +195,7 @@ def factura_editar(request, pk):
     dias_credito = {str(c.pk): c.dias_credito for c in Cliente.objects.all()}
     return render(request, 'facturas/form_editar.html', {
         'form': form, 'doc': doc, 'dias_credito_json': json.dumps(dias_credito),
+        'return_url': return_url,
     })
 
 
@@ -190,7 +208,7 @@ def factura_revisar(request, pk):
     doc.estado_revision = 'revisada'
     doc.save(update_fields=['estado_revision', 'updated_at'])
     messages.success(request, 'Documento marcado como revisado.')
-    return redirect('factura_detalle', pk=doc.pk)
+    return redirect(_safe_return_url(request))
 
 
 @login_required

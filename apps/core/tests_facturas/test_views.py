@@ -240,12 +240,26 @@ class MejorasUXTests(TestCase):
 
     def test_guardar_y_revisar(self):
         self.client.force_login(self.admin)
+        next_url = reverse('facturas_lista') + '?revision=pendiente'
         resp = self.client.post(reverse('factura_editar', args=[self.doc.pk]), {
             'cliente': self.cliente.pk, 'tipo_documento': 'factura',
             'numero_documento': 'F-555', 'fecha_documento': timezone.localdate().isoformat(),
             'producto': '', 'subtotal': '0', 'isv': '0', 'monto_total': '100.00',
             'estado_revision': 'pendiente', 'notas': '', 'accion': 'guardar_revisar',
+            'next': next_url,
         })
         self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], next_url)
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.estado_revision, 'revisada')
+
+    def test_marcar_revisada_regresa_a_next(self):
+        self.client.force_login(self.admin)
+        next_url = reverse('facturas_lista') + '?revision=pendiente'
+        resp = self.client.post(reverse('factura_revisar', args=[self.doc.pk]), {
+            'next': next_url,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], next_url)
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.estado_revision, 'revisada')

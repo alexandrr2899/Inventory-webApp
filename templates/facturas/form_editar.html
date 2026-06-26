@@ -13,6 +13,7 @@
 </div>
 
 <form method="post" id="doc-form">{% csrf_token %}
+  <input type="hidden" name="next" value="{{ return_url }}">
   <div class="row g-3">
     {% if doc.archivo_pdf %}
     {# Preview del PDF original para revisar mientras se editan los datos #}
