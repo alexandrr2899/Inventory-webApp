@@ -14,7 +14,9 @@ def calcular_estado_pago(documento):
     if documento.estado_pago == 'anulada':
         return 'anulada'
 
-    if documento.saldo_pendiente <= 0:
+    # Solo "pagada" si hay un monto real cubierto. Un documento con monto_total=0
+    # (p. ej. sin montos extraídos del PDF) NO debe marcarse pagada al crearse.
+    if documento.monto_total and documento.saldo_pendiente <= 0:
         return 'pagada'
 
     venc = documento.fecha_vencimiento

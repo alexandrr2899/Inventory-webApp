@@ -36,9 +36,14 @@ def factura_api_ingest(request):
     if not archivo:
         return JsonResponse({'ok': False, 'error': 'falta el archivo (campo "archivo")'}, status=400)
 
+    _MAX_BYTES = 25 * 1024 * 1024
+    if getattr(archivo, 'size', 0) and archivo.size > _MAX_BYTES:
+        return JsonResponse({'ok': False, 'error': 'archivo demasiado grande'}, status=413)
+
     tipo = invoice_service.detectar_tipo(archivo.name)
     nombre_cli = filename_extractor.extraer_de_nombre(archivo.name).get('cliente_nombre', '')
-    cliente = bulk_service.match_cliente(nombre_cli)
+    # En ingesta automática (sin revisión humana) exigimos match exacto de cliente.
+    cliente = bulk_service.match_cliente(nombre_cli, solo_exacto=True)
     if cliente is None:
         return JsonResponse({
             'ok': False, 'error': 'cliente no encontrado',
@@ -46,19 +51,22 @@ def factura_api_ingest(request):
         }, status=422)
 
     archivo.seek(0)
-    prev = invoice_service.previsualizar(tipo, archivo)
+    try:
+        prev = invoice_service.previsualizar(tipo, archivo)
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'no se pudo procesar el PDF'}, status=400)
     datos = prev['datos']
     numero = datos.get('numero_documento', '')
 
     # Deduplicación: mismo cliente + tipo + número ya existente → no duplicar.
-    if numero and DocumentoFactura.objects.filter(
-            cliente=cliente, tipo_documento=tipo, numero_documento=numero).exists():
+    if numero:
         existente = DocumentoFactura.objects.filter(
             cliente=cliente, tipo_documento=tipo, numero_documento=numero).first()
-        return JsonResponse({
-            'ok': True, 'duplicado': True, 'id': existente.pk,
-            'cliente': cliente.nombre, 'numero': numero,
-        }, status=200)
+        if existente:
+            return JsonResponse({
+                'ok': True, 'duplicado': True, 'id': existente.pk,
+                'cliente': cliente.nombre, 'numero': numero,
+            }, status=200)
 
     archivo.seek(0)
     doc = invoice_service.crear_documento(

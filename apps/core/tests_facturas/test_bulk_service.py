@@ -28,6 +28,13 @@ class MatchClienteTests(TestCase):
     def test_sin_match_devuelve_none(self):
         self.assertIsNone(bulk_service.match_cliente('Cliente Inexistente'))
 
+    def test_solo_exacto_rechaza_substring(self):
+        # 'Renato' es substring de 'Renato Díaz' pero no es match exacto.
+        self.assertIsNotNone(bulk_service.match_cliente('Renato'))           # fuzzy: sí
+        self.assertIsNone(bulk_service.match_cliente('Renato', solo_exacto=True))  # exacto: no
+        self.assertEqual(bulk_service.match_cliente('RENATO DIAZ', solo_exacto=True), self.renato)
+
+
 
 def _archivos_reales():
     archivos = []

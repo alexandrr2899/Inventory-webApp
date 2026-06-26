@@ -30,7 +30,7 @@
     <li class="nav-item"><a class="nav-link estado-tab {% if filtros.estado == 'anulada' %}active bg-dark{% endif %}" data-estado="anulada" role="button">Anuladas</a></li>
   </ul>
   <a class="btn btn-sm {% if filtros.revision == 'pendiente' %}btn-warning{% else %}btn-outline-warning{% endif %}" id="btn-por-revisar" role="button">
-    <i class="bi bi-clipboard-check me-1"></i>Por revisar{% if por_revisar %} <span class="badge bg-dark ms-1">{{ por_revisar }}</span>{% endif %}
+    <i class="bi bi-clipboard-check me-1"></i>Por revisar{% if facturas_por_revisar %} <span class="badge bg-dark ms-1">{{ facturas_por_revisar }}</span>{% endif %}
   </a>
 </div>
 

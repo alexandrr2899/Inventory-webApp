@@ -67,12 +67,10 @@ def facturas_lista(request):
         'total_vencido': sum((d.saldo_pendiente for d in activos if d.esta_vencida), Decimal('0')),
     }
 
-    por_revisar = DocumentoFactura.objects.filter(estado_revision='pendiente').count()
-
     ctx = {
         'documentos': documentos,
         'resumen': resumen,
-        'por_revisar': por_revisar,
+        # El contador "por revisar" lo aporta el context processor (facturas_por_revisar).
         'clientes': Cliente.objects.order_by('nombre'),
         'filtros': {
             'tipo': tipo, 'cliente': cliente_id, 'producto': producto,
@@ -113,8 +111,11 @@ def factura_pdf(request, pk):
         archivo = doc.archivo_pdf.open('rb')
     except (FileNotFoundError, ValueError):
         raise Http404('Archivo no encontrado.')
+    # Sanear el nombre (entra en una cabecera HTTP): sin comillas ni saltos de línea.
+    nombre = str(doc.numero_documento or doc.pk)
+    nombre = nombre.replace('"', '').replace('\r', '').replace('\n', '').strip() or str(doc.pk)
     resp = FileResponse(archivo, content_type='application/pdf')
-    resp['Content-Disposition'] = f'inline; filename="{doc.numero_documento or doc.pk}.pdf"'
+    resp['Content-Disposition'] = f'inline; filename="{nombre}.pdf"'
     return resp
 
 

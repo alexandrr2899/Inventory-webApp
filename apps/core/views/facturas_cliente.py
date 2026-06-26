@@ -22,16 +22,17 @@ def cliente_facturas_fragment(request, pk):
     if hasta:
         qs = qs.filter(fecha_documento__lte=hasta)
 
-    activos = DocumentoFactura.objects.filter(cliente=cliente).exclude(estado_pago='anulada')
+    activos = list(DocumentoFactura.objects.filter(cliente=cliente).exclude(estado_pago='anulada'))
     total_facturado = sum((d.monto_total for d in activos), Decimal('0'))
     total_pagado = sum((d.monto_pagado for d in activos), Decimal('0'))
     resumen = {
         'total_facturado': total_facturado,
         'total_pagado': total_pagado,
         'total_pendiente': total_facturado - total_pagado,
-        'total_vencido': sum((d.saldo_pendiente for d in activos.filter(estado_pago='vencida')), Decimal('0')),
-        'num_facturas': activos.filter(tipo_documento='factura').count(),
-        'num_envios': activos.filter(tipo_documento='envio').count(),
+        # "Vencido" dinámico (igual que la lista): no depende de estado_pago recalculado.
+        'total_vencido': sum((d.saldo_pendiente for d in activos if d.esta_vencida), Decimal('0')),
+        'num_facturas': sum(1 for d in activos if d.tipo_documento == 'factura'),
+        'num_envios': sum(1 for d in activos if d.tipo_documento == 'envio'),
     }
     return render(request, 'facturas/_tab_cliente.html', {
         'cliente': cliente,

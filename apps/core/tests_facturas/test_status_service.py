@@ -55,3 +55,11 @@ class StatusServiceTests(TestCase):
         self.assertEqual(estado_dom, 'vencida')   # cálculo correcto devuelto
         recargado = type(doc).objects.get(pk=doc.pk)
         self.assertEqual(recargado.estado_pago, 'pendiente')  # NO se persistió
+
+    def test_monto_cero_no_es_pagada(self):
+        # Un documento sin monto (p. ej. sin montos extraídos) no debe quedar "pagada".
+        doc = DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura',
+            fecha_documento=self.hoy, monto_total=Decimal('0'),
+        )
+        self.assertEqual(status_service.calcular_estado_pago(doc), 'pendiente')

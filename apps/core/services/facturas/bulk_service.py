@@ -54,10 +54,12 @@ def _norm(s):
     return ' '.join(s.lower().split())
 
 
-def match_cliente(nombre):
+def match_cliente(nombre, solo_exacto=False):
     """Empareja un nombre (del archivo) a un Cliente existente; None si no hay match.
 
-    Comparación insensible a mayúsculas y acentos: igualdad exacta y luego 'contiene'.
+    Comparación insensible a mayúsculas y acentos. Con ``solo_exacto=True`` solo
+    acepta igualdad exacta normalizada (sin el fallback de 'contiene'); se usa en
+    la ingesta automática, donde no hay revisión humana para corregir un mal match.
     """
     objetivo = _norm(nombre)
     if not objetivo:
@@ -67,6 +69,8 @@ def match_cliente(nombre):
     for c in clientes:
         if _norm(c.nombre) == objetivo:
             return c
+    if solo_exacto:
+        return None
     # 2) 'Contiene' en cualquier dirección; preferir el nombre de cliente más largo.
     matches = [c for c in clientes
                if _norm(c.nombre) and (_norm(c.nombre) in objetivo or objetivo in _norm(c.nombre))]
