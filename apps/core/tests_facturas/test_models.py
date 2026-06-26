@@ -9,6 +9,37 @@ from apps.core.models import (
 )
 
 
+class EstaVencidaTests(TestCase):
+    def setUp(self):
+        self.cliente = Cliente.objects.create(nombre='Cli')
+        self.hoy = timezone.localdate()
+
+    def _doc(self, venc, total='100.00', estado='pendiente'):
+        return DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura',
+            fecha_documento=self.hoy, fecha_vencimiento=venc,
+            monto_total=Decimal(total), estado_pago=estado,
+        )
+
+    def test_vencida_si_pasada_con_saldo(self):
+        self.assertTrue(self._doc(self.hoy - timedelta(days=1)).esta_vencida)
+
+    def test_no_vencida_si_futura(self):
+        self.assertFalse(self._doc(self.hoy + timedelta(days=5)).esta_vencida)
+
+    def test_no_vencida_si_anulada(self):
+        self.assertFalse(self._doc(self.hoy - timedelta(days=1), estado='anulada').esta_vencida)
+
+    def test_no_vencida_si_pagada(self):
+        doc = self._doc(self.hoy - timedelta(days=1))
+        PagoFactura.objects.create(documento=doc, fecha_pago=self.hoy,
+                                   metodo_pago='efectivo', monto=Decimal('100.00'))
+        self.assertFalse(doc.esta_vencida)
+
+    def test_no_vencida_sin_fecha_vencimiento(self):
+        self.assertFalse(self._doc(None).esta_vencida)
+
+
 class DocumentoFacturaPropsTests(TestCase):
     def setUp(self):
         self.cliente = Cliente.objects.create(nombre='Renato Díaz')

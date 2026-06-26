@@ -1,10 +1,48 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
 
 from apps.core.models import Cliente, DocumentoFactura, TarifaCliente
 from apps.core.services.facturas import invoice_service
+
+
+class DetectarTipoTests(TestCase):
+    def test_envio(self):
+        self.assertEqual(invoice_service.detectar_tipo('Walter Aguilera Envio Camiseta 98.pdf'), 'envio')
+
+    def test_factura(self):
+        self.assertEqual(invoice_service.detectar_tipo('Fact 9541 ASOVEMEZB-- Milton.pdf'), 'factura')
+
+    def test_desconocido_default_factura(self):
+        self.assertEqual(invoice_service.detectar_tipo('algo_raro.pdf'), 'factura')
+
+
+class VencimientoCreditoTests(TestCase):
+    def test_vencimiento_se_calcula_con_dias_credito(self):
+        cliente = Cliente.objects.create(nombre='Crédito 15', dias_credito=15)
+        doc = invoice_service.crear_documento(
+            cliente=cliente, tipo_documento='factura',
+            datos={'fecha_documento': date(2026, 6, 1), 'monto_total': Decimal('100.00')},
+        )
+        self.assertEqual(doc.fecha_vencimiento, date(2026, 6, 16))
+
+    def test_contado_no_pone_vencimiento(self):
+        cliente = Cliente.objects.create(nombre='Contado', dias_credito=0)
+        doc = invoice_service.crear_documento(
+            cliente=cliente, tipo_documento='factura',
+            datos={'fecha_documento': date(2026, 6, 1), 'monto_total': Decimal('100.00')},
+        )
+        self.assertIsNone(doc.fecha_vencimiento)
+
+    def test_vencimiento_explicito_no_se_sobrescribe(self):
+        cliente = Cliente.objects.create(nombre='Crédito 30', dias_credito=30)
+        doc = invoice_service.crear_documento(
+            cliente=cliente, tipo_documento='factura',
+            datos={'fecha_documento': date(2026, 6, 1),
+                   'fecha_vencimiento': date(2026, 6, 5), 'monto_total': Decimal('100.00')},
+        )
+        self.assertEqual(doc.fecha_vencimiento, date(2026, 6, 5))
 
 
 class InvoiceServiceTests(TestCase):

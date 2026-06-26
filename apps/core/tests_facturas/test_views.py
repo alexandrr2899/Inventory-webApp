@@ -46,20 +46,20 @@ class FacturasVistasTests(TestCase):
         self.operador = User.objects.create_user(username='oper', password='pass12345')
         self.cliente = Cliente.objects.create(nombre='Renato Díaz')
 
-    def test_dashboard_requiere_permiso(self):
+    def test_lista_requiere_permiso(self):
         self.client.force_login(self.operador)
-        resp = self.client.get(reverse('facturas_dashboard'))
+        resp = self.client.get(reverse('facturas_lista'))
         self.assertEqual(resp.status_code, 403)
 
-    def test_dashboard_admin_ok(self):
+    def test_lista_admin_ok(self):
         self.client.force_login(self.admin)
-        resp = self.client.get(reverse('facturas_dashboard'))
+        resp = self.client.get(reverse('facturas_lista'))
         self.assertEqual(resp.status_code, 200)
 
     @override_settings(FACTURAS_MODULE_ENABLED=False)
     def test_apagado_devuelve_404(self):
         self.client.force_login(self.admin)
-        resp = self.client.get(reverse('facturas_dashboard'))
+        resp = self.client.get(reverse('facturas_lista'))
         self.assertEqual(resp.status_code, 404)
 
     def test_anular_marca_estado(self):
@@ -115,3 +115,137 @@ class FacturasTarifasTests(TestCase):
         })
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(TarifaCliente.objects.filter(cliente=self.cliente, producto='camiseta').exists())
+
+
+@override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
+class VencidasFiltroTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(username='admin_v', password='pass12345')
+        self.admin.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        self.cliente = Cliente.objects.create(nombre='Cli')
+        hoy = timezone.localdate()
+        # Vencida: vencimiento pasado, con saldo.
+        self.vencida = DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura', numero_documento='VEN-1',
+            fecha_documento=hoy - timedelta(days=40),
+            fecha_vencimiento=hoy - timedelta(days=10), monto_total=Decimal('100.00'),
+        )
+        # Al día: vencimiento futuro.
+        self.aldia = DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura', numero_documento='ALDIA-1',
+            fecha_documento=hoy, fecha_vencimiento=hoy + timedelta(days=10),
+            monto_total=Decimal('100.00'),
+        )
+
+    def test_filtro_vencidas_solo_muestra_vencidas(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'), {'estado': 'vencida'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'VEN-1')
+        self.assertNotContains(resp, 'ALDIA-1')
+
+
+@override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
+class FacturaPdfTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(username='admin_pdf', password='pass12345')
+        self.admin.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        self.operador = User.objects.create_user(username='oper_pdf', password='pass12345')
+        self.cliente = Cliente.objects.create(nombre='Cli')
+        self.doc = DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura',
+            fecha_documento=timezone.localdate(), monto_total=Decimal('10.00'),
+        )
+
+    def test_pdf_sin_archivo_devuelve_404(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('factura_pdf', args=[self.doc.pk]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_pdf_requiere_permiso(self):
+        self.client.force_login(self.operador)
+        resp = self.client.get(reverse('factura_pdf', args=[self.doc.pk]))
+        self.assertEqual(resp.status_code, 403)
+
+
+@override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
+class AnuladasNoEnTodasTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(username='admin_an', password='pass12345')
+        self.admin.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        self.cliente = Cliente.objects.create(nombre='Cli')
+        hoy = timezone.localdate()
+        self.normal = DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura', numero_documento='NORMAL-1',
+            fecha_documento=hoy, monto_total=Decimal('100.00'), estado_pago='pendiente',
+        )
+        self.anulada = DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura', numero_documento='ANUL-1',
+            fecha_documento=hoy, monto_total=Decimal('100.00'), estado_pago='anulada',
+        )
+
+    def test_todas_no_incluye_anuladas(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'))
+        self.assertContains(resp, 'NORMAL-1')
+        self.assertNotContains(resp, 'ANUL-1')
+
+    def test_pestana_anuladas_si_las_muestra(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'), {'estado': 'anulada'})
+        self.assertContains(resp, 'ANUL-1')
+        self.assertNotContains(resp, 'NORMAL-1')
+
+
+@override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
+class MejorasUXTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(username='admin_ux', password='pass12345')
+        for cn in ('ver_facturas', 'gestionar_facturas'):
+            self.admin.user_permissions.add(Permission.objects.get(codename=cn))
+        self.cliente = Cliente.objects.create(nombre='Zaga SA')
+        hoy = timezone.localdate()
+        self.doc = DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura', numero_documento='F-555',
+            fecha_documento=hoy, monto_total=Decimal('100.00'), estado_revision='pendiente',
+        )
+        self.otro = DocumentoFactura.objects.create(
+            cliente=Cliente.objects.create(nombre='Otro Cli'), tipo_documento='factura',
+            numero_documento='X-999', fecha_documento=hoy, monto_total=Decimal('50.00'),
+            estado_revision='revisada',
+        )
+
+    def test_busqueda_por_numero(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'), {'q': 'F-555'})
+        self.assertContains(resp, 'F-555')
+        self.assertNotContains(resp, 'X-999')
+
+    def test_busqueda_por_cliente(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'), {'q': 'Zaga'})
+        self.assertContains(resp, 'F-555')
+        self.assertNotContains(resp, 'X-999')
+
+    def test_filtro_por_revisar(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'), {'revision': 'pendiente'})
+        self.assertContains(resp, 'F-555')
+        self.assertNotContains(resp, 'X-999')
+
+    def test_contador_por_revisar_en_contexto(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'))
+        self.assertEqual(resp.context['facturas_por_revisar'], 1)
+
+    def test_guardar_y_revisar(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(reverse('factura_editar', args=[self.doc.pk]), {
+            'cliente': self.cliente.pk, 'tipo_documento': 'factura',
+            'numero_documento': 'F-555', 'fecha_documento': timezone.localdate().isoformat(),
+            'producto': '', 'subtotal': '0', 'isv': '0', 'monto_total': '100.00',
+            'estado_revision': 'pendiente', 'notas': '', 'accion': 'guardar_revisar',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.estado_revision, 'revisada')
