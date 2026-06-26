@@ -15,6 +15,13 @@ def cliente_facturas_fragment(request, pk):
     if tipo in ('factura', 'envio'):
         qs = qs.filter(tipo_documento=tipo)
 
+    desde = request.GET.get('desde', '')
+    hasta = request.GET.get('hasta', '')
+    if desde:
+        qs = qs.filter(fecha_documento__gte=desde)
+    if hasta:
+        qs = qs.filter(fecha_documento__lte=hasta)
+
     activos = DocumentoFactura.objects.filter(cliente=cliente).exclude(estado_pago='anulada')
     total_facturado = sum((d.monto_total for d in activos), Decimal('0'))
     total_pagado = sum((d.monto_pagado for d in activos), Decimal('0'))
@@ -31,4 +38,6 @@ def cliente_facturas_fragment(request, pk):
         'documentos': qs.order_by('-fecha_documento'),
         'resumen': resumen,
         'tipo_filtro': tipo,
+        'desde': desde,
+        'hasta': hasta,
     })

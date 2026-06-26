@@ -30,6 +30,8 @@ from .facturas import *       # noqa: F401,F403
 from .facturas_pagos import * # noqa: F401,F403
 from .facturas_tarifas import *   # noqa: F401,F403
 from .facturas_cliente import *   # noqa: F401,F403
+from .facturas_lote import *       # noqa: F401,F403
+from .facturas_api import *        # noqa: F401,F403
 
 # ── Helpers con prefijo _ usados por código externo (tests) ──────────────────
 from .calc import _calcular_tramos                       # noqa: F401

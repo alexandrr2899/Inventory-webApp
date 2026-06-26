@@ -1,32 +1,11 @@
 """facturas.py — Vistas del módulo Facturas (dashboard, listado, detalle, alta)."""
 from .common import *  # noqa: F401,F403
 
+from django.views.decorators.clickjacking import xframe_options_sameorigin
+
 from ..models import DocumentoFactura, TarifaCliente, PagoFactura
 from ..forms import DocumentoUploadForm, DocumentoEditarForm
 from ..services.facturas import invoice_service, status_service
-
-
-@login_required
-@permission_required(_perm('ver_facturas'), raise_exception=True)
-@facturas_enabled
-def facturas_dashboard(request):
-    hoy = timezone.localdate()
-    inicio_mes = hoy.replace(day=1)
-    docs_mes = DocumentoFactura.objects.filter(fecha_documento__gte=inicio_mes)
-    activos = DocumentoFactura.objects.exclude(estado_pago='anulada')
-
-    total_facturado = sum((d.monto_total for d in activos), Decimal('0'))
-    total_cobrado = sum((d.monto_pagado for d in activos), Decimal('0'))
-    ctx = {
-        'total_docs_mes': docs_mes.count(),
-        'total_facturado': total_facturado,
-        'total_cobrado': total_cobrado,
-        'total_pendiente': total_facturado - total_cobrado,
-        'total_vencido': sum((d.saldo_pendiente for d in activos.filter(estado_pago='vencida')), Decimal('0')),
-        'facturas_pendientes': activos.filter(tipo_documento='factura', estado_pago__in=['pendiente', 'vencida']).count(),
-        'envios_pendientes': activos.filter(tipo_documento='envio', estado_pago__in=['pendiente', 'vencida']).count(),
-    }
-    return render(request, 'facturas/dashboard.html', ctx)
 
 
 @login_required
@@ -38,28 +17,67 @@ def facturas_lista(request):
     cliente_id = request.GET.get('cliente', '')
     producto = request.GET.get('producto', '')
     estado = request.GET.get('estado', '')
+    revision = request.GET.get('revision', '')
+    q = request.GET.get('q', '').strip()
     desde = request.GET.get('desde', '')
     hasta = request.GET.get('hasta', '')
 
+    hoy = timezone.localdate()
+    if q:
+        qs = qs.filter(Q(numero_documento__icontains=q) | Q(cliente__nombre__icontains=q))
+    if revision in ('pendiente', 'revisada', 'error'):
+        qs = qs.filter(estado_revision=revision)
     if tipo:
         qs = qs.filter(tipo_documento=tipo)
     if cliente_id:
         qs = qs.filter(cliente_id=cliente_id)
     if producto:
         qs = qs.filter(producto=producto)
-    if estado:
-        qs = qs.filter(estado_pago=estado)
+    # Estado lógico (vencida/pendiente se calculan por fecha, sin depender de un cron).
+    if estado == 'pagada':
+        qs = qs.filter(estado_pago='pagada')
+    elif estado == 'anulada':
+        qs = qs.filter(estado_pago='anulada')
+    elif estado == 'vencida':
+        qs = qs.filter(estado_pago__in=['pendiente', 'vencida'], fecha_vencimiento__lt=hoy)
+    elif estado == 'pendiente':
+        qs = qs.filter(estado_pago__in=['pendiente', 'vencida']).filter(
+            Q(fecha_vencimiento__gte=hoy) | Q(fecha_vencimiento__isnull=True))
+    else:
+        # "Todas" no incluye anuladas (solo se ven en su propia pestaña).
+        qs = qs.exclude(estado_pago='anulada')
     if desde:
         qs = qs.filter(fecha_documento__gte=desde)
     if hasta:
         qs = qs.filter(fecha_documento__lte=hasta)
 
+    qs = qs.order_by('-fecha_documento', '-created_at')
+    documentos = list(qs)
+
+    # Resumen calculado sobre el conjunto YA filtrado (el rango de fechas afecta
+    # también a los totales mostrados arriba de la tabla).
+    activos = [d for d in documentos if d.estado_pago != 'anulada']
+    total_facturado = sum((d.monto_total for d in activos), Decimal('0'))
+    total_cobrado = sum((d.monto_pagado for d in activos), Decimal('0'))
+    resumen = {
+        'total_documentos': len(documentos),
+        'total_facturado': total_facturado,
+        'total_cobrado': total_cobrado,
+        'total_pendiente': total_facturado - total_cobrado,
+        'total_vencido': sum((d.saldo_pendiente for d in activos if d.esta_vencida), Decimal('0')),
+    }
+
+    por_revisar = DocumentoFactura.objects.filter(estado_revision='pendiente').count()
+
     ctx = {
-        'documentos': qs,
+        'documentos': documentos,
+        'resumen': resumen,
+        'por_revisar': por_revisar,
         'clientes': Cliente.objects.order_by('nombre'),
         'filtros': {
             'tipo': tipo, 'cliente': cliente_id, 'producto': producto,
-            'estado': estado, 'desde': desde, 'hasta': hasta,
+            'estado': estado, 'revision': revision, 'q': q,
+            'desde': desde, 'hasta': hasta,
         },
         'tipo_choices': DocumentoFactura.TIPO_CHOICES,
         'estado_choices': DocumentoFactura.ESTADO_PAGO_CHOICES,
@@ -80,6 +98,27 @@ def factura_detalle(request, pk):
 
 
 @login_required
+@permission_required(_perm('ver_facturas'), raise_exception=True)
+@facturas_enabled
+@xframe_options_sameorigin
+def factura_pdf(request, pk):
+    """Sirve el PDF del documento de forma protegida (inline para previsualizar).
+
+    El media no se publica directamente; este endpoint exige el permiso de facturas.
+    """
+    doc = get_object_or_404(DocumentoFactura, pk=pk)
+    if not doc.archivo_pdf:
+        raise Http404('El documento no tiene PDF.')
+    try:
+        archivo = doc.archivo_pdf.open('rb')
+    except (FileNotFoundError, ValueError):
+        raise Http404('Archivo no encontrado.')
+    resp = FileResponse(archivo, content_type='application/pdf')
+    resp['Content-Disposition'] = f'inline; filename="{doc.numero_documento or doc.pk}.pdf"'
+    return resp
+
+
+@login_required
 @permission_required(_perm('gestionar_facturas'), raise_exception=True)
 @facturas_enabled
 def factura_upload(request):
@@ -91,6 +130,11 @@ def factura_upload(request):
             tipo = form.cleaned_data['tipo_documento']
             producto = form.cleaned_data['producto']
             archivo = form.cleaned_data['archivo_pdf']
+
+            # Auto-detección del tipo desde el nombre del archivo si no se eligió.
+            if not tipo:
+                nombre = getattr(archivo, 'name', '') if archivo else ''
+                tipo = invoice_service.detectar_tipo(nombre)
 
             datos = {}
             if archivo:
@@ -119,12 +163,21 @@ def factura_editar(request, pk):
         form = DocumentoEditarForm(request.POST, instance=doc)
         if form.is_valid():
             doc = form.save()
+            if request.POST.get('accion') == 'guardar_revisar':
+                doc.estado_revision = 'revisada'
+                doc.save(update_fields=['estado_revision', 'updated_at'])
+                messages.success(request, 'Documento actualizado y marcado como revisado.')
+            else:
+                messages.success(request, 'Documento actualizado.')
             status_service.actualizar_estado_pago(doc)
-            messages.success(request, 'Documento actualizado.')
             return redirect('factura_detalle', pk=doc.pk)
     else:
         form = DocumentoEditarForm(instance=doc)
-    return render(request, 'facturas/form_editar.html', {'form': form, 'doc': doc})
+    # Mapa cliente→días de crédito para calcular el vencimiento en vivo en el form.
+    dias_credito = {str(c.pk): c.dias_credito for c in Cliente.objects.all()}
+    return render(request, 'facturas/form_editar.html', {
+        'form': form, 'doc': doc, 'dias_credito_json': json.dumps(dias_credito),
+    })
 
 
 @login_required
