@@ -1,6 +1,8 @@
 """facturas.py — Vistas del módulo Facturas (dashboard, listado, detalle, alta)."""
 from .common import *  # noqa: F401,F403
 
+from urllib.parse import urlsplit
+
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
@@ -17,7 +19,12 @@ def _safe_return_url(request):
         allowed_hosts={request.get_host()},
         require_https=request.is_secure(),
     ):
-        return url
+        parts = urlsplit(url)
+        path = parts.path
+        if not path.startswith('/'):
+            return fallback
+        query = f'?{parts.query}' if parts.query else ''
+        return f'{path}{query}'
     return fallback
 
 

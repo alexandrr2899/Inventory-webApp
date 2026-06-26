@@ -238,6 +238,12 @@ class MejorasUXTests(TestCase):
         resp = self.client.get(reverse('facturas_lista'))
         self.assertEqual(resp.context['facturas_por_revisar'], 1)
 
+    def test_detalle_normaliza_referer_a_ruta_local(self):
+        self.client.force_login(self.admin)
+        referer = 'http://testserver' + reverse('facturas_lista') + '?revision=pendiente'
+        resp = self.client.get(reverse('factura_detalle', args=[self.doc.pk]), HTTP_REFERER=referer)
+        self.assertEqual(resp.context['return_url'], reverse('facturas_lista') + '?revision=pendiente')
+
     def test_guardar_y_revisar(self):
         self.client.force_login(self.admin)
         next_url = reverse('facturas_lista') + '?revision=pendiente'
@@ -250,6 +256,17 @@ class MejorasUXTests(TestCase):
         })
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp['Location'], next_url)
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.estado_revision, 'revisada')
+
+    def test_marcar_revisada_normaliza_next_absoluto(self):
+        self.client.force_login(self.admin)
+        next_url = 'http://testserver' + reverse('facturas_lista') + '?revision=pendiente'
+        resp = self.client.post(reverse('factura_revisar', args=[self.doc.pk]), {
+            'next': next_url,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], reverse('facturas_lista') + '?revision=pendiente')
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.estado_revision, 'revisada')
 
