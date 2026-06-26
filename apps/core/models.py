@@ -131,6 +131,10 @@ class Cliente(models.Model):
     telefono = models.CharField(max_length=20, blank=True)
     rtn = models.CharField(max_length=20, blank=True, verbose_name='RTN')
     direccion = models.TextField(blank=True, verbose_name='Dirección')
+    dias_credito = models.PositiveIntegerField(
+        default=0, verbose_name='Días de crédito',
+        help_text='Días para calcular el vencimiento de facturas y envíos (0 = contado).',
+    )
     activo = models.BooleanField(default=True)
 
     class Meta:
@@ -570,6 +574,35 @@ class DocumentoFactura(models.Model):
             return False
         delta = (self.fecha_vencimiento - timezone.localdate()).days
         return 0 <= delta <= 7
+
+    @property
+    def esta_vencida(self):
+        """Vencida de forma dinámica: con saldo, pasada la fecha y no anulada.
+
+        No depende de que ``estado_pago`` esté recalculado (evita necesitar un cron).
+        """
+        return (
+            self.estado_pago != 'anulada'
+            and bool(self.fecha_vencimiento)
+            and self.fecha_vencimiento < timezone.localdate()
+            and self.saldo_pendiente > 0
+        )
+
+    @property
+    def dias_atraso(self):
+        """Días de atraso si está vencida; 0 en otro caso."""
+        if not self.esta_vencida:
+            return 0
+        return (timezone.localdate() - self.fecha_vencimiento).days
+
+    @property
+    def dias_para_vencer(self):
+        """Días que faltan para el vencimiento (None si no aplica o ya venció/pagó)."""
+        if (self.estado_pago in ('anulada', 'pagada') or not self.fecha_vencimiento
+                or self.saldo_pendiente <= 0):
+            return None
+        delta = (self.fecha_vencimiento - timezone.localdate()).days
+        return delta if delta >= 0 else None
 
 
 class PagoFactura(models.Model):

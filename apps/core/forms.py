@@ -62,12 +62,13 @@ class MaquinaForm(forms.ModelForm):
 class ClienteForm(forms.ModelForm):
     class Meta:
         model = Cliente
-        fields = ['nombre', 'telefono', 'rtn', 'direccion', 'activo']
+        fields = ['nombre', 'telefono', 'rtn', 'direccion', 'dias_credito', 'activo']
         widgets = {
             'nombre': forms.TextInput(attrs={'class': 'form-control'}),
             'telefono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: +504 9999-9999'}),
             'rtn': forms.TextInput(attrs={'class': 'form-control'}),
             'direccion': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'dias_credito': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'placeholder': '0 = contado'}),
             'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
@@ -431,7 +432,8 @@ class DocumentoUploadForm(forms.Form):
         widget=forms.Select(attrs={'class': 'form-select'}),
     )
     tipo_documento = forms.ChoiceField(
-        choices=DocumentoFactura.TIPO_CHOICES,
+        choices=[('', 'Auto-detectar por nombre')] + list(DocumentoFactura.TIPO_CHOICES),
+        required=False,
         widget=forms.Select(attrs={'class': 'form-select'}),
     )
     producto = forms.ChoiceField(
@@ -457,8 +459,8 @@ class DocumentoEditarForm(forms.ModelForm):
             'cliente': forms.Select(attrs={'class': 'form-select'}),
             'tipo_documento': forms.Select(attrs={'class': 'form-select'}),
             'numero_documento': forms.TextInput(attrs={'class': 'form-control'}),
-            'fecha_documento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'fecha_vencimiento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'fecha_documento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'fecha_vencimiento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
             'producto': forms.Select(attrs={'class': 'form-select'}),
             'total_libras': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'precio_por_libra': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
@@ -475,7 +477,7 @@ class PagoFacturaForm(forms.ModelForm):
         model = PagoFactura
         fields = ['fecha_pago', 'metodo_pago', 'monto', 'referencia', 'comprobante', 'notas']
         widgets = {
-            'fecha_pago': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'fecha_pago': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
             'metodo_pago': forms.Select(attrs={'class': 'form-select'}),
             'monto': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'referencia': forms.TextInput(attrs={'class': 'form-control'}),
@@ -492,7 +494,7 @@ class TarifaClienteForm(forms.ModelForm):
             'producto': forms.Select(attrs={'class': 'form-select'}),
             'precio_por_libra': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'fecha_inicio': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'fecha_fin': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'fecha_inicio': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'fecha_fin': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
             'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }

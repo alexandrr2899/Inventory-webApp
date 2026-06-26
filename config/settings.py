@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.humanize',   # formato de miles (intcomma)
     'axes',          # brute-force login protection
     'apps.core',
 ]
@@ -175,6 +176,9 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Interruptor del módulo Facturas (Factura + Envío). Apagarlo lo oculta por
 # completo (menú, tab de cliente y rutas → 404). No afecta inventario ni stock.
 FACTURAS_MODULE_ENABLED = config('FACTURAS_MODULE_ENABLED', default=True, cast=bool)
+# Token para el endpoint de ingesta automática (n8n → /facturas/api/ingest/).
+# Vacío = endpoint deshabilitado. Generá uno largo y secreto.
+FACTURAS_INGEST_TOKEN = config('FACTURAS_INGEST_TOKEN', default='')
 
 # ─── MISC ─────────────────────────────────────────────────────────────────────
 

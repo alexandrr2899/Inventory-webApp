@@ -1,4 +1,5 @@
 """invoice_service — alta de documentos (Factura/Envío) desde PDF o datos."""
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -10,9 +11,15 @@ from .pdf_extractors import filename_extractor
 
 # Campos que un extractor puede aportar y que se copian directo al documento.
 _CAMPOS_DIRECTOS = (
-    'numero_documento', 'fecha_documento', 'subtotal', 'isv',
+    'numero_documento', 'fecha_documento', 'fecha_vencimiento', 'subtotal', 'isv',
     'monto_total', 'total_libras', 'producto',
 )
+
+
+def detectar_tipo(nombre_archivo, default='factura'):
+    """Detecta 'factura'/'envio' a partir del nombre del archivo; default si no se puede."""
+    datos = filename_extractor.extraer_de_nombre(nombre_archivo or '')
+    return datos.get('tipo_documento', default)
 
 
 def previsualizar(tipo_documento, archivo):
@@ -67,6 +74,11 @@ def crear_documento(*, cliente, tipo_documento, archivo=None, producto=None,
     for campo in _CAMPOS_DIRECTOS:
         if campo in datos and datos[campo] is not None:
             setattr(doc, campo, datos[campo])
+
+    # Vencimiento automático: fecha del documento + días de crédito del cliente
+    # (solo si no vino un vencimiento explícito en los datos).
+    if not doc.fecha_vencimiento and doc.fecha_documento and cliente.dias_credito:
+        doc.fecha_vencimiento = doc.fecha_documento + timedelta(days=cliente.dias_credito)
 
     if tipo_documento == 'envio':
         prod = producto or doc.producto
