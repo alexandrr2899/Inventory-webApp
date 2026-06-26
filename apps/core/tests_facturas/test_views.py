@@ -238,11 +238,17 @@ class MejorasUXTests(TestCase):
         resp = self.client.get(reverse('facturas_lista'))
         self.assertEqual(resp.context['facturas_por_revisar'], 1)
 
-    def test_detalle_normaliza_referer_a_ruta_local(self):
+    def test_detalle_no_usa_referer_como_retorno(self):
         self.client.force_login(self.admin)
         referer = 'http://testserver' + reverse('facturas_lista') + '?revision=pendiente'
         resp = self.client.get(reverse('factura_detalle', args=[self.doc.pk]), HTTP_REFERER=referer)
-        self.assertEqual(resp.context['return_url'], reverse('facturas_lista') + '?revision=pendiente')
+        self.assertEqual(resp.context['return_url'], reverse('facturas_lista'))
+
+    def test_lista_pasa_next_a_detalle(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'), {'revision': 'pendiente'})
+        detalle_url = reverse('factura_detalle', args=[self.doc.pk])
+        self.assertContains(resp, detalle_url + '?next=/facturas/%3Frevision%3Dpendiente')
 
     def test_guardar_y_revisar(self):
         self.client.force_login(self.admin)

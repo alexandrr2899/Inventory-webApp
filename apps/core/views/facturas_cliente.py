@@ -41,4 +41,5 @@ def cliente_facturas_fragment(request, pk):
         'tipo_filtro': tipo,
         'desde': desde,
         'hasta': hasta,
+        'return_url': reverse('cliente_salidas', args=[cliente.pk]),
     })

@@ -150,7 +150,7 @@
       </thead>
       <tbody>
         {% for doc in documentos %}
-        <tr class="fac-row" style="cursor:pointer{% if doc.producto == 'camiseta' %};border-left:4px solid #fd7e14{% endif %}" data-href="{% url 'factura_detalle' doc.pk %}">
+        <tr class="fac-row" style="cursor:pointer{% if doc.producto == 'camiseta' %};border-left:4px solid #fd7e14{% endif %}" data-href="{% url 'factura_detalle' doc.pk %}?next={{ return_url|urlencode }}">
           <td class="px-3">
             {% if doc.tipo_documento == 'envio' %}
             <span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-truck me-1"></i>Envío</span>
@@ -173,7 +173,7 @@
           <td>{% include "facturas/_badges.html" with doc=doc %}</td>
           <td class="text-center px-3" data-norow="1">
             <div class="d-flex gap-1 justify-content-center flex-wrap">
-              <a href="{% url 'factura_detalle' doc.pk %}" class="btn btn-sm btn-outline-primary" title="Ver detalle">
+              <a href="{% url 'factura_detalle' doc.pk %}?next={{ return_url|urlencode }}" class="btn btn-sm btn-outline-primary" title="Ver detalle">
                 <i class="bi bi-eye"></i>
               </a>
               {% if doc.archivo_pdf %}

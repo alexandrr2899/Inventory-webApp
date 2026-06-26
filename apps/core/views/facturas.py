@@ -13,7 +13,7 @@ from ..services.facturas import invoice_service, status_service
 
 def _safe_return_url(request):
     fallback = reverse('facturas_lista')
-    url = request.POST.get('next') or request.GET.get('next') or request.META.get('HTTP_REFERER') or ''
+    url = request.POST.get('next') or request.GET.get('next') or ''
     if url_has_allowed_host_and_scheme(
         url=url,
         allowed_hosts={request.get_host()},
@@ -100,6 +100,7 @@ def facturas_lista(request):
         'tipo_choices': DocumentoFactura.TIPO_CHOICES,
         'estado_choices': DocumentoFactura.ESTADO_PAGO_CHOICES,
         'producto_choices': DocumentoFactura._meta.get_field('producto').choices,
+        'return_url': request.get_full_path(),
     }
     return render(request, 'facturas/lista.html', ctx)
 

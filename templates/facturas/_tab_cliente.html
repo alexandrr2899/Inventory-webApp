@@ -80,7 +80,7 @@
           <span class="badge bg-primary-subtle text-primary-emphasis">Factura</span>
           {% endif %}
         </td>
-        <td><a href="{% url 'factura_detalle' doc.pk %}">{{ doc.numero_documento|default:doc.pk }}</a></td>
+        <td><a href="{% url 'factura_detalle' doc.pk %}?next={{ return_url|urlencode }}">{{ doc.numero_documento|default:doc.pk }}</a></td>
         <td>{% include "facturas/_producto.html" with doc=doc %}</td>
         <td class="text-nowrap">{{ doc.fecha_documento|date:"d/m/Y"|default:"—" }}</td>
         <td class="text-nowrap">{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</td>
