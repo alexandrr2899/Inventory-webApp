@@ -18,13 +18,47 @@
   <div>
     <h1><i class="bi bi-person-lines-fill me-2"></i>{{ cliente.nombre }}</h1>
     <small class="opacity-75">
-      Salidas por fecha de movimiento · {{ fecha_inicio|date:"d/m/Y" }} → {{ fecha_fin|date:"d/m/Y" }}
+      Ficha del cliente
+      {% if cliente.dias_credito %}· <i class="bi bi-credit-card me-1"></i>{{ cliente.dias_credito }} días de crédito{% else %}· contado{% endif %}
+      {% if cliente.telefono %}· <i class="bi bi-telephone me-1"></i>{{ cliente.telefono }}{% endif %}
     </small>
   </div>
-  <a href="{% url 'cliente_lista' %}" class="btn btn-light btn-sm fw-semibold">
-    <i class="bi bi-arrow-left me-1"></i>Clientes
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{% url 'cliente_editar' cliente.pk %}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-pencil me-1"></i>Editar
+    </a>
+    <a href="{% url 'cliente_lista' %}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-arrow-left me-1"></i>Clientes
+    </a>
+  </div>
 </div>
+
+{% if facturas_enabled and perms.core.ver_facturas %}
+<ul class="nav nav-tabs mb-3" id="clienteTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-productos-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-productos" type="button" role="tab">
+      <i class="bi bi-box-seam me-1"></i>Productos llevados
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-facturas-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-facturas" type="button" role="tab"
+            data-url="{% url 'cliente_facturas_fragment' cliente.pk %}">
+      <i class="bi bi-receipt me-1"></i>Facturas
+    </button>
+  </li>
+  <li class="nav-item ms-auto" role="presentation">
+    {% if perms.core.gestionar_tarifas %}
+    <a class="nav-link" href="{% url 'cliente_tarifas' cliente.pk %}">
+      <i class="bi bi-tags me-1"></i>Tarifas
+    </a>
+    {% endif %}
+  </li>
+</ul>
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="tab-productos" role="tabpanel">
+{% endif %}
 
 <div class="card mb-4 filters-card">
   <div class="card-body py-2 px-3">
@@ -230,4 +264,84 @@
   <div class="card"><div class="card-body text-center text-muted py-4">Sin movimientos.</div></div>
   {% endfor %}
 </div>
+
+{% if facturas_enabled and perms.core.ver_facturas %}
+  </div>{# /tab-productos #}
+  <div class="tab-pane fade" id="tab-facturas" role="tabpanel">
+    <div id="facturas-cont" class="text-center text-muted py-4">
+      <span class="spinner-border spinner-border-sm"></span> Cargando facturas…
+    </div>
+  </div>
+</div>{# /tab-content #}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if facturas_enabled and perms.core.ver_facturas %}
+<script>
+(function () {
+  var btn = document.getElementById('tab-facturas-btn');
+  var cont = document.getElementById('facturas-cont');
+  if (!btn) return;
+  var base = btn.getAttribute('data-url');
+  var cargado = false;
+
+  function rangoFechas(rango) {
+    function iso(d) {
+      return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+    }
+    var hoy = new Date();
+    if (rango === 'hoy')   return { desde: iso(hoy), hasta: iso(hoy) };
+    if (rango === 'semana') {
+      var d = new Date(hoy); d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return { desde: iso(d), hasta: iso(hoy) };
+    }
+    if (rango === 'mes')  return { desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso(hoy) };
+    if (rango === 'anio') return { desde: iso(new Date(hoy.getFullYear(), 0, 1)), hasta: iso(hoy) };
+    return { desde: '', hasta: '' };
+  }
+
+  function cargar(qs) {
+    cont.innerHTML = '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm"></span> Cargando…</div>';
+    fetch(base + (qs ? ('?' + qs) : ''), {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(function (r) { return r.text(); })
+      .then(function (html) { cont.innerHTML = html; bind(); })
+      .catch(function () { cont.innerHTML = '<div class="alert alert-danger">Error al cargar.</div>'; });
+  }
+
+  function recargar() {
+    var form = cont.querySelector('#fac-filtros');
+    cargar(new URLSearchParams(new FormData(form)).toString());
+  }
+
+  function bind() {
+    var form = cont.querySelector('#fac-filtros');
+    if (!form) return;
+    cont.querySelectorAll('.filtro-fac').forEach(function (b) {
+      b.addEventListener('click', function () {
+        cont.querySelector('#fac-tipo').value = b.getAttribute('data-tipo');
+        recargar();
+      });
+    });
+    cont.querySelectorAll('.preset-fac').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var r = rangoFechas(b.getAttribute('data-rango'));
+        form.querySelector('[name=desde]').value = r.desde;
+        form.querySelector('[name=hasta]').value = r.hasta;
+        recargar();
+      });
+    });
+    cont.querySelectorAll('.fac-fecha').forEach(function (i) {
+      i.addEventListener('change', recargar);
+    });
+  }
+
+  btn.addEventListener('shown.bs.tab', function () {
+    if (!cargado) { cargado = true; cargar(''); }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

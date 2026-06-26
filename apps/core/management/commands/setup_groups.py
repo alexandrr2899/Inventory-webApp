@@ -13,6 +13,9 @@ GRUPOS = {
         # Gestión de movimientos (solo admin)
         'editar_movimiento', 'anular_movimiento', 'eliminar_movimiento',
         'gestionar_backups',
+        # Módulo Facturas (exclusivo de Administrador)
+        'ver_facturas', 'gestionar_facturas', 'registrar_pago_factura',
+        'anular_factura', 'gestionar_tarifas',
     ],
     'Supervisor': [
         'ver_inventario', 'registrar_entrada', 'registrar_salida',

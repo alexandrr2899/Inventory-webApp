@@ -4,7 +4,8 @@ from django.contrib.auth.models import User, Group
 from decimal import Decimal
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
-    MovimientoInventario, Conteo, ConteoDetalle
+    MovimientoInventario, Conteo, ConteoDetalle,
+    DocumentoFactura, TarifaCliente, PagoFactura,
 )
 
 
@@ -61,12 +62,13 @@ class MaquinaForm(forms.ModelForm):
 class ClienteForm(forms.ModelForm):
     class Meta:
         model = Cliente
-        fields = ['nombre', 'telefono', 'rtn', 'direccion', 'activo']
+        fields = ['nombre', 'telefono', 'rtn', 'direccion', 'dias_credito', 'activo']
         widgets = {
             'nombre': forms.TextInput(attrs={'class': 'form-control'}),
             'telefono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: +504 9999-9999'}),
             'rtn': forms.TextInput(attrs={'class': 'form-control'}),
             'direccion': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'dias_credito': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'placeholder': '0 = contado'}),
             'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
@@ -422,3 +424,77 @@ class FiltroMovimientosForm(forms.Form):
         label='Ítem',
         empty_label='Todos los ítems'
     )
+
+
+class DocumentoUploadForm(forms.Form):
+    cliente = forms.ModelChoiceField(
+        queryset=Cliente.objects.filter(activo=True).order_by('nombre'),
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+    tipo_documento = forms.ChoiceField(
+        choices=[('', 'Auto-detectar por nombre')] + list(DocumentoFactura.TIPO_CHOICES),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+    producto = forms.ChoiceField(
+        choices=[('', '—')] + list(DocumentoFactura._meta.get_field('producto').choices),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+    archivo_pdf = forms.FileField(
+        required=False,
+        widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'application/pdf'}),
+    )
+
+
+class DocumentoEditarForm(forms.ModelForm):
+    class Meta:
+        model = DocumentoFactura
+        fields = [
+            'cliente', 'tipo_documento', 'numero_documento', 'fecha_documento',
+            'fecha_vencimiento', 'producto', 'total_libras', 'precio_por_libra',
+            'subtotal', 'isv', 'monto_total', 'estado_revision', 'notas',
+        ]
+        widgets = {
+            'cliente': forms.Select(attrs={'class': 'form-select'}),
+            'tipo_documento': forms.Select(attrs={'class': 'form-select'}),
+            'numero_documento': forms.TextInput(attrs={'class': 'form-control'}),
+            'fecha_documento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'fecha_vencimiento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'producto': forms.Select(attrs={'class': 'form-select'}),
+            'total_libras': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'precio_por_libra': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'subtotal': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'isv': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'monto_total': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'estado_revision': forms.Select(attrs={'class': 'form-select'}),
+            'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+
+class PagoFacturaForm(forms.ModelForm):
+    class Meta:
+        model = PagoFactura
+        fields = ['fecha_pago', 'metodo_pago', 'monto', 'referencia', 'comprobante', 'notas']
+        widgets = {
+            'fecha_pago': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'metodo_pago': forms.Select(attrs={'class': 'form-select'}),
+            'monto': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'referencia': forms.TextInput(attrs={'class': 'form-control'}),
+            'comprobante': forms.ClearableFileInput(attrs={'class': 'form-control'}),
+            'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+
+class TarifaClienteForm(forms.ModelForm):
+    class Meta:
+        model = TarifaCliente
+        fields = ['producto', 'precio_por_libra', 'activa', 'fecha_inicio', 'fecha_fin', 'notas']
+        widgets = {
+            'producto': forms.Select(attrs={'class': 'form-select'}),
+            'precio_por_libra': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'fecha_inicio': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'fecha_fin': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }

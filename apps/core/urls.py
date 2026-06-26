@@ -79,4 +79,23 @@ urlpatterns = [
     # API
     path('api/item/<int:pk>/info/', views.api_item_info, name='api_item_info'),
     path('api/categoria/nueva/', views.api_categoria_nueva, name='api_categoria_nueva'),
+
+    # ── Facturas ──────────────────────────────────────────────────────────────
+    # La raíz del módulo es directamente la lista de documentos (con resumen).
+    path('facturas/', views.facturas_lista, name='facturas_lista'),
+    path('facturas/documentos/nuevo/', views.factura_upload, name='factura_upload'),
+    path('facturas/documentos/lote/', views.factura_lote, name='factura_lote'),
+    path('facturas/documentos/lote/confirmar/', views.factura_lote_confirmar, name='factura_lote_confirmar'),
+    path('facturas/documentos/<int:pk>/', views.factura_detalle, name='factura_detalle'),
+    path('facturas/documentos/<int:pk>/pdf/', views.factura_pdf, name='factura_pdf'),
+    path('facturas/documentos/<int:pk>/editar/', views.factura_editar, name='factura_editar'),
+    path('facturas/documentos/<int:pk>/revisar/', views.factura_revisar, name='factura_revisar'),
+    path('facturas/documentos/<int:pk>/anular/', views.factura_anular, name='factura_anular'),
+    path('facturas/documentos/<int:pk>/pago/', views.factura_pago_nuevo, name='factura_pago_nuevo'),
+    path('facturas/pagos/<int:pk>/borrar/', views.factura_pago_borrar, name='factura_pago_borrar'),
+    path('facturas/clientes/<int:pk>/tarifas/', views.cliente_tarifas, name='cliente_tarifas'),
+    path('facturas/tarifas/<int:pk>/toggle/', views.cliente_tarifa_toggle, name='cliente_tarifa_toggle'),
+    path('facturas/clientes/<int:pk>/fragmento/', views.cliente_facturas_fragment, name='cliente_facturas_fragment'),
+    # Ingesta automática (n8n → Google Drive). Auth por token, sin sesión.
+    path('facturas/api/ingest/', views.factura_api_ingest, name='factura_api_ingest'),
 ]

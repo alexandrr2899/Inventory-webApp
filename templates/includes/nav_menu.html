@@ -68,6 +68,22 @@
 </a>
 {% endif %}
 
+{% if facturas_enabled and perms.core.ver_facturas %}
+<span class="sidebar-section">Facturas</span>
+<a href="{% url 'facturas_lista' %}" class="nav-link {% if 'factura' in request.resolver_match.url_name %}active{% endif %}">
+  <i class="bi bi-receipt"></i> Facturas
+  {% if facturas_por_revisar %}<span class="badge bg-warning text-dark rounded-pill ms-1">{{ facturas_por_revisar }}</span>{% endif %}
+</a>
+{% if perms.core.gestionar_facturas %}
+<a href="{% url 'factura_upload' %}" class="nav-link {% if request.resolver_match.url_name == 'factura_upload' %}active{% endif %}">
+  <i class="bi bi-cloud-upload"></i> Subir documento
+</a>
+<a href="{% url 'factura_lote' %}" class="nav-link {% if 'lote' in request.resolver_match.url_name %}active{% endif %}">
+  <i class="bi bi-files"></i> Subir en bloque
+</a>
+{% endif %}
+{% endif %}
+
 {% if perms.core.ver_reportes %}
 <span class="sidebar-section">Reportes</span>
 <a href="{% url 'reporte_stock_bajo' %}" class="nav-link {% if request.resolver_match.url_name == 'reporte_stock_bajo' %}active{% endif %}">

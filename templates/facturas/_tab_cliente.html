@@ -1,0 +1,100 @@
+{% load facturas_extras %}
+<div class="row g-2 g-md-3 mb-3">
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Facturado</div>
+      <div class="fs-5 fw-bold">L {{ resumen.total_facturado|moneda }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Pagado</div>
+      <div class="fs-5 fw-bold text-success">L {{ resumen.total_pagado|moneda }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Pendiente</div>
+      <div class="fs-5 fw-bold {% if resumen.total_pendiente > 0 %}text-warning{% endif %}">L {{ resumen.total_pendiente|moneda }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Vencido</div>
+      <div class="fs-5 fw-bold {% if resumen.total_vencido > 0 %}text-danger{% endif %}">L {{ resumen.total_vencido|moneda }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Facturas</div>
+      <div class="fs-5 fw-bold">{{ resumen.num_facturas }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="card h-100 border-0 shadow-sm"><div class="card-body py-2 px-3">
+      <div class="text-muted small text-uppercase">Envíos</div>
+      <div class="fs-5 fw-bold">{{ resumen.num_envios }}</div>
+    </div></div>
+  </div>
+</div>
+
+{# Controles de filtro — el JS de la tab los lee y recarga el fragmento por AJAX #}
+<form id="fac-filtros" class="d-flex flex-wrap align-items-end gap-2 mb-3" onsubmit="return false;">
+  <input type="hidden" name="tipo" id="fac-tipo" value="{{ tipo_filtro }}">
+  <div class="btn-group btn-group-sm" role="group">
+    <button type="button" class="btn btn-outline-primary filtro-fac {% if not tipo_filtro %}active{% endif %}" data-tipo="">Todos</button>
+    <button type="button" class="btn btn-outline-primary filtro-fac {% if tipo_filtro == 'factura' %}active{% endif %}" data-tipo="factura">Facturas</button>
+    <button type="button" class="btn btn-outline-primary filtro-fac {% if tipo_filtro == 'envio' %}active{% endif %}" data-tipo="envio">Envíos</button>
+  </div>
+  <div class="btn-group btn-group-sm" role="group">
+    <button type="button" class="btn btn-outline-secondary preset-fac" data-rango="hoy">Hoy</button>
+    <button type="button" class="btn btn-outline-secondary preset-fac" data-rango="semana">Semana</button>
+    <button type="button" class="btn btn-outline-secondary preset-fac" data-rango="mes">Mes</button>
+    <button type="button" class="btn btn-outline-secondary preset-fac" data-rango="anio">Año</button>
+    <button type="button" class="btn btn-outline-secondary preset-fac" data-rango="todo">Todo</button>
+  </div>
+  <div>
+    <label class="form-label mb-0 small text-muted">Desde</label>
+    <input type="date" name="desde" class="form-control form-control-sm fac-fecha" value="{{ desde }}" style="max-width:160px">
+  </div>
+  <div>
+    <label class="form-label mb-0 small text-muted">Hasta</label>
+    <input type="date" name="hasta" class="form-control form-control-sm fac-fecha" value="{{ hasta }}" style="max-width:160px">
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle">
+    <thead class="table-light"><tr>
+      <th>Tipo</th><th>Número</th><th>Producto</th><th>Fecha</th><th>Vencimiento</th>
+      <th class="text-end">Libras</th><th class="text-end">Precio</th><th class="text-end">Total</th>
+      <th class="text-end">Pagado</th><th class="text-end">Saldo</th><th>Estado</th><th>PDF</th>
+    </tr></thead>
+    <tbody>
+    {% for doc in documentos %}
+      <tr {% if doc.producto == 'camiseta' %}style="border-left:4px solid #fd7e14"{% endif %}>
+        <td>
+          {% if doc.tipo_documento == 'envio' %}
+          <span class="badge bg-info-subtle text-info-emphasis">Envío</span>
+          {% else %}
+          <span class="badge bg-primary-subtle text-primary-emphasis">Factura</span>
+          {% endif %}
+        </td>
+        <td><a href="{% url 'factura_detalle' doc.pk %}">{{ doc.numero_documento|default:doc.pk }}</a></td>
+        <td>{% include "facturas/_producto.html" with doc=doc %}</td>
+        <td class="text-nowrap">{{ doc.fecha_documento|date:"d/m/Y"|default:"—" }}</td>
+        <td class="text-nowrap">{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</td>
+        <td class="text-end">{{ doc.total_libras|default:"—" }}</td>
+        <td class="text-end">{{ doc.precio_por_libra|default:"—" }}</td>
+        <td class="text-end fw-bold">L {{ doc.monto_total|moneda }}</td>
+        <td class="text-end text-success">L {{ doc.monto_pagado|moneda }}</td>
+        <td class="text-end {% if doc.saldo_pendiente > 0 %}text-danger fw-bold{% endif %}">L {{ doc.saldo_pendiente|moneda }}</td>
+        <td>{% include "facturas/_badges.html" with doc=doc %}</td>
+        <td>{% if doc.archivo_pdf %}<a href="{% url 'factura_pdf' doc.pk %}" target="_blank" title="PDF"><i class="bi bi-file-earmark-pdf-fill text-danger"></i></a>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="12" class="text-center text-muted py-3">Sin documentos para los filtros seleccionados.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

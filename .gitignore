@@ -34,6 +34,11 @@ Thumbs.db
 
 # ── Herramientas de desarrollo / IA ──────────────────────────────────────────
 .claude/
+.superpowers/
+.playwright-mcp/
 
 # Override de compose para pruebas locales (no se versiona)
 docker-compose.test.yml
+
+# ── Facturas: PDFs de muestra (datos reales de clientes, no versionar) ────────
+docs/facturas/samples/*.pdf

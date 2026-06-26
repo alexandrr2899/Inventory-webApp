@@ -65,6 +65,16 @@ def _perm(codename):
     return f'core.{codename}'
 
 
+def facturas_enabled(viewfunc):
+    """Devuelve 404 si el módulo Facturas está desactivado por configuración."""
+    @wraps(viewfunc)
+    def _wrapped(request, *args, **kwargs):
+        if not getattr(settings, 'FACTURAS_MODULE_ENABLED', False):
+            raise Http404('Módulo Facturas desactivado.')
+        return viewfunc(request, *args, **kwargs)
+    return _wrapped
+
+
 def _json_safe(data):
     """
     JSON seguro para incrustar dentro de <script>.
