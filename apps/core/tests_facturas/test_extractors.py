@@ -101,6 +101,19 @@ class FilenameExtractorTests(TestCase):
         self.assertEqual(d['producto'], 'camiseta')
         self.assertEqual(d['cliente_nombre'], 'Walter Aguilera')
 
+    def test_envio_sin_palabra_envio(self):
+        d = filename_extractor.extraer_de_nombre('Antonio Sanchez camiseta 126.pdf')
+        self.assertEqual(d['tipo_documento'], 'envio')
+        self.assertEqual(d['numero_documento'], '126')
+        self.assertEqual(d['producto'], 'camiseta')
+        self.assertEqual(d['cliente_nombre'], 'Antonio Sanchez')
+
+    def test_envio_sin_fact_usa_numero_final_y_cliente(self):
+        d = filename_extractor.extraer_de_nombre('Antonio Sanchez 126.pdf')
+        self.assertEqual(d['tipo_documento'], 'envio')
+        self.assertEqual(d['numero_documento'], '126')
+        self.assertEqual(d['cliente_nombre'], 'Antonio Sanchez')
+
 
 # ---------------------------------------------------------------------------
 # FacturaRealTests — texto posicional real

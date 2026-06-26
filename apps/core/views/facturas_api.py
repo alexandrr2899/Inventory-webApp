@@ -9,7 +9,7 @@ from .common import *  # noqa: F401,F403
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 
-from ..models import DocumentoFactura
+from ..models import Cliente, DocumentoFactura
 from ..services.facturas import bulk_service, invoice_service
 from ..services.facturas.pdf_extractors import filename_extractor
 
@@ -20,6 +20,17 @@ def _token_valido(request):
         return None  # endpoint deshabilitado (sin token configurado)
     recibido = request.META.get('HTTP_X_API_KEY', '')
     return constant_time_compare(recibido, esperado)
+
+
+def _cliente_sin_identificar():
+    cliente, _created = Cliente.objects.get_or_create(
+        nombre='Sin identificar',
+        defaults={'activo': True},
+    )
+    if not cliente.activo:
+        cliente.activo = True
+        cliente.save(update_fields=['activo'])
+    return cliente
 
 
 @csrf_exempt
@@ -42,13 +53,10 @@ def factura_api_ingest(request):
 
     tipo = invoice_service.detectar_tipo(archivo.name)
     nombre_cli = filename_extractor.extraer_de_nombre(archivo.name).get('cliente_nombre', '')
-    # En ingesta automática (sin revisión humana) exigimos match exacto de cliente.
     cliente = bulk_service.match_cliente(nombre_cli, solo_exacto=True)
-    if cliente is None:
-        return JsonResponse({
-            'ok': False, 'error': 'cliente no encontrado',
-            'cliente_sugerido': nombre_cli, 'archivo': archivo.name,
-        }, status=422)
+    requiere_revision = cliente is None
+    if requiere_revision:
+        cliente = _cliente_sin_identificar()
 
     archivo.seek(0)
     try:
@@ -74,8 +82,17 @@ def factura_api_ingest(request):
         producto=datos.get('producto'), datos=datos,
         texto_extraido=prev['texto_extraido'],
     )
+    if requiere_revision:
+        doc.notas = (
+            'Cliente no encontrado en ingesta automática.\n'
+            f'Cliente sugerido por archivo: {nombre_cli or "(sin nombre detectado)"}\n'
+            f'Archivo original: {archivo.name}'
+        )
+        doc.save(update_fields=['notas'])
     return JsonResponse({
         'ok': True, 'id': doc.pk, 'cliente': cliente.nombre,
         'tipo': doc.tipo_documento, 'numero': doc.numero_documento,
         'monto_total': str(doc.monto_total),
+        'requiere_revision': requiere_revision,
+        'cliente_sugerido': nombre_cli if requiere_revision else '',
     }, status=201)

@@ -14,9 +14,9 @@ _FACTURA = os.path.join(_SAMPLES, 'Fact 9543 Inversiones Zaga.pdf')
 TOKEN = 'secreto-de-prueba-123'
 
 
-def _factura_upload():
+def _factura_upload(nombre='Fact 9543 Inversiones Zaga.pdf'):
     with open(_FACTURA, 'rb') as fh:
-        return SimpleUploadedFile('Fact 9543 Inversiones Zaga.pdf', fh.read(),
+        return SimpleUploadedFile(nombre, fh.read(),
                                   content_type='application/pdf')
 
 
@@ -35,12 +35,21 @@ class IngestTokenTests(TestCase):
         resp = self.client.post(self.url, {}, HTTP_X_API_KEY=TOKEN)
         self.assertEqual(resp.status_code, 400)
 
-    def test_cliente_no_encontrado_422(self):
-        archivo = SimpleUploadedFile('Fact 1 Cliente Inexistente.pdf', b'%PDF-1.4 dummy',
-                                     content_type='application/pdf')
+    def test_cliente_no_encontrado_crea_sin_identificar_para_revision(self):
+        if not os.path.exists(_FACTURA):
+            self.skipTest('PDF de muestra ausente')
+        archivo = _factura_upload('Fact 9543 Cliente Inexistente.pdf')
         resp = self.client.post(self.url, {'archivo': archivo}, HTTP_X_API_KEY=TOKEN)
-        self.assertEqual(resp.status_code, 422)
-        self.assertFalse(resp.json()['ok'])
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertTrue(data['ok'])
+        self.assertTrue(data['requiere_revision'])
+        self.assertEqual(data['cliente'], 'Sin identificar')
+        self.assertEqual(data['cliente_sugerido'], 'Cliente Inexistente')
+        doc = DocumentoFactura.objects.get()
+        self.assertEqual(doc.cliente.nombre, 'Sin identificar')
+        self.assertIn('Cliente Inexistente', doc.notas)
+        self.assertEqual(Cliente.objects.filter(nombre='Sin identificar').count(), 1)
 
     def test_ingesta_ok_crea_documento(self):
         if not os.path.exists(_FACTURA):
