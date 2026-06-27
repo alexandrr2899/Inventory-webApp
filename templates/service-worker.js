@@ -6,9 +6,9 @@
    - CDN externo         → Cache First  (Bootstrap, icons — versionados por URL)
    ═══════════════════════════════════════════════════════════════════════ */
 
-const CACHE_APP    = 'bolsas-app-v3';
-const CACHE_STATIC = 'bolsas-static-v3';
-const CACHE_CDN    = 'bolsas-cdn-v3';
+const CACHE_APP    = 'bolsas-app-v4';
+const CACHE_STATIC = 'bolsas-static-v4';
+const CACHE_CDN    = 'bolsas-cdn-v4';
 
 // Assets CDN que se cachean al instalar
 const PRECACHE_CDN = [

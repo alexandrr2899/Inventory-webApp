@@ -201,6 +201,10 @@ body { background: var(--app-page-bg); }
   color: var(--app-text);
 }
 [data-bs-theme="dark"] .text-dark { color: var(--app-text) !important; }
+[data-bs-theme="dark"] .badge.bg-warning,
+[data-bs-theme="dark"] .badge.bg-warning.text-dark {
+  color: #111 !important;
+}
 [data-bs-theme="dark"] .border { border-color: var(--app-border) !important; }
 
 /* Tablas contextuales: Bootstrap las deja claras (fijas) aún en dark.
