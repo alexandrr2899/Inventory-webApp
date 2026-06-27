@@ -238,6 +238,18 @@ class MejorasUXTests(TestCase):
         resp = self.client.get(reverse('facturas_lista'))
         self.assertEqual(resp.context['facturas_por_revisar'], 1)
 
+    def test_contador_por_revisar_excluye_anuladas(self):
+        # Una factura anulada antes de revisarla NO debe contar como "por revisar".
+        DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura', numero_documento='ANU-PEND',
+            fecha_documento=timezone.localdate(), monto_total=Decimal('10.00'),
+            estado_revision='pendiente', estado_pago='anulada',
+        )
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'))
+        # Sigue siendo 1 (la pendiente de setUp); la anulada no suma.
+        self.assertEqual(resp.context['facturas_por_revisar'], 1)
+
     def test_detalle_no_usa_referer_como_retorno(self):
         self.client.force_login(self.admin)
         referer = 'http://testserver' + reverse('facturas_lista') + '?revision=pendiente'

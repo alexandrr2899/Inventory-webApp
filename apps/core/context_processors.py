@@ -9,7 +9,11 @@ def facturas_flags(request):
     user = getattr(request, 'user', None)
     if enabled and user is not None and user.is_authenticated and user.has_perm('core.ver_facturas'):
         from .models import DocumentoFactura
-        por_revisar = DocumentoFactura.objects.filter(estado_revision='pendiente').count()
+        # Las anuladas no cuentan como "por revisar" aunque sigan en estado_revision='pendiente'.
+        por_revisar = (DocumentoFactura.objects
+                       .filter(estado_revision='pendiente')
+                       .exclude(estado_pago='anulada')
+                       .count())
     return {
         'facturas_enabled': enabled,
         'facturas_por_revisar': por_revisar,

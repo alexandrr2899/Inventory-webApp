@@ -205,6 +205,13 @@ body { background: var(--app-page-bg); }
 [data-bs-theme="dark"] .badge.bg-warning.text-dark {
   color: #111 !important;
 }
+/* Badge amarillo: SIEMPRE fondo amarillo con texto negro (ambos temas).
+   Bootstrap pone .badge en blanco por defecto y el override de .text-dark en
+   tema oscuro lo aclara; esto lo fuerza a negro en todos los casos. */
+.badge.bg-warning,
+.badge.text-bg-warning {
+  color: #111 !important;
+}
 [data-bs-theme="dark"] .border { border-color: var(--app-border) !important; }
 
 /* Tablas contextuales: Bootstrap las deja claras (fijas) aún en dark.
