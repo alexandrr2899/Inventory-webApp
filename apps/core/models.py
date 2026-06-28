@@ -497,6 +497,32 @@ class TarifaCliente(models.Model):
         ).order_by('-fecha_inicio').first()
 
 
+class MetodoPago(models.Model):
+    TIPO_CHOICES = [
+        ('efectivo', 'Efectivo'),
+        ('transferencia', 'Transferencia'),
+        ('deposito', 'Depósito'),
+        ('cheque', 'Cheque'),
+        ('tarjeta', 'Tarjeta'),
+        ('otro', 'Otro'),
+    ]
+    nombre = models.CharField(max_length=80)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='otro')
+    activo = models.BooleanField(default=True)
+    orden = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Método de pago'
+        verbose_name_plural = 'Métodos de pago'
+        ordering = ['orden', 'nombre']
+        permissions = [
+            ('gestionar_metodos_pago', 'Puede gestionar métodos de pago'),
+        ]
+
+    def __str__(self):
+        return self.nombre
+
+
 class DocumentoFactura(models.Model):
     TIPO_CHOICES = [
         ('factura', 'Factura'),
