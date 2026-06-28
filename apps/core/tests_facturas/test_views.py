@@ -8,7 +8,8 @@ from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.core.models import Cliente, DocumentoFactura
+from apps.core.models import AplicacionPago, Cliente, DocumentoFactura, MetodoPago, Pago
+from apps.core.services.facturas import payment_service
 from apps.core.views.common import facturas_enabled
 
 
@@ -299,3 +300,60 @@ class MejorasUXTests(TestCase):
         self.assertEqual(resp['Location'], next_url)
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.estado_revision, 'revisada')
+
+
+@override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
+class BorrarPagoPreservaSaldoTests(TestCase):
+    """Verifica que factura_pago_borrar preserve el saldo a favor del cliente."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(username='admin_borrar', password='pass12345')
+        for p in Permission.objects.filter(codename__in=['ver_facturas', 'registrar_pago_factura']):
+            self.admin.user_permissions.add(p)
+        self.cliente = Cliente.objects.create(nombre='Cli Saldo')
+        self.met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+        hoy = timezone.localdate()
+        self.doc = DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura',
+            fecha_documento=hoy, monto_total=Decimal('100.00'),
+        )
+
+    def test_borrar_pago_completo_elimina_pago(self):
+        """Pago 1:1 con la factura — al borrar la aplicación, el Pago también desaparece."""
+        self.client.force_login(self.admin)
+        payment_service.registrar_abono(
+            self.cliente,
+            fecha_pago=timezone.localdate(), metodo_pago=self.met,
+            monto=Decimal('100.00'),
+            aplicaciones=[(self.doc, Decimal('100.00'))],
+        )
+        apl = AplicacionPago.objects.get(documento=self.doc)
+        pago_pk = apl.pago_id
+
+        resp = self.client.post(reverse('factura_pago_borrar', args=[apl.pk]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(AplicacionPago.objects.filter(pk=apl.pk).exists())
+        self.assertFalse(Pago.objects.filter(pk=pago_pk).exists())
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.monto_pagado, Decimal('0.00'))
+
+    def test_borrar_aplicacion_preserva_pago_con_saldo_a_favor(self):
+        """Abono de 150 con 100 aplicados → borrar la aplicación conserva el Pago (50 quedan como saldo)."""
+        self.client.force_login(self.admin)
+        payment_service.registrar_abono(
+            self.cliente,
+            fecha_pago=timezone.localdate(), metodo_pago=self.met,
+            monto=Decimal('150.00'),
+            aplicaciones=[(self.doc, Decimal('100.00'))],
+        )
+        apl = AplicacionPago.objects.get(documento=self.doc)
+        pago_pk = apl.pago_id
+
+        resp = self.client.post(reverse('factura_pago_borrar', args=[apl.pk]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(AplicacionPago.objects.filter(pk=apl.pk).exists())
+        self.assertTrue(Pago.objects.filter(pk=pago_pk).exists())
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.monto_pagado, Decimal('0.00'))
+        self.cliente.refresh_from_db()
+        self.assertEqual(self.cliente.saldo_a_favor, Decimal('150.00'))

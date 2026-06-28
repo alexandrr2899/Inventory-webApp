@@ -41,4 +41,4 @@ class PaymentServiceTests(TestCase):
         self.assertEqual(self.doc.estado_pago, 'pagada')
         self.doc.aplicaciones.all().delete()
         self.doc.refresh_from_db()
-        self.assertNotEqual(self.doc.estado_pago, 'pagada')
+        self.assertEqual(self.doc.estado_pago, 'pendiente')

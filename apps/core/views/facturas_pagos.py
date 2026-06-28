@@ -37,9 +37,13 @@ def factura_pago_borrar(request, pk):
     apl = get_object_or_404(AplicacionPago, pk=pk)
     doc_pk = apl.documento_id
     pago = apl.pago
-    apl.delete()  # signal recalcula estado
-    if not pago.aplicaciones.exists() and pago.monto == pago.saldo_sin_aplicar:
-        # pago quedó totalmente sin aplicar y sin uso: eliminarlo también
+    # ¿La aplicación cubría el pago completo? (sin saldo a favor asociado)
+    era_pago_completo = apl.monto == pago.monto
+    apl.delete()  # signal recalcula el estado del documento
+    # Solo se elimina el Pago si era un pago por factura completo y ya no le
+    # quedan aplicaciones; si había saldo a favor, el dinero vuelve a quedar
+    # disponible como crédito del cliente y el Pago se conserva.
+    if era_pago_completo and not pago.aplicaciones.exists():
         pago.delete()
     messages.success(request, 'Pago eliminado.')
     return redirect('factura_detalle', pk=doc_pk)

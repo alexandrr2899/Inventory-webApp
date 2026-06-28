@@ -5,7 +5,7 @@ from decimal import Decimal
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, Conteo, ConteoDetalle,
-    DocumentoFactura, TarifaCliente, PagoFactura, MetodoPago,
+    DocumentoFactura, TarifaCliente, MetodoPago,
 )
 
 
