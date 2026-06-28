@@ -1,7 +1,7 @@
 """facturas_pagos.py — Registro y borrado de pagos."""
 from .common import *  # noqa: F401,F403
 
-from ..models import DocumentoFactura, PagoFactura
+from ..models import DocumentoFactura, Pago, AplicacionPago
 from ..forms import PagoFacturaForm
 from ..services.facturas import payment_service
 
@@ -15,14 +15,12 @@ def factura_pago_nuevo(request, pk):
         form = PagoFacturaForm(request.POST, request.FILES)
         if form.is_valid():
             cd = form.cleaned_data
-            payment_service.registrar_pago(
-                doc,
-                fecha_pago=cd['fecha_pago'],
-                metodo_pago=cd['metodo_pago'],
-                monto=cd['monto'],
-                referencia=cd.get('referencia', ''),
-                comprobante=cd.get('comprobante'),
-                notas=cd.get('notas', ''),
+            payment_service.registrar_abono(
+                doc.cliente,
+                fecha_pago=cd['fecha_pago'], metodo_pago=cd['metodo_pago'],
+                monto=cd['monto'], referencia=cd.get('referencia', ''),
+                comprobante=cd.get('comprobante'), notas=cd.get('notas', ''),
+                aplicaciones=[(doc, cd['monto'])],
             )
             messages.success(request, 'Pago registrado.')
             return redirect('factura_detalle', pk=doc.pk)
@@ -36,8 +34,12 @@ def factura_pago_nuevo(request, pk):
 @facturas_enabled
 @require_POST
 def factura_pago_borrar(request, pk):
-    pago = get_object_or_404(PagoFactura, pk=pk)
-    doc_pk = pago.documento_id
-    pago.delete()  # el signal post_delete recalcula el estado
+    apl = get_object_or_404(AplicacionPago, pk=pk)
+    doc_pk = apl.documento_id
+    pago = apl.pago
+    apl.delete()  # signal recalcula estado
+    if not pago.aplicaciones.exists() and pago.monto == pago.saldo_sin_aplicar:
+        # pago quedó totalmente sin aplicar y sin uso: eliminarlo también
+        pago.delete()
     messages.success(request, 'Pago eliminado.')
     return redirect('factura_detalle', pk=doc_pk)

@@ -589,7 +589,7 @@ class DocumentoFactura(models.Model):
 
     @property
     def monto_pagado(self):
-        total = self.pagos.aggregate(s=models.Sum('monto'))['s']
+        total = self.aplicaciones.aggregate(s=models.Sum('monto'))['s']
         return total if total is not None else Decimal('0.00')
 
     @property

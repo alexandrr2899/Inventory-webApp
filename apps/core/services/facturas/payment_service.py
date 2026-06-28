@@ -1,23 +1,79 @@
-"""payment_service — registro de pagos y recálculo del estado del documento."""
+"""payment_service — registro de abonos y reparto entre facturas."""
+from decimal import Decimal
+
 from django.db import transaction
 
-from apps.core.models import PagoFactura
+from apps.core.models import Pago, AplicacionPago
 from . import status_service
 
 
+def _facturas_pendientes(cliente):
+    """Facturas no anuladas con saldo, de la más vieja a la más nueva."""
+    docs = (cliente.documentos
+            .exclude(estado_pago='anulada')
+            .order_by('fecha_documento', 'created_at'))
+    return [d for d in docs if d.saldo_pendiente > 0]
+
+
+def proponer_reparto(cliente, monto):
+    """Reparto sugerido por antigüedad SIN persistir: lista de (documento, monto)."""
+    restante = Decimal(monto)
+    reparto = []
+    for doc in _facturas_pendientes(cliente):
+        if restante <= 0:
+            break
+        aplicar = min(doc.saldo_pendiente, restante)
+        if aplicar > 0:
+            reparto.append((doc, aplicar))
+            restante -= aplicar
+    return reparto
+
+
 @transaction.atomic
-def registrar_pago(documento, *, fecha_pago, metodo_pago, monto,
-                   referencia='', comprobante=None, notas=''):
-    """Crea un PagoFactura y recalcula el estado del documento."""
-    pago = PagoFactura.objects.create(
-        documento=documento,
-        fecha_pago=fecha_pago,
-        metodo_pago=metodo_pago,
-        monto=monto,
-        referencia=referencia,
-        comprobante=comprobante,
-        notas=notas,
+def registrar_abono(cliente, *, fecha_pago, metodo_pago, monto,
+                    referencia='', comprobante=None, notas='', aplicaciones=None):
+    """Crea un Pago y reparte su monto entre facturas.
+
+    `aplicaciones`: lista opcional de (documento, monto). Si es None se auto-reparte
+    por antigüedad. El remanente queda como saldo a favor.
+    """
+    pago = Pago.objects.create(
+        cliente=cliente, fecha_pago=fecha_pago, metodo_pago=metodo_pago,
+        monto=Decimal(monto), referencia=referencia, comprobante=comprobante, notas=notas,
     )
-    # El signal post_save ya recalcula; recargamos para reflejarlo en la instancia.
-    documento.refresh_from_db()
+    if aplicaciones is None:
+        aplicaciones = proponer_reparto(cliente, monto)
+    for documento, monto_aplicar in aplicaciones:
+        monto_aplicar = Decimal(monto_aplicar)
+        if monto_aplicar > 0:
+            AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
     return pago
+
+
+@transaction.atomic
+def aplicar_saldo_a_favor(documento):
+    """Aplica crédito disponible del cliente a `documento` (pagos más viejos primero).
+
+    Devuelve el monto total aplicado.
+    """
+    aplicado = Decimal('0.00')
+    if documento.estado_pago == 'anulada':
+        return aplicado
+    pagos = documento.cliente.pagos.order_by('fecha_pago', 'created_at')
+    for pago in pagos:
+        saldo_doc = documento.saldo_pendiente
+        if saldo_doc <= 0:
+            break
+        disponible = pago.saldo_sin_aplicar
+        if disponible <= 0:
+            continue
+        usar = min(disponible, saldo_doc)
+        AplicacionPago.objects.create(pago=pago, documento=documento, monto=usar)
+        aplicado += usar
+    return aplicado
+
+
+@transaction.atomic
+def liberar_aplicaciones(documento):
+    """Elimina las aplicaciones de una factura; el dinero vuelve a saldo a favor."""
+    documento.aplicaciones.all().delete()

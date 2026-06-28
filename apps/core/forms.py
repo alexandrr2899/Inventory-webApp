@@ -5,7 +5,7 @@ from decimal import Decimal
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, Conteo, ConteoDetalle,
-    DocumentoFactura, TarifaCliente, PagoFactura,
+    DocumentoFactura, TarifaCliente, PagoFactura, MetodoPago,
 )
 
 
@@ -472,18 +472,21 @@ class DocumentoEditarForm(forms.ModelForm):
         }
 
 
-class PagoFacturaForm(forms.ModelForm):
-    class Meta:
-        model = PagoFactura
-        fields = ['fecha_pago', 'metodo_pago', 'monto', 'referencia', 'comprobante', 'notas']
-        widgets = {
-            'fecha_pago': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
-            'metodo_pago': forms.Select(attrs={'class': 'form-select'}),
-            'monto': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'referencia': forms.TextInput(attrs={'class': 'form-control'}),
-            'comprobante': forms.ClearableFileInput(attrs={'class': 'form-control'}),
-            'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
+class PagoFacturaForm(forms.Form):
+    fecha_pago = forms.DateField(
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'))
+    metodo_pago = forms.ModelChoiceField(
+        queryset=MetodoPago.objects.filter(activo=True),
+        widget=forms.Select(attrs={'class': 'form-select'}))
+    monto = forms.DecimalField(
+        max_digits=12, decimal_places=2,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}))
+    referencia = forms.CharField(
+        required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    comprobante = forms.FileField(
+        required=False, widget=forms.ClearableFileInput(attrs={'class': 'form-control'}))
+    notas = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
 
 
 class TarifaClienteForm(forms.ModelForm):

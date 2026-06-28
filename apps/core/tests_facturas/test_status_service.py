@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.core.models import Cliente, DocumentoFactura, PagoFactura
+from apps.core.models import Cliente, DocumentoFactura, MetodoPago, Pago, AplicacionPago
 from apps.core.services.facturas import status_service
 
 
@@ -30,10 +30,10 @@ class StatusServiceTests(TestCase):
 
     def test_pagada_si_saldo_cero(self):
         doc = self._doc('100.00', self.hoy - timedelta(days=1))
-        PagoFactura.objects.create(
-            documento=doc, fecha_pago=self.hoy, metodo_pago='efectivo',
-            monto=Decimal('100.00'),
-        )
+        met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+        pago = Pago.objects.create(cliente=self.cliente, fecha_pago=self.hoy,
+                                   metodo_pago=met, monto=Decimal('100.00'))
+        AplicacionPago.objects.create(pago=pago, documento=doc, monto=Decimal('100.00'))
         self.assertEqual(status_service.calcular_estado_pago(doc), 'pagada')
 
     def test_anulada_no_se_sobrescribe(self):

@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.core.models import (
-    Cliente, DocumentoFactura, TarifaCliente, PagoFactura,
+    Cliente, DocumentoFactura, TarifaCliente, MetodoPago, Pago, AplicacionPago,
 )
 
 
@@ -13,6 +13,7 @@ class EstaVencidaTests(TestCase):
     def setUp(self):
         self.cliente = Cliente.objects.create(nombre='Cli')
         self.hoy = timezone.localdate()
+        self.met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
 
     def _doc(self, venc, total='100.00', estado='pendiente'):
         return DocumentoFactura.objects.create(
@@ -32,8 +33,10 @@ class EstaVencidaTests(TestCase):
 
     def test_no_vencida_si_pagada(self):
         doc = self._doc(self.hoy - timedelta(days=1))
-        PagoFactura.objects.create(documento=doc, fecha_pago=self.hoy,
-                                   metodo_pago='efectivo', monto=Decimal('100.00'))
+        pago = Pago.objects.create(cliente=self.cliente, fecha_pago=self.hoy,
+                                   metodo_pago=self.met, monto=Decimal('100.00'))
+        AplicacionPago.objects.create(pago=pago, documento=doc, monto=Decimal('100.00'))
+        doc.refresh_from_db()
         self.assertFalse(doc.esta_vencida)
 
     def test_no_vencida_sin_fecha_vencimiento(self):
@@ -43,6 +46,7 @@ class EstaVencidaTests(TestCase):
 class DocumentoFacturaPropsTests(TestCase):
     def setUp(self):
         self.cliente = Cliente.objects.create(nombre='Renato Díaz')
+        self.met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
         self.doc = DocumentoFactura.objects.create(
             cliente=self.cliente,
             tipo_documento='factura',
@@ -61,14 +65,12 @@ class DocumentoFacturaPropsTests(TestCase):
         self.assertFalse(self.doc.es_pago_parcial)
 
     def test_pagos_suman_y_saldo_baja(self):
-        PagoFactura.objects.create(
-            documento=self.doc, fecha_pago=date(2026, 6, 5),
-            metodo_pago='efectivo', monto=Decimal('40.00'),
-        )
-        PagoFactura.objects.create(
-            documento=self.doc, fecha_pago=date(2026, 6, 6),
-            metodo_pago='transferencia', monto=Decimal('25.00'),
-        )
+        pago1 = Pago.objects.create(cliente=self.cliente, fecha_pago=date(2026, 6, 5),
+                                    metodo_pago=self.met, monto=Decimal('40.00'))
+        AplicacionPago.objects.create(pago=pago1, documento=self.doc, monto=Decimal('40.00'))
+        pago2 = Pago.objects.create(cliente=self.cliente, fecha_pago=date(2026, 6, 6),
+                                    metodo_pago=self.met, monto=Decimal('25.00'))
+        AplicacionPago.objects.create(pago=pago2, documento=self.doc, monto=Decimal('25.00'))
         self.assertEqual(self.doc.monto_pagado, Decimal('65.00'))
         self.assertEqual(self.doc.saldo_pendiente, Decimal('50.00'))
         self.assertTrue(self.doc.es_pago_parcial)

@@ -77,7 +77,7 @@ class FacturasVistasTests(TestCase):
 @override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
 class FacturasPagoTests(TestCase):
     def setUp(self):
-        from apps.core.models import DocumentoFactura
+        from apps.core.models import DocumentoFactura, MetodoPago
         self.admin = User.objects.create_user(username='admin2', password='pass12345')
         for p in Permission.objects.filter(codename__in=['ver_facturas', 'registrar_pago_factura']):
             self.admin.user_permissions.add(p)
@@ -86,12 +86,13 @@ class FacturasPagoTests(TestCase):
             cliente=self.cliente, tipo_documento='factura',
             fecha_documento=timezone.localdate(), monto_total=Decimal('100.00'),
         )
+        self.met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
 
     def test_registrar_pago_via_vista(self):
         self.client.force_login(self.admin)
         resp = self.client.post(reverse('factura_pago_nuevo', args=[self.doc.pk]), {
             'fecha_pago': timezone.localdate().isoformat(),
-            'metodo_pago': 'efectivo', 'monto': '100.00', 'referencia': '', 'notas': '',
+            'metodo_pago': self.met.pk, 'monto': '100.00', 'referencia': '', 'notas': '',
         })
         self.assertEqual(resp.status_code, 302)
         self.doc.refresh_from_db()
