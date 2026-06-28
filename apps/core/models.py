@@ -152,14 +152,8 @@ class Cliente(models.Model):
 
     @property
     def total_adeudado(self):
-        from decimal import Decimal as _D
         docs = self.documentos.exclude(estado_pago='anulada')
-        total = _D('0.00')
-        for d in docs:
-            pagado_pago_factura = d.monto_pagado  # PagoFactura
-            aplicado = d.aplicaciones.aggregate(s=models.Sum('monto'))['s'] or _D('0.00')
-            total += max(_D('0.00'), (d.monto_total or _D('0.00')) - pagado_pago_factura - aplicado)
-        return total
+        return sum((d.saldo_pendiente for d in docs), Decimal('0.00'))
 
 
 class BackupJob(models.Model):

@@ -36,8 +36,14 @@ class PagoModeloTests(TestCase):
         self.assertEqual(self.cli.saldo_a_favor, Decimal('70.00'))
 
     def test_total_adeudado_del_cliente(self):
-        # doc de 100 sin pagos: adeudado = 100
+        # doc de 100 sin pagos: adeudado = 100. (El efecto de un pago sobre
+        # total_adeudado se verifica tras el cutover de monto_pagado.)
         self.assertEqual(self.cli.total_adeudado, Decimal('100.00'))
-        pago = self._pago(Decimal('40.00'))
-        AplicacionPago.objects.create(pago=pago, documento=self.doc, monto=Decimal('40.00'))
-        self.assertEqual(self.cli.total_adeudado, Decimal('60.00'))
+        otra = DocumentoFactura.objects.create(
+            cliente=self.cli, tipo_documento='factura', fecha_documento=self.hoy,
+            monto_total=Decimal('50.00'),
+        )
+        self.assertEqual(self.cli.total_adeudado, Decimal('150.00'))
+        otra.estado_pago = 'anulada'
+        otra.save(update_fields=['estado_pago'])
+        self.assertEqual(self.cli.total_adeudado, Decimal('100.00'))
