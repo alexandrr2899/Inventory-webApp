@@ -8,7 +8,7 @@ from django.views.decorators.clickjacking import xframe_options_sameorigin
 
 from ..models import DocumentoFactura, TarifaCliente, PagoFactura
 from ..forms import DocumentoUploadForm, DocumentoEditarForm
-from ..services.facturas import invoice_service, status_service
+from ..services.facturas import invoice_service, status_service, payment_service
 
 
 def _safe_return_url(request):
@@ -170,6 +170,7 @@ def factura_upload(request):
                 producto=producto or datos.get('producto'),
                 datos=datos, texto_extraido=texto_extraido,
             )
+            payment_service.aplicar_saldo_a_favor(doc)
             messages.success(request, 'Documento creado. Revisá y editá los campos.')
             return redirect('factura_editar', pk=doc.pk)
     else:
@@ -187,6 +188,7 @@ def factura_editar(request, pk):
         form = DocumentoEditarForm(request.POST, instance=doc)
         if form.is_valid():
             doc = form.save()
+            payment_service.aplicar_saldo_a_favor(doc)
             if request.POST.get('accion') == 'guardar_revisar':
                 doc.estado_revision = 'revisada'
                 doc.save(update_fields=['estado_revision', 'updated_at'])
@@ -227,5 +229,6 @@ def factura_anular(request, pk):
     doc = get_object_or_404(DocumentoFactura, pk=pk)
     doc.estado_pago = 'anulada'
     doc.save(update_fields=['estado_pago', 'updated_at'])
+    payment_service.liberar_aplicaciones(doc)
     messages.success(request, 'Documento anulado.')
     return redirect('factura_detalle', pk=doc.pk)

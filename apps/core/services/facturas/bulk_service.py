@@ -16,7 +16,7 @@ from django.core.files import File
 from django.utils.text import get_valid_filename
 
 from apps.core.models import Cliente
-from . import invoice_service, pdf_service
+from . import invoice_service, pdf_service, payment_service
 from .pdf_extractors import filename_extractor
 from .pdf_extractors.base_extractor import parse_decimal, parse_fecha
 
@@ -167,12 +167,13 @@ def crear_desde_lote(batch_id, filas):
         with open(ruta, 'rb') as fh:
             texto = pdf_service.extraer_texto(fh)
             fh.seek(0)
-            invoice_service.crear_documento(
+            doc = invoice_service.crear_documento(
                 cliente=cliente, tipo_documento=fila.get('tipo') or 'factura',
                 archivo=File(fh, name=archivo_nombre),
                 producto=fila.get('producto') or None,
                 datos=datos, texto_extraido=texto,
             )
+        payment_service.aplicar_saldo_a_favor(doc)
         creados += 1
         try:
             os.remove(ruta)
