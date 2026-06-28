@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     Categoria, Item, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle, BackupJob,
-    DocumentoFactura, TarifaCliente, PagoFactura, MetodoPago,
+    DocumentoFactura, TarifaCliente, PagoFactura, MetodoPago, Pago, AplicacionPago,
 )
 
 admin.site.site_header = "Transformadora de Empaques"
@@ -138,3 +138,15 @@ class MetodoPagoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'tipo', 'activo', 'orden')
     list_filter = ('tipo', 'activo')
     search_fields = ('nombre',)
+
+
+class AplicacionPagoInline(admin.TabularInline):
+    model = AplicacionPago
+    extra = 0
+
+
+@admin.register(Pago)
+class PagoAdmin(admin.ModelAdmin):
+    list_display = ('cliente', 'fecha_pago', 'metodo_pago', 'monto')
+    list_filter = ('metodo_pago', 'fecha_pago')
+    inlines = [AplicacionPagoInline]
