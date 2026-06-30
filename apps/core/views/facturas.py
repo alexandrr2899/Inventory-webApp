@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
-from ..models import DocumentoFactura, TarifaCliente, PagoFactura
+from ..models import DocumentoFactura, TarifaCliente, PagoFactura, MetodoPago
 from ..forms import DocumentoUploadForm, DocumentoEditarForm
 from ..services.facturas import invoice_service, status_service, payment_service
 
@@ -112,7 +112,8 @@ def factura_detalle(request, pk):
     doc = get_object_or_404(DocumentoFactura.objects.select_related('cliente'), pk=pk)
     return render(request, 'facturas/detalle.html', {
         'doc': doc,
-        'pagos': doc.pagos.all(),
+        'aplicaciones': doc.aplicaciones.select_related('pago', 'pago__metodo_pago'),
+        'metodos_pago': MetodoPago.objects.filter(activo=True),
         'return_url': _safe_return_url(request),
     })
 

@@ -108,3 +108,22 @@
     </tbody>
   </table>
 </div>
+
+{# Abonos del cliente #}
+<h2 class="h6 mt-4">Abonos del cliente</h2>
+<table class="table table-sm">
+  <thead><tr><th>Fecha</th><th>Método</th><th>Monto</th><th>Aplicado</th><th>Sin aplicar</th></tr></thead>
+  <tbody>
+    {% for p in abonos %}
+    <tr>
+      <td>{{ p.fecha_pago|date:"d/m/Y" }}</td>
+      <td>{{ p.metodo_pago.nombre }}</td>
+      <td>L {{ p.monto }}</td>
+      <td>L {{ p.monto_aplicado }}</td>
+      <td>L {{ p.saldo_sin_aplicar }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5" class="text-muted">Sin abonos.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

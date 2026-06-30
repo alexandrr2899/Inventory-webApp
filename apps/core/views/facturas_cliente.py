@@ -46,6 +46,8 @@ def cliente_facturas_fragment(request, pk):
         'desde': desde,
         'hasta': hasta,
         'return_url': reverse('cliente_salidas', args=[cliente.pk]),
+        'abonos': cliente.pagos.select_related('metodo_pago')[:50],
+        'saldo_a_favor': cliente.saldo_a_favor,
     })
 
 
