@@ -17,7 +17,7 @@ class AbonoViewTests(TestCase):
             Permission.objects.get(codename='ver_facturas'))
         self.client.force_login(self.user)
         self.cli = Cliente.objects.create(nombre='Cli')
-        self.met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+        self.met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo', activo=True)
         self.hoy = timezone.localdate()
         self.f1 = DocumentoFactura.objects.create(
             cliente=self.cli, tipo_documento='factura',
@@ -48,3 +48,16 @@ class AbonoViewTests(TestCase):
         self.f1.refresh_from_db(); self.f2.refresh_from_db()
         self.assertEqual(self.f1.monto_pagado, Decimal('0.00'))
         self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
+
+    def test_abono_con_valor_invalido_no_revienta(self):
+        resp = self.client.post(reverse('cliente_abono_nuevo', args=[self.cli.pk]), {
+            'fecha_pago': self.hoy.isoformat(), 'metodo_pago': self.met.pk,
+            'monto': '150.00',
+            f'aplicar_{self.f1.pk}': 'abc',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        # La fila inválida se ignora y no cuenta como edición, así que se aplica
+        # el auto-reparto por antigüedad: f1 (más antigua) recibe 100, f2 recibe 50.
+        self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('50.00'))

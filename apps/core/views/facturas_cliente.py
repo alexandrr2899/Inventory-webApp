@@ -1,4 +1,6 @@
 """facturas_cliente.py — Fragmento AJAX de la tab Facturas en la vista de cliente."""
+from decimal import Decimal, InvalidOperation
+
 from .common import *  # noqa: F401,F403
 
 from ..models import Cliente, DocumentoFactura
@@ -62,11 +64,16 @@ def cliente_abono_nuevo(request, pk):
             tiene_edicion = False
             for doc in pendientes:
                 raw = request.POST.get(f'aplicar_{doc.pk}')
-                if raw not in (None, ''):
-                    tiene_edicion = True
+                if raw in (None, ''):
+                    continue
+                try:
                     monto = Decimal(raw)
-                    if monto > 0:
-                        aplicaciones.append((doc, monto))
+                except (InvalidOperation, ValueError):
+                    # Valor inválido: se ignora esa fila (no cuenta como edición).
+                    continue
+                tiene_edicion = True
+                if monto > 0:
+                    aplicaciones.append((doc, monto))
             payment_service.registrar_abono(
                 cliente, fecha_pago=cd['fecha_pago'], metodo_pago=cd['metodo_pago'],
                 monto=cd['monto'], referencia=cd.get('referencia', ''),
