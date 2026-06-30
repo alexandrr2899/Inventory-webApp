@@ -641,33 +641,6 @@ class DocumentoFactura(models.Model):
         return delta if delta >= 0 else None
 
 
-class PagoFactura(models.Model):
-    METODO_CHOICES = [
-        ('efectivo', 'Efectivo'),
-        ('transferencia', 'Transferencia'),
-        ('deposito', 'Depósito'),
-        ('cheque', 'Cheque'),
-        ('tarjeta', 'Tarjeta'),
-        ('otro', 'Otro'),
-    ]
-    documento = models.ForeignKey(DocumentoFactura, on_delete=models.CASCADE, related_name='pagos')
-    fecha_pago = models.DateField(default=timezone.now)
-    metodo_pago = models.CharField(max_length=20, choices=METODO_CHOICES)
-    monto = models.DecimalField(max_digits=12, decimal_places=2)
-    referencia = models.CharField(max_length=120, blank=True)
-    comprobante = models.FileField(upload_to='facturas/pagos/%Y/%m/', null=True, blank=True)
-    notas = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = 'Pago de factura'
-        verbose_name_plural = 'Pagos de factura'
-        ordering = ['-fecha_pago', '-created_at']
-
-    def __str__(self):
-        return f'Pago L {self.monto} · {self.documento}'
-
-
 class Pago(models.Model):
     """Abono de un cliente; se reparte entre facturas vía AplicacionPago."""
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='pagos')

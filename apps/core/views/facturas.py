@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
-from ..models import DocumentoFactura, TarifaCliente, PagoFactura, MetodoPago
+from ..models import DocumentoFactura, TarifaCliente, MetodoPago
 from ..forms import DocumentoUploadForm, DocumentoEditarForm
 from ..services.facturas import invoice_service, status_service, payment_service
 
