@@ -38,6 +38,16 @@
   </div>
 </div>
 
+{# Acciones del cliente #}
+<div class="d-flex align-items-center gap-2 mb-3">
+  {% if perms.core.registrar_pago_factura %}
+  <a href="{% url 'cliente_abono_nuevo' cliente.pk %}" class="btn btn-sm btn-success">
+    <i class="bi bi-cash-coin me-1"></i>Registrar abono
+  </a>
+  {% endif %}
+  <span class="text-muted small">Saldo a favor: <strong>L {{ cliente.saldo_a_favor }}</strong></span>
+</div>
+
 {# Controles de filtro — el JS de la tab los lee y recarga el fragmento por AJAX #}
 <form id="fac-filtros" class="d-flex flex-wrap align-items-end gap-2 mb-3" onsubmit="return false;">
   <input type="hidden" name="tipo" id="fac-tipo" value="{{ tipo_filtro }}">

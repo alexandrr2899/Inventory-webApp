@@ -489,6 +489,23 @@ class PagoFacturaForm(forms.Form):
         required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
 
 
+class AbonoClienteForm(forms.Form):
+    fecha_pago = forms.DateField(
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'))
+    metodo_pago = forms.ModelChoiceField(
+        queryset=MetodoPago.objects.filter(activo=True),
+        widget=forms.Select(attrs={'class': 'form-select'}))
+    monto = forms.DecimalField(
+        max_digits=12, decimal_places=2,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}))
+    referencia = forms.CharField(
+        required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    comprobante = forms.FileField(
+        required=False, widget=forms.ClearableFileInput(attrs={'class': 'form-control'}))
+    notas = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
+
+
 class MetodoPagoForm(forms.ModelForm):
     class Meta:
         model = MetodoPago
