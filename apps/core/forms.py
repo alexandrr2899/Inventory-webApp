@@ -489,6 +489,18 @@ class PagoFacturaForm(forms.Form):
         required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
 
 
+class MetodoPagoForm(forms.ModelForm):
+    class Meta:
+        model = MetodoPago
+        fields = ['nombre', 'tipo', 'activo', 'orden']
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control'}),
+            'tipo': forms.Select(attrs={'class': 'form-select'}),
+            'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'orden': forms.NumberInput(attrs={'class': 'form-control'}),
+        }
+
+
 class TarifaClienteForm(forms.ModelForm):
     class Meta:
         model = TarifaCliente

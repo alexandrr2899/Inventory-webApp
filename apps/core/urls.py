@@ -98,4 +98,10 @@ urlpatterns = [
     path('facturas/clientes/<int:pk>/fragmento/', views.cliente_facturas_fragment, name='cliente_facturas_fragment'),
     # Ingesta automática (n8n → Google Drive). Auth por token, sin sesión.
     path('facturas/api/ingest/', views.factura_api_ingest, name='factura_api_ingest'),
+
+    # ── Métodos de pago ───────────────────────────────────────────────────────
+    path('facturas/metodos-pago/', views.metodo_pago_lista, name='metodo_pago_lista'),
+    path('facturas/metodos-pago/nuevo/', views.metodo_pago_crear, name='metodo_pago_crear'),
+    path('facturas/metodos-pago/<int:pk>/editar/', views.metodo_pago_editar, name='metodo_pago_editar'),
+    path('facturas/metodos-pago/<int:pk>/toggle/', views.metodo_pago_toggle_activo, name='metodo_pago_toggle_activo'),
 ]
