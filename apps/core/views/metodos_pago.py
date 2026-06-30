@@ -33,7 +33,7 @@ def metodo_pago_editar(request, pk):
     if request.method == 'POST':
         form = MetodoPagoForm(request.POST, instance=metodo)
         if form.is_valid():
-            form.save()
+            metodo = form.save()
             messages.success(request, f'Método "{metodo.nombre}" actualizado.')
             return redirect('metodo_pago_lista')
     else:
