@@ -475,6 +475,39 @@ PRODUCTO_CHOICES = [
 ]
 
 
+class CategoriaProducto(models.Model):
+    nombre = models.CharField(max_length=60)
+    palabra_clave = models.CharField(
+        max_length=60, blank=True,
+        help_text='Si el nombre del archivo la contiene, el envío se clasifica en esta categoría.')
+    es_predeterminada = models.BooleanField(
+        default=False,
+        help_text='Categoría asignada cuando ninguna palabra clave coincide.')
+    activa = models.BooleanField(default=True)
+    orden = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Categoría de producto'
+        verbose_name_plural = 'Categorías de producto'
+        ordering = ['orden', 'nombre']
+        permissions = [
+            ('gestionar_categorias_producto', 'Puede gestionar categorías de producto'),
+        ]
+
+    def __str__(self):
+        return self.nombre
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.es_predeterminada:
+            CategoriaProducto.objects.exclude(pk=self.pk).filter(
+                es_predeterminada=True).update(es_predeterminada=False)
+
+    @classmethod
+    def predeterminada(cls):
+        return cls.objects.filter(es_predeterminada=True).first()
+
+
 class TarifaCliente(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='tarifas')
     producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES)

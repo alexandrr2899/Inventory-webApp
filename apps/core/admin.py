@@ -3,6 +3,7 @@ from .models import (
     Categoria, Item, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle, BackupJob,
     DocumentoFactura, TarifaCliente, MetodoPago, Pago, AplicacionPago,
+    CategoriaProducto,
 )
 
 admin.site.site_header = "Transformadora de Empaques"
@@ -132,6 +133,13 @@ class MetodoPagoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'tipo', 'activo', 'orden')
     list_filter = ('tipo', 'activo')
     search_fields = ('nombre',)
+
+
+@admin.register(CategoriaProducto)
+class CategoriaProductoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'palabra_clave', 'es_predeterminada', 'activa', 'orden')
+    list_filter = ('activa', 'es_predeterminada')
+    search_fields = ('nombre', 'palabra_clave')
 
 
 class AplicacionPagoInline(admin.TabularInline):
