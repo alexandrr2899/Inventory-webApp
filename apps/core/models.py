@@ -511,6 +511,9 @@ class CategoriaProducto(models.Model):
 class TarifaCliente(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='tarifas')
     producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES)
+    categoria = models.ForeignKey(
+        'CategoriaProducto', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='tarifas')
     precio_por_libra = models.DecimalField(max_digits=12, decimal_places=2)
     activa = models.BooleanField(default=True)
     fecha_inicio = models.DateField(default=timezone.now)
@@ -590,6 +593,9 @@ class DocumentoFactura(models.Model):
     fecha_documento = models.DateField(null=True, blank=True)
     fecha_vencimiento = models.DateField(null=True, blank=True)
     producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES, blank=True)
+    categoria = models.ForeignKey(
+        'CategoriaProducto', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='documentos')
 
     total_libras = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     precio_por_libra = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
