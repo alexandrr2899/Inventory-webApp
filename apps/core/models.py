@@ -145,6 +145,16 @@ class Cliente(models.Model):
     def __str__(self):
         return self.nombre
 
+    @property
+    def saldo_a_favor(self):
+        from decimal import Decimal as _D
+        return sum((p.saldo_sin_aplicar for p in self.pagos.all()), _D('0.00'))
+
+    @property
+    def total_adeudado(self):
+        docs = self.documentos.exclude(estado_pago='anulada')
+        return sum((d.saldo_pendiente for d in docs), Decimal('0.00'))
+
 
 class BackupJob(models.Model):
     ESTADO_CHOICES = [
@@ -497,6 +507,32 @@ class TarifaCliente(models.Model):
         ).order_by('-fecha_inicio').first()
 
 
+class MetodoPago(models.Model):
+    TIPO_CHOICES = [
+        ('efectivo', 'Efectivo'),
+        ('transferencia', 'Transferencia'),
+        ('deposito', 'Depósito'),
+        ('cheque', 'Cheque'),
+        ('tarjeta', 'Tarjeta'),
+        ('otro', 'Otro'),
+    ]
+    nombre = models.CharField(max_length=80)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='otro')
+    activo = models.BooleanField(default=True)
+    orden = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Método de pago'
+        verbose_name_plural = 'Métodos de pago'
+        ordering = ['orden', 'nombre']
+        permissions = [
+            ('gestionar_metodos_pago', 'Puede gestionar métodos de pago'),
+        ]
+
+    def __str__(self):
+        return self.nombre
+
+
 class DocumentoFactura(models.Model):
     TIPO_CHOICES = [
         ('factura', 'Factura'),
@@ -553,7 +589,7 @@ class DocumentoFactura(models.Model):
 
     @property
     def monto_pagado(self):
-        total = self.pagos.aggregate(s=models.Sum('monto'))['s']
+        total = self.aplicaciones.aggregate(s=models.Sum('monto'))['s']
         return total if total is not None else Decimal('0.00')
 
     @property
@@ -605,18 +641,11 @@ class DocumentoFactura(models.Model):
         return delta if delta >= 0 else None
 
 
-class PagoFactura(models.Model):
-    METODO_CHOICES = [
-        ('efectivo', 'Efectivo'),
-        ('transferencia', 'Transferencia'),
-        ('deposito', 'Depósito'),
-        ('cheque', 'Cheque'),
-        ('tarjeta', 'Tarjeta'),
-        ('otro', 'Otro'),
-    ]
-    documento = models.ForeignKey(DocumentoFactura, on_delete=models.CASCADE, related_name='pagos')
+class Pago(models.Model):
+    """Abono de un cliente; se reparte entre facturas vía AplicacionPago."""
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='pagos')
     fecha_pago = models.DateField(default=timezone.now)
-    metodo_pago = models.CharField(max_length=20, choices=METODO_CHOICES)
+    metodo_pago = models.ForeignKey('MetodoPago', on_delete=models.PROTECT, related_name='pagos')
     monto = models.DecimalField(max_digits=12, decimal_places=2)
     referencia = models.CharField(max_length=120, blank=True)
     comprobante = models.FileField(upload_to='facturas/pagos/%Y/%m/', null=True, blank=True)
@@ -624,9 +653,37 @@ class PagoFactura(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = 'Pago de factura'
-        verbose_name_plural = 'Pagos de factura'
+        verbose_name = 'Pago'
+        verbose_name_plural = 'Pagos'
         ordering = ['-fecha_pago', '-created_at']
 
     def __str__(self):
-        return f'Pago L {self.monto} · {self.documento}'
+        return f'Abono L {self.monto} · {self.cliente.nombre}'
+
+    @property
+    def monto_aplicado(self):
+        total = self.aplicaciones.aggregate(s=models.Sum('monto'))['s']
+        return total if total is not None else Decimal('0.00')
+
+    @property
+    def saldo_sin_aplicar(self):
+        return self.monto - self.monto_aplicado
+
+
+class AplicacionPago(models.Model):
+    """Porción de un Pago aplicada a una factura concreta."""
+    pago = models.ForeignKey(Pago, on_delete=models.CASCADE, related_name='aplicaciones')
+    documento = models.ForeignKey(DocumentoFactura, on_delete=models.PROTECT, related_name='aplicaciones')
+    monto = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Aplicación de pago'
+        verbose_name_plural = 'Aplicaciones de pago'
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(check=models.Q(monto__gt=0), name='aplicacion_monto_positivo'),
+        ]
+
+    def __str__(self):
+        return f'L {self.monto} → {self.documento}'

@@ -57,6 +57,11 @@
   <a href="{% url 'factura_lote' %}" class="nav-link {% if 'lote' in un %}active{% endif %}">
     <i class="bi bi-files"></i> Subir en bloque
   </a>
+  {% if perms.core.gestionar_metodos_pago %}
+  <a href="{% url 'metodo_pago_lista' %}" class="nav-link {% if 'metodo_pago' in un %}active{% endif %}">
+    <i class="bi bi-credit-card"></i> Métodos de pago
+  </a>
+  {% endif %}
 </div>
 {% else %}
 <a href="{% url 'facturas_lista' %}" class="nav-link {% if 'factura' in un %}active{% endif %}">

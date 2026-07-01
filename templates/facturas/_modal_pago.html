@@ -21,13 +21,10 @@
             </div>
             <div class="col-6">
               <label class="form-label">Método</label>
-              <select name="metodo_pago" class="form-select">
-                <option value="efectivo">Efectivo</option>
-                <option value="transferencia">Transferencia</option>
-                <option value="deposito">Depósito</option>
-                <option value="cheque">Cheque</option>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="otro">Otro</option>
+              <select name="metodo_pago" class="form-select" required>
+                {% for m in metodos_pago %}
+                <option value="{{ m.pk }}">{{ m.nombre }}</option>
+                {% endfor %}
               </select>
             </div>
             <div class="col-12">
