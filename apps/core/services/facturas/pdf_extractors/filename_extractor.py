@@ -13,9 +13,9 @@ import re
 _PRODUCTOS = ('camiseta', 'lisa', 'otro')
 
 
-def _normaliza_producto(token):
-    t = (token or '').strip().lower()
-    return t if t in _PRODUCTOS else ''
+def _producto_envio(base):
+    """Producto de un envío según el nombre: 'camiseta' si lo menciona, si no 'lisa'."""
+    return 'camiseta' if re.search(r'camiseta', base, re.IGNORECASE) else 'lisa'
 
 
 def extraer_de_nombre(nombre_archivo):
@@ -36,11 +36,8 @@ def extraer_de_nombre(nombre_archivo):
         m = re.search(r'(.+?)\s+env[íi]o\s+([A-Za-zÁÉÍÓÚáéíóúÑñ]+)\s+(\d+)', base, re.IGNORECASE)
         if m:
             cliente = m.group(1).strip()
-            prod = _normaliza_producto(m.group(2))
             if cliente:
                 datos['cliente_nombre'] = cliente
-            if prod:
-                datos['producto'] = prod
             datos['numero_documento'] = m.group(3)
         else:
             # fallback: último número del nombre
@@ -66,12 +63,9 @@ def extraer_de_nombre(nombre_archivo):
         m = re.search(rf'(.+?)\s+({producto_pat})\s+(\d+)$', base, re.IGNORECASE)
         if m:
             cliente = m.group(1).strip()
-            prod = _normaliza_producto(m.group(2))
             datos['tipo_documento'] = 'envio'
             if cliente:
                 datos['cliente_nombre'] = cliente
-            if prod:
-                datos['producto'] = prod
             datos['numero_documento'] = m.group(3)
         else:
             # Si no dice "Fact", por convención no es factura: usar número final como envío.
@@ -87,4 +81,8 @@ def extraer_de_nombre(nombre_archivo):
                 if nums:
                     datos['tipo_documento'] = 'envio'
                     datos['numero_documento'] = nums[-1]
+
+    # Producto del envío por el nombre: camiseta si lo menciona, si no lisa.
+    if datos.get('tipo_documento') == 'envio':
+        datos['producto'] = _producto_envio(base)
     return datos
