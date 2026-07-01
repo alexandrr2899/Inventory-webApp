@@ -35,18 +35,25 @@ def registrar_abono(cliente, *, fecha_pago, metodo_pago, monto,
     """Crea un Pago y reparte su monto entre facturas.
 
     `aplicaciones`: lista opcional de (documento, monto). Si es None se auto-reparte
-    por antigüedad. El remanente queda como saldo a favor.
+    por antigüedad. Cada aplicación se topa al saldo de la factura y a lo que resta
+    del pago; el remanente queda como saldo a favor del cliente.
     """
+    monto = Decimal(monto)
     pago = Pago.objects.create(
         cliente=cliente, fecha_pago=fecha_pago, metodo_pago=metodo_pago,
-        monto=Decimal(monto), referencia=referencia, comprobante=comprobante, notas=notas,
+        monto=monto, referencia=referencia, comprobante=comprobante, notas=notas,
     )
     if aplicaciones is None:
         aplicaciones = proponer_reparto(cliente, monto)
+    restante = monto
     for documento, monto_aplicar in aplicaciones:
-        monto_aplicar = Decimal(monto_aplicar)
+        if restante <= 0:
+            break
+        # Nunca aplicar más que el saldo de la factura ni que lo que resta del pago.
+        monto_aplicar = min(Decimal(monto_aplicar), documento.saldo_pendiente, restante)
         if monto_aplicar > 0:
             AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
+            restante -= monto_aplicar
     return pago
 
 

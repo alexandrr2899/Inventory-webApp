@@ -72,3 +72,36 @@ class AbonoServiceTests(TestCase):
         self.f1.refresh_from_db()
         self.assertEqual(self.f1.monto_pagado, Decimal('0.00'))
         self.assertEqual(self.cli.saldo_a_favor, Decimal('100.00'))
+
+    def test_sobrepago_por_factura_va_a_saldo_a_favor(self):
+        """Aplicar más de lo que debe la factura deja el excedente como saldo a favor."""
+        # f1 tiene saldo_pendiente=100; pedimos aplicar 150 → solo se aplican 100
+        pago = self._abono('150.00', aplicaciones=[(self.f1, Decimal('150.00'))])
+        self.f1.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.f1.estado_pago, 'pagada')
+        self.assertEqual(self.cli.saldo_a_favor, Decimal('50.00'))
+
+    def test_reparto_editado_no_excede_monto_del_abono(self):
+        """La suma de aplicaciones no puede superar el monto del abono."""
+        # Abono de 100; se piden 80+80=160 → se aplican 80 a f1 y 20 a f2 (total 100)
+        pago = self._abono('100.00', aplicaciones=[
+            (self.f1, Decimal('80.00')),
+            (self.f2, Decimal('80.00')),
+        ])
+        self.f1.refresh_from_db()
+        self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('80.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('20.00'))
+        self.assertEqual(self.cli.saldo_a_favor, Decimal('0.00'))
+        self.assertGreaterEqual(pago.saldo_sin_aplicar, Decimal('0.00'))
+
+    def test_aplicacion_no_excede_saldo_factura(self):
+        """Una aplicación pedida por encima del saldo se topa al saldo real."""
+        # f1 tiene saldo=100; abono=100; se pide aplicar 200 → solo se aplican 100
+        pago = self._abono('100.00', aplicaciones=[(self.f1, Decimal('200.00'))])
+        self.f1.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.cli.saldo_a_favor, Decimal('0.00'))
+        self.assertEqual(pago.saldo_sin_aplicar, Decimal('0.00'))
+        self.assertGreaterEqual(pago.saldo_sin_aplicar, Decimal('0.00'))
