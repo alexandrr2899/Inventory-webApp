@@ -5,7 +5,7 @@ from decimal import Decimal
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, Conteo, ConteoDetalle,
-    DocumentoFactura, TarifaCliente, MetodoPago,
+    DocumentoFactura, TarifaCliente, MetodoPago, CategoriaProducto,
 )
 
 
@@ -514,6 +514,19 @@ class MetodoPagoForm(forms.ModelForm):
             'nombre': forms.TextInput(attrs={'class': 'form-control'}),
             'tipo': forms.Select(attrs={'class': 'form-select'}),
             'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'orden': forms.NumberInput(attrs={'class': 'form-control'}),
+        }
+
+
+class CategoriaProductoForm(forms.ModelForm):
+    class Meta:
+        model = CategoriaProducto
+        fields = ['nombre', 'palabra_clave', 'es_predeterminada', 'activa', 'orden']
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control'}),
+            'palabra_clave': forms.TextInput(attrs={'class': 'form-control'}),
+            'es_predeterminada': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'orden': forms.NumberInput(attrs={'class': 'form-control'}),
         }
 
