@@ -20,5 +20,6 @@ class CategoriaProductoTests(TestCase):
         self.assertEqual(CategoriaProducto.predeterminada(), b)
 
     def test_predeterminada_none_si_ninguna(self):
+        CategoriaProducto.objects.all().delete()
         CategoriaProducto.objects.create(nombre='Otro')
         self.assertIsNone(CategoriaProducto.predeterminada())
