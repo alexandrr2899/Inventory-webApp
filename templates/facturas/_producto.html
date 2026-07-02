@@ -1,4 +1,2 @@
-{% if doc.producto == 'camiseta' %}<span class="badge" style="background:#fd7e14;color:#fff"><i class="bi bi-tshirt me-1"></i>Camiseta</span>
-{% elif doc.producto == 'lisa' %}<span class="badge bg-info text-dark">Lisa</span>
-{% elif doc.producto == 'otro' %}<span class="badge bg-secondary">Otro</span>
+{% if doc.categoria %}<span class="badge bg-info text-dark">{{ doc.categoria.nombre }}</span>
 {% else %}<span class="text-muted">—</span>{% endif %}

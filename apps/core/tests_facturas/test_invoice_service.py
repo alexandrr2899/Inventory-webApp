@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from apps.core.models import Cliente, DocumentoFactura, TarifaCliente
+from apps.core.models import Cliente, DocumentoFactura, TarifaCliente, CategoriaProducto
 from apps.core.services.facturas import invoice_service
 
 
@@ -48,6 +48,9 @@ class VencimientoCreditoTests(TestCase):
 class InvoiceServiceTests(TestCase):
     def setUp(self):
         self.cliente = Cliente.objects.create(nombre='Renato Díaz')
+        CategoriaProducto.objects.all().delete()
+        self.camiseta = CategoriaProducto.objects.create(nombre='Camiseta', palabra_clave='camiseta')
+        self.otro = CategoriaProducto.objects.create(nombre='Otro', es_predeterminada=True)
 
     def test_crear_factura_desde_datos(self):
         doc = invoice_service.crear_documento(
@@ -66,20 +69,21 @@ class InvoiceServiceTests(TestCase):
 
     def test_crear_envio_aplica_tarifa_y_calcula_monto(self):
         TarifaCliente.objects.create(
-            cliente=self.cliente, producto='camiseta',
+            cliente=self.cliente, categoria=self.camiseta,
             precio_por_libra=Decimal('32.00'), activa=True,
             fecha_inicio=date(2026, 1, 1),
         )
         doc = invoice_service.crear_documento(
-            cliente=self.cliente, tipo_documento='envio', producto='camiseta',
+            cliente=self.cliente, tipo_documento='envio', categoria=self.camiseta,
             datos={'numero_documento': 'E-1', 'total_libras': Decimal('10.00')},
         )
+        self.assertEqual(doc.categoria, self.camiseta)
         self.assertEqual(doc.precio_por_libra, Decimal('32.00'))
         self.assertEqual(doc.monto_total, Decimal('320.00'))
 
     def test_envio_sin_tarifa_deja_monto_cero(self):
         doc = invoice_service.crear_documento(
-            cliente=self.cliente, tipo_documento='envio', producto='otro',
+            cliente=self.cliente, tipo_documento='envio', categoria=self.otro,
             datos={'total_libras': Decimal('10.00')},
         )
         self.assertIsNone(doc.precio_por_libra)

@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from apps.core.models import DocumentoFactura, TarifaCliente
+from apps.core.models import DocumentoFactura, TarifaCliente, CategoriaProducto
 from . import pdf_service, status_service
 from .pdf_extractors import filename_extractor
 
@@ -12,8 +12,19 @@ from .pdf_extractors import filename_extractor
 # Campos que un extractor puede aportar y que se copian directo al documento.
 _CAMPOS_DIRECTOS = (
     'numero_documento', 'fecha_documento', 'fecha_vencimiento', 'subtotal', 'isv',
-    'monto_total', 'total_libras', 'producto',
+    'monto_total', 'total_libras',
 )
+
+
+def clasificar_categoria(nombre_archivo):
+    """Categoría de un envío según el nombre del archivo: la primera categoría activa
+    cuya palabra clave aparezca en el nombre; si ninguna coincide, la predeterminada."""
+    base = (nombre_archivo or '')
+    for cat in CategoriaProducto.objects.filter(activa=True).order_by('orden', 'nombre'):
+        kw = (cat.palabra_clave or '').strip()
+        if kw and kw.lower() in base.lower():
+            return cat
+    return CategoriaProducto.predeterminada()
 
 
 def detectar_tipo(nombre_archivo, default='factura'):
@@ -50,12 +61,18 @@ def previsualizar(tipo_documento, archivo):
         if enteros and numero and str(enteros[0]) == str(numero) and len(enteros) > 1:
             datos['total_libras'] = Decimal(enteros[1])
 
+    # Envío: sugerir la categoría según el nombre del archivo (para preseleccionar al revisar).
+    if tipo_documento == 'envio':
+        cat = clasificar_categoria(nombre)
+        if cat is not None:
+            datos['categoria_id'] = cat.pk
+
     datos.pop('_enteros', None)
     return {'texto_extraido': texto, 'datos': datos}
 
 
 @transaction.atomic
-def crear_documento(*, cliente, tipo_documento, archivo=None, producto=None,
+def crear_documento(*, cliente, tipo_documento, archivo=None, categoria=None,
                     datos=None, texto_extraido=''):
     """Crea un DocumentoFactura. Para envío aplica tarifa activa (snapshot)."""
     datos = dict(datos or {})
@@ -68,8 +85,6 @@ def crear_documento(*, cliente, tipo_documento, archivo=None, producto=None,
     )
     if archivo is not None:
         doc.archivo_pdf = archivo
-    if producto:
-        doc.producto = producto
 
     for campo in _CAMPOS_DIRECTOS:
         if campo in datos and datos[campo] is not None:
@@ -81,11 +96,15 @@ def crear_documento(*, cliente, tipo_documento, archivo=None, producto=None,
         doc.fecha_vencimiento = doc.fecha_documento + timedelta(days=cliente.dias_credito)
 
     if tipo_documento == 'envio':
-        prod = producto or doc.producto
-        tarifa = TarifaCliente.activa_para(cliente, prod) if prod else None
+        if categoria is None:
+            categoria = clasificar_categoria(getattr(archivo, 'name', '') or '')
+        doc.categoria = categoria
+        tarifa = TarifaCliente.activa_para(cliente, categoria) if categoria else None
         if tarifa and doc.total_libras is not None:
             doc.precio_por_libra = tarifa.precio_por_libra
             doc.monto_total = (doc.total_libras * tarifa.precio_por_libra).quantize(Decimal('0.01'))
+    elif categoria is not None:
+        doc.categoria = categoria
 
     doc.save()
     status_service.actualizar_estado_pago(doc)

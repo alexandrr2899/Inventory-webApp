@@ -510,7 +510,7 @@ class CategoriaProducto(models.Model):
 
 class TarifaCliente(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='tarifas')
-    producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES)
+    producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES, blank=True)
     categoria = models.ForeignKey(
         'CategoriaProducto', on_delete=models.PROTECT, null=True, blank=True,
         related_name='tarifas')
@@ -523,23 +523,23 @@ class TarifaCliente(models.Model):
     class Meta:
         verbose_name = 'Tarifa de cliente'
         verbose_name_plural = 'Tarifas de cliente'
-        ordering = ['cliente', 'producto', '-fecha_inicio']
+        ordering = ['cliente', 'categoria', '-fecha_inicio']
         constraints = [
             models.UniqueConstraint(
-                fields=['cliente', 'producto'],
+                fields=['cliente', 'categoria'],
                 condition=models.Q(activa=True),
-                name='tarifa_unica_activa_por_cliente_producto',
+                name='tarifa_unica_activa_por_cliente_categoria',
             ),
         ]
 
     def __str__(self):
-        return f'{self.cliente.nombre} · {self.get_producto_display()} · L {self.precio_por_libra}/lb'
+        return f'{self.cliente.nombre} · {self.categoria.nombre} · L {self.precio_por_libra}/lb'
 
     @classmethod
-    def activa_para(cls, cliente, producto):
-        """Tarifa activa vigente del cliente para el producto, o None."""
+    def activa_para(cls, cliente, categoria):
+        """Tarifa activa vigente del cliente para la categoría, o None."""
         return cls.objects.filter(
-            cliente=cliente, producto=producto, activa=True,
+            cliente=cliente, categoria=categoria, activa=True,
         ).order_by('-fecha_inicio').first()
 
 

@@ -97,12 +97,21 @@
       <input type="hidden" name="estado" id="f-estado" value="{{ filtros.estado }}">
       <input type="hidden" name="revision" id="f-revision" value="{{ filtros.revision }}">
       <input type="hidden" name="q" id="f-q" value="{{ filtros.q }}">
-      <div class="col-12 col-md-4">
+      <div class="col-12 col-md-3">
         <label class="form-label">Cliente</label>
         <select name="cliente" class="form-select">
           <option value="">Todos los clientes</option>
           {% for c in clientes %}
           <option value="{{ c.pk }}" {% if filtros.cliente == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Categoría</label>
+        <select name="categoria" class="form-select">
+          <option value="">Todas</option>
+          {% for cat in categorias %}
+          <option value="{{ cat.pk }}" {% if filtros.categoria == cat.pk|stringformat:"s" %}selected{% endif %}>{{ cat.nombre }}</option>
           {% endfor %}
         </select>
       </div>
@@ -150,7 +159,7 @@
       </thead>
       <tbody>
         {% for doc in documentos %}
-        <tr class="fac-row" style="cursor:pointer{% if doc.producto == 'camiseta' %};border-left:4px solid #fd7e14{% endif %}" data-href="{% url 'factura_detalle' doc.pk %}?next={{ return_url|urlencode }}">
+        <tr class="fac-row" style="cursor:pointer" data-href="{% url 'factura_detalle' doc.pk %}?next={{ return_url|urlencode }}">
           <td class="px-3">
             {% if doc.tipo_documento == 'envio' %}
             <span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-truck me-1"></i>Envío</span>

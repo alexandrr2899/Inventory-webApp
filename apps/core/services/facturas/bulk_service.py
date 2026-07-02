@@ -15,7 +15,7 @@ from django.conf import settings
 from django.core.files import File
 from django.utils.text import get_valid_filename
 
-from apps.core.models import Cliente
+from apps.core.models import Cliente, CategoriaProducto
 from . import invoice_service, pdf_service, payment_service
 from .pdf_extractors import filename_extractor
 from .pdf_extractors.base_extractor import parse_decimal, parse_fecha
@@ -116,7 +116,7 @@ def procesar_archivos(archivos):
             'cliente_sugerido': nombre_cli,
             'numero_documento': datos.get('numero_documento', ''),
             'fecha_documento': fecha.isoformat() if fecha else '',
-            'producto': datos.get('producto', ''),
+            'categoria_id': datos.get('categoria_id', ''),
             'total_libras': _s(datos.get('total_libras')),
             'subtotal': _s(datos.get('subtotal')),
             'isv': _s(datos.get('isv')),
@@ -154,8 +154,9 @@ def crear_desde_lote(batch_id, filas):
         datos = {}
         if fila.get('numero_documento'):
             datos['numero_documento'] = fila['numero_documento']
-        if fila.get('producto'):
-            datos['producto'] = fila['producto']
+        categoria = None
+        if fila.get('categoria_id'):
+            categoria = CategoriaProducto.objects.filter(pk=fila['categoria_id']).first()
         fecha = parse_fecha(fila.get('fecha_documento'))
         if fecha:
             datos['fecha_documento'] = fecha
@@ -170,7 +171,7 @@ def crear_desde_lote(batch_id, filas):
             doc = invoice_service.crear_documento(
                 cliente=cliente, tipo_documento=fila.get('tipo') or 'factura',
                 archivo=File(fh, name=archivo_nombre),
-                producto=fila.get('producto') or None,
+                categoria=categoria,
                 datos=datos, texto_extraido=texto,
             )
         payment_service.aplicar_saldo_a_favor(doc)

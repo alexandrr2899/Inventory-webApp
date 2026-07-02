@@ -16,10 +16,10 @@ def cliente_tarifas(request, pk):
             tarifa = form.save(commit=False)
             tarifa.cliente = cliente
             with transaction.atomic():
-                # Si se marca activa, desactivar otras activas del mismo producto.
+                # Si se marca activa, desactivar otras activas de la misma categoría.
                 if tarifa.activa:
                     TarifaCliente.objects.filter(
-                        cliente=cliente, producto=tarifa.producto, activa=True,
+                        cliente=cliente, categoria=tarifa.categoria, activa=True,
                     ).update(activa=False)
                 tarifa.save()
             messages.success(request, 'Tarifa guardada.')
@@ -42,7 +42,7 @@ def cliente_tarifa_toggle(request, pk):
     with transaction.atomic():
         if not tarifa.activa:
             TarifaCliente.objects.filter(
-                cliente=tarifa.cliente, producto=tarifa.producto, activa=True,
+                cliente=tarifa.cliente, categoria=tarifa.categoria, activa=True,
             ).update(activa=False)
         tarifa.activa = not tarifa.activa
         tarifa.save(update_fields=['activa'])

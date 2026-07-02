@@ -436,9 +436,10 @@ class DocumentoUploadForm(forms.Form):
         required=False,
         widget=forms.Select(attrs={'class': 'form-select'}),
     )
-    producto = forms.ChoiceField(
-        choices=[('', '—')] + list(DocumentoFactura._meta.get_field('producto').choices),
+    categoria = forms.ModelChoiceField(
+        queryset=CategoriaProducto.objects.filter(activa=True),
         required=False,
+        empty_label='Auto-detectar por nombre',
         widget=forms.Select(attrs={'class': 'form-select'}),
     )
     archivo_pdf = forms.FileField(
@@ -452,7 +453,7 @@ class DocumentoEditarForm(forms.ModelForm):
         model = DocumentoFactura
         fields = [
             'cliente', 'tipo_documento', 'numero_documento', 'fecha_documento',
-            'fecha_vencimiento', 'producto', 'total_libras', 'precio_por_libra',
+            'fecha_vencimiento', 'categoria', 'total_libras', 'precio_por_libra',
             'subtotal', 'isv', 'monto_total', 'estado_revision', 'notas',
         ]
         widgets = {
@@ -461,7 +462,7 @@ class DocumentoEditarForm(forms.ModelForm):
             'numero_documento': forms.TextInput(attrs={'class': 'form-control'}),
             'fecha_documento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
             'fecha_vencimiento': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
-            'producto': forms.Select(attrs={'class': 'form-select'}),
+            'categoria': forms.Select(attrs={'class': 'form-select'}),
             'total_libras': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'precio_por_libra': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'subtotal': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
@@ -470,6 +471,11 @@ class DocumentoEditarForm(forms.ModelForm):
             'estado_revision': forms.Select(attrs={'class': 'form-select'}),
             'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['categoria'].queryset = CategoriaProducto.objects.filter(activa=True)
+        self.fields['categoria'].required = False
 
 
 class PagoFacturaForm(forms.Form):
@@ -534,12 +540,17 @@ class CategoriaProductoForm(forms.ModelForm):
 class TarifaClienteForm(forms.ModelForm):
     class Meta:
         model = TarifaCliente
-        fields = ['producto', 'precio_por_libra', 'activa', 'fecha_inicio', 'fecha_fin', 'notas']
+        fields = ['categoria', 'precio_por_libra', 'activa', 'fecha_inicio', 'fecha_fin', 'notas']
         widgets = {
-            'producto': forms.Select(attrs={'class': 'form-select'}),
+            'categoria': forms.Select(attrs={'class': 'form-select'}),
             'precio_por_libra': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'fecha_inicio': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
             'fecha_fin': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
             'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['categoria'].queryset = CategoriaProducto.objects.filter(activa=True)
+        self.fields['categoria'].required = True

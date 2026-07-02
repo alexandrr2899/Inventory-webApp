@@ -82,7 +82,7 @@
     </tr></thead>
     <tbody>
     {% for doc in documentos %}
-      <tr {% if doc.producto == 'camiseta' %}style="border-left:4px solid #fd7e14"{% endif %}>
+      <tr>
         <td>
           {% if doc.tipo_documento == 'envio' %}
           <span class="badge bg-info-subtle text-info-emphasis">Envío</span>

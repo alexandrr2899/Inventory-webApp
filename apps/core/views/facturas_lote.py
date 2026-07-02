@@ -1,7 +1,7 @@
 """facturas_lote.py — Subida en bloque de PDFs con revisión y auto-emparejado."""
 from .common import *  # noqa: F401,F403
 
-from ..models import Cliente, DocumentoFactura
+from ..models import Cliente, DocumentoFactura, CategoriaProducto
 from ..services.facturas import bulk_service
 
 
@@ -20,7 +20,7 @@ def factura_lote(request):
             'filas': filas,
             'clientes': Cliente.objects.filter(activo=True).order_by('nombre'),
             'tipo_choices': DocumentoFactura.TIPO_CHOICES,
-            'producto_choices': DocumentoFactura._meta.get_field('producto').choices,
+            'categorias': CategoriaProducto.objects.filter(activa=True),
         })
     return render(request, 'facturas/form_lote.html')
 
@@ -47,7 +47,7 @@ def factura_lote_confirmar(request):
             'tipo': request.POST.get(p + 'tipo', 'factura'),
             'numero_documento': request.POST.get(p + 'numero_documento', ''),
             'fecha_documento': request.POST.get(p + 'fecha_documento', ''),
-            'producto': request.POST.get(p + 'producto', ''),
+            'categoria_id': request.POST.get(p + 'categoria', ''),
             'total_libras': request.POST.get(p + 'total_libras', ''),
             'subtotal': request.POST.get(p + 'subtotal', ''),
             'isv': request.POST.get(p + 'isv', ''),

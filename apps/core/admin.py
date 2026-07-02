@@ -117,14 +117,14 @@ admin.site.register(DetalleMovimiento, DetalleMovimientoAdmin)
 class DocumentoFacturaAdmin(admin.ModelAdmin):
     list_display = ('id', 'tipo_documento', 'cliente', 'numero_documento',
                     'fecha_documento', 'monto_total', 'estado_pago', 'estado_revision')
-    list_filter = ('tipo_documento', 'estado_pago', 'estado_revision', 'producto')
+    list_filter = ('tipo_documento', 'estado_pago', 'estado_revision', 'categoria')
     search_fields = ('numero_documento', 'cliente__nombre')
 
 
 @admin.register(TarifaCliente)
 class TarifaClienteAdmin(admin.ModelAdmin):
-    list_display = ('cliente', 'producto', 'precio_por_libra', 'activa', 'fecha_inicio')
-    list_filter = ('producto', 'activa')
+    list_display = ('cliente', 'categoria', 'precio_por_libra', 'activa', 'fecha_inicio')
+    list_filter = ('categoria', 'activa')
     search_fields = ('cliente__nombre',)
 
 

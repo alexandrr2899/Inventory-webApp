@@ -4,7 +4,7 @@ import tempfile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from apps.core.models import Cliente, DocumentoFactura, TarifaCliente
+from apps.core.models import Cliente, DocumentoFactura, TarifaCliente, CategoriaProducto
 from apps.core.services.facturas import bulk_service
 
 _SAMPLES = os.path.normpath(os.path.join(
@@ -50,7 +50,10 @@ class LoteEndToEndTests(TestCase):
     def setUp(self):
         self.zaga = Cliente.objects.create(nombre='Inversiones Zaga')
         self.renato = Cliente.objects.create(nombre='Renato Díaz')
-        TarifaCliente.objects.create(cliente=self.renato, producto='camiseta',
+        # La tarifa se liga a la categoría Camiseta sembrada (que el clasificador
+        # asigna a 'RENATO DIAZ Envio camiseta 126.pdf').
+        self.camiseta = CategoriaProducto.objects.get(nombre='Camiseta')
+        TarifaCliente.objects.create(cliente=self.renato, categoria=self.camiseta,
                                      precio_por_libra=__import__('decimal').Decimal('30.00'),
                                      activa=True)
 
@@ -67,7 +70,7 @@ class LoteEndToEndTests(TestCase):
         self.assertEqual(fac['numero_documento'], '9543')
         self.assertEqual(env['tipo'], 'envio')
         self.assertEqual(str(env['cliente_id']), str(self.renato.pk))
-        self.assertEqual(env['producto'], 'camiseta')
+        self.assertEqual(str(env['categoria_id']), str(self.camiseta.pk))
 
     def test_crear_desde_lote_crea_documentos(self):
         if not (os.path.exists(_FACTURA) and os.path.exists(_ENVIO)):
