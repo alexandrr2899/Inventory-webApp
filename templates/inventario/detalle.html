@@ -46,6 +46,24 @@
   </div>
 </div>
 
+<!-- Etiqueta QR -->
+<div class="card mb-3" id="qr-etiqueta">
+  <div class="card-body text-center">
+    <h2 class="h6 text-muted">Etiqueta QR</h2>
+    <img src="{% url 'item_qr_png' item.pk %}" alt="QR {{ item.codigo }}"
+         style="width:160px;height:160px" class="my-2">
+    <div class="small text-muted">{{ item.codigo }}</div>
+    <div class="d-flex gap-2 justify-content-center mt-2 d-print-none">
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+        <i class="bi bi-printer"></i> Imprimir
+      </button>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'item_qr_png' item.pk %}" download="qr-{{ item.codigo }}.png">
+        <i class="bi bi-download"></i> Descargar PNG
+      </a>
+    </div>
+  </div>
+</div>
+
 <!-- Stock por ubicación -->
 <div class="card mb-3">
   <div class="card-header bg-white fw-bold">

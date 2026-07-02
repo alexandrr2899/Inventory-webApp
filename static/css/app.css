@@ -280,3 +280,17 @@ body { background: var(--app-page-bg); }
   color: var(--app-text-muted);
 }
 [data-bs-theme="dark"] .ts-dropdown .no-results { color: var(--app-text-muted); }
+
+/* Impresión: ocultar el chrome de la app para etiquetas/fichas imprimibles. */
+@media print {
+  .app-navbar,
+  .sidebar,
+  .bottom-nav,
+  .offcanvas {
+    display: none !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+    margin-bottom: 0 !important;
+  }
+}

@@ -3,7 +3,8 @@ inventario.py — Ítems, ubicaciones, kardex/historial.
 """
 from .common import *  # noqa: F401,F403
 from .stock import *   # noqa: F401,F403
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest
+from ..services import qr as qr_service
 
 # ─── TABS DEL INVENTARIO ──────────────────────────────────────────────────────
 # Definición canónica (orden por defecto + metadata de presentación). El orden
@@ -173,6 +174,38 @@ def item_detalle(request, pk):
     )
     context = {'item': item, 'stocks': stocks, 'detalles_recientes': detalles_recientes}
     return render(request, 'inventario/detalle.html', context)
+
+
+@login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
+def item_etiquetas(request):
+    tipo = request.GET.get('tipo', '')
+    items = Item.objects.filter(activo=True)
+    if tipo in ('producto', 'repuesto', 'consumible'):
+        items = items.filter(tipo=tipo)
+    elif tipo == 'todos':
+        pass
+    else:
+        # Por defecto: solo repuestos y consumibles.
+        items = items.filter(tipo__in=['repuesto', 'consumible'])
+    categoria_id = request.GET.get('categoria', '')
+    if categoria_id:
+        items = items.filter(categoria_id=categoria_id)
+    items = items.order_by('tipo', 'orden', 'nombre')
+    return render(request, 'inventario/etiquetas.html', {
+        'items': items,
+        'tipo': tipo,
+        'categoria_id': categoria_id,
+        'categorias': Categoria.objects.all(),
+    })
+
+
+@login_required
+@permission_required(_perm('ver_inventario'), raise_exception=True)
+def item_qr_png(request, pk):
+    item = get_object_or_404(Item, pk=pk)
+    url = request.build_absolute_uri(reverse('item_detalle', args=[item.pk]))
+    return HttpResponse(qr_service.qr_png_bytes(url), content_type='image/png')
 
 
 @login_required

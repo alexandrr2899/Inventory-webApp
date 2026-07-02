@@ -14,7 +14,9 @@ urlpatterns = [
     path('inventario/nuevo/', views.item_crear, name='item_crear'),
     # Rutas de segmento fijo ANTES de las paramétricas <int:pk> (convención).
     path('inventario/tabs/orden/', views.inventario_tabs_orden, name='inventario_tabs_orden'),
+    path('inventario/etiquetas/', views.item_etiquetas, name='item_etiquetas'),
     path('inventario/<int:pk>/', views.item_detalle, name='item_detalle'),
+    path('inventario/<int:pk>/qr.png', views.item_qr_png, name='item_qr_png'),
     path('inventario/<int:pk>/editar/', views.item_editar, name='item_editar'),
     path('inventario/<int:pk>/toggle/', views.item_toggle_activo, name='item_toggle_activo'),
     path('inventario/<int:pk>/historial/', views.item_historial, name='item_historial'),
