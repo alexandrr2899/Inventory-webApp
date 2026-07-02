@@ -15,3 +15,25 @@ def moneda(value):
         return '{:,.2f}'.format(Decimal(str(value)))
     except (InvalidOperation, TypeError, ValueError):
         return value
+
+
+# Paleta fija de clases Bootstrap para distinguir categorías por color. Como las
+# categorías son configurables (no un choices fijo), el color se deriva del pk
+# de forma determinística en vez de guardarse en el modelo.
+_PALETA_CATEGORIAS = (
+    'bg-primary',
+    'bg-success',
+    'bg-danger',
+    'bg-warning text-dark',
+    'bg-secondary',
+    'bg-dark',
+    'bg-info text-dark',
+)
+
+
+@register.filter
+def categoria_badge_class(categoria):
+    """Clase(s) Bootstrap para el badge de una CategoriaProducto, estable por categoría."""
+    if not categoria or not categoria.pk:
+        return 'bg-secondary'
+    return _PALETA_CATEGORIAS[categoria.pk % len(_PALETA_CATEGORIAS)]

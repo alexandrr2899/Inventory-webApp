@@ -10,7 +10,7 @@
 </a>
 {% endif %}
 
-{% if perms.core.registrar_salida or perms.core.ver_inventario %}
+{% if perms.core.registrar_salida or perms.core.ver_inventario or perms.core.registrar_entrada %}
 <span class="sidebar-section">Operaciones</span>
 {% if perms.core.registrar_salida %}
 <a href="{% url 'movimiento_salida' %}" class="nav-link {% if un == 'movimiento_salida' %}active{% endif %}">
@@ -18,8 +18,13 @@
 </a>
 {% endif %}
 {% if perms.core.ver_inventario %}
-<a href="{% url 'movimiento_lista' %}" class="nav-link {% if 'movimiento' in un and un != 'movimiento_salida' %}active{% endif %}">
+<a href="{% url 'movimiento_lista' %}" class="nav-link {% if 'movimiento' in un and un != 'movimiento_salida' and un != 'movimiento_transferencia' %}active{% endif %}">
   <i class="bi bi-clock-history"></i> Historial
+</a>
+{% endif %}
+{% if perms.core.registrar_entrada %}
+<a href="{% url 'movimiento_transferencia' %}" class="nav-link {% if un == 'movimiento_transferencia' %}active{% endif %}">
+  <i class="bi bi-arrow-left-right text-warning"></i> Transferencia
 </a>
 {% endif %}
 {% endif %}
@@ -39,29 +44,29 @@
 <a class="nav-link nav-group-toggle d-flex justify-content-between align-items-center"
    data-bs-toggle="collapse" href="#navFacturas-{{ mid }}" role="button"
    aria-controls="navFacturas-{{ mid }}"
-   aria-expanded="{% if 'factura' in un or 'lote' in un %}true{% else %}false{% endif %}">
+   aria-expanded="{% if 'factura' in un or 'lote' in un or 'categoria' in un or 'cliente' in un %}true{% else %}false{% endif %}">
   <span>
     <i class="bi bi-receipt"></i> Facturas
     {% if facturas_por_revisar %}<span class="badge bg-warning text-dark rounded-pill ms-1">{{ facturas_por_revisar }}</span>{% endif %}
   </span>
   <i class="bi bi-chevron-down small chevron"></i>
 </a>
-<div class="collapse nav-group-sub {% if 'factura' in un or 'lote' in un %}show{% endif %}"
+<div class="collapse nav-group-sub {% if 'factura' in un or 'lote' in un or 'categoria' in un or 'cliente' in un %}show{% endif %}"
      id="navFacturas-{{ mid }}">
   <a href="{% url 'facturas_lista' %}" class="nav-link {% if un == 'facturas_lista' %}active{% endif %}">
-    <i class="bi bi-list-check"></i> Revisar
+    <i class="bi bi-list-check"></i> Facturas
   </a>
+  {% if perms.core.crear_item %}
+  <a href="{% url 'cliente_lista' %}" class="nav-link {% if un == 'cliente_lista' %}active{% endif %}">
+    <i class="bi bi-people-fill"></i> Clientes
+  </a>
+  {% endif %}
   <a href="{% url 'factura_upload' %}" class="nav-link {% if un == 'factura_upload' %}active{% endif %}">
     <i class="bi bi-cloud-upload"></i> Subir documento
   </a>
   <a href="{% url 'factura_lote' %}" class="nav-link {% if 'lote' in un %}active{% endif %}">
     <i class="bi bi-files"></i> Subir en bloque
   </a>
-  {% if perms.core.gestionar_metodos_pago %}
-  <a href="{% url 'metodo_pago_lista' %}" class="nav-link {% if 'metodo_pago' in un %}active{% endif %}">
-    <i class="bi bi-credit-card"></i> Métodos de pago
-  </a>
-  {% endif %}
   {% if perms.core.gestionar_categorias_producto %}
   <a href="{% url 'categoria_producto_lista' %}" class="nav-link {% if 'categoria' in un %}active{% endif %}">
     <i class="bi bi-tags"></i> Categorías de producto
@@ -106,25 +111,27 @@
 </div>
 {% endif %}
 
-{% if perms.core.crear_item or perms.core.importar_excel or perms.core.gestionar_backups or perms.core.ver_reportes or user.is_superuser %}
+{% if perms.core.crear_item or perms.core.importar_excel or perms.core.gestionar_backups or perms.core.gestionar_metodos_pago or perms.core.ver_reportes or user.is_superuser %}
 <a class="nav-link nav-group-toggle d-flex justify-content-between align-items-center"
    data-bs-toggle="collapse" href="#navConfig-{{ mid }}" role="button"
    aria-controls="navConfig-{{ mid }}"
-   aria-expanded="{% if 'cliente' in un or 'maquina' in un or 'ubicacion' in un or 'importar' in un or 'backup' in un or 'usuario' in un or un == 'notificaciones_panel' or un == 'produccion_nueva' or un == 'movimiento_entrada' or un == 'movimiento_transferencia' %}true{% else %}false{% endif %}">
+   aria-expanded="{% if 'maquina' in un or 'ubicacion' in un or 'importar' in un or 'backup' in un or 'usuario' in un or 'metodo_pago' in un or un == 'notificaciones_panel' or un == 'produccion_nueva' or un == 'movimiento_entrada' %}true{% else %}false{% endif %}">
   <span><i class="bi bi-gear-wide-connected"></i> Configuración</span>
   <i class="bi bi-chevron-down small chevron"></i>
 </a>
-<div class="collapse nav-group-sub {% if 'cliente' in un or 'maquina' in un or 'ubicacion' in un or 'importar' in un or 'backup' in un or 'usuario' in un or un == 'notificaciones_panel' or un == 'produccion_nueva' or un == 'movimiento_entrada' or un == 'movimiento_transferencia' %}show{% endif %}"
+<div class="collapse nav-group-sub {% if 'maquina' in un or 'ubicacion' in un or 'importar' in un or 'backup' in un or 'usuario' in un or 'metodo_pago' in un or un == 'notificaciones_panel' or un == 'produccion_nueva' or un == 'movimiento_entrada' %}show{% endif %}"
      id="navConfig-{{ mid }}">
   {% if perms.core.crear_item %}
-  <a href="{% url 'cliente_lista' %}" class="nav-link {% if 'cliente' in un and not 'factura' in un %}active{% endif %}">
-    <i class="bi bi-people-fill"></i> Clientes
-  </a>
   <a href="{% url 'ubicacion_lista' %}" class="nav-link {% if 'ubicacion' in un %}active{% endif %}">
     <i class="bi bi-geo-alt-fill"></i> Ubicaciones
   </a>
   <a href="{% url 'maquina_lista' %}" class="nav-link {% if 'maquina' in un %}active{% endif %}">
     <i class="bi bi-gear-fill"></i> Máquinas
+  </a>
+  {% endif %}
+  {% if perms.core.gestionar_metodos_pago %}
+  <a href="{% url 'metodo_pago_lista' %}" class="nav-link {% if 'metodo_pago' in un %}active{% endif %}">
+    <i class="bi bi-credit-card"></i> Métodos de pago
   </a>
   {% endif %}
   {% if perms.core.registrar_produccion %}
@@ -135,9 +142,6 @@
   {% if perms.core.registrar_entrada %}
   <a href="{% url 'movimiento_entrada' %}" class="nav-link {% if un == 'movimiento_entrada' %}active{% endif %}">
     <i class="bi bi-arrow-down-circle-fill text-success"></i> Nueva entrada
-  </a>
-  <a href="{% url 'movimiento_transferencia' %}" class="nav-link {% if un == 'movimiento_transferencia' %}active{% endif %}">
-    <i class="bi bi-arrow-left-right text-warning"></i> Transferencia
   </a>
   {% endif %}
   {% if perms.core.importar_excel %}

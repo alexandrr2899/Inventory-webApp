@@ -1,2 +1,3 @@
-{% if doc.categoria %}<span class="badge bg-info text-dark">{{ doc.categoria.nombre }}</span>
+{% load facturas_extras %}
+{% if doc.categoria %}<span class="badge {{ doc.categoria|categoria_badge_class }}">{{ doc.categoria.nombre }}</span>
 {% else %}<span class="text-muted">—</span>{% endif %}
