@@ -31,3 +31,11 @@ class ClasificarCategoriaTests(TestCase):
         self.camiseta.save(update_fields=['activa'])
         c = invoice_service.clasificar_categoria('X Envio camiseta 9.pdf')
         self.assertEqual(c, self.lisa)  # cae a la predeterminada
+
+    def test_predeterminada_inactiva_no_se_usa(self):
+        # Una categoría marcada por defecto pero desactivada no debe asignarse:
+        # dejaría envíos sin tarifa aplicable de forma silenciosa.
+        self.lisa.activa = False
+        self.lisa.save(update_fields=['activa'])
+        c = invoice_service.clasificar_categoria('Antonio Sanchez 126.pdf')
+        self.assertIsNone(c)

@@ -499,14 +499,14 @@ class CategoriaProducto(models.Model):
 
     @classmethod
     def predeterminada(cls):
-        return cls.objects.filter(es_predeterminada=True).first()
+        """Categoría efectiva por defecto: debe estar activa para poder usarse."""
+        return cls.objects.filter(es_predeterminada=True, activa=True).first()
 
 
 class TarifaCliente(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='tarifas')
     categoria = models.ForeignKey(
-        'CategoriaProducto', on_delete=models.PROTECT, null=True, blank=True,
-        related_name='tarifas')
+        'CategoriaProducto', on_delete=models.PROTECT, related_name='tarifas')
     precio_por_libra = models.DecimalField(max_digits=12, decimal_places=2)
     activa = models.BooleanField(default=True)
     fecha_inicio = models.DateField(default=timezone.now)

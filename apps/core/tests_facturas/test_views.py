@@ -271,7 +271,7 @@ class MejorasUXTests(TestCase):
         resp = self.client.post(reverse('factura_editar', args=[self.doc.pk]), {
             'cliente': self.cliente.pk, 'tipo_documento': 'factura',
             'numero_documento': 'F-555', 'fecha_documento': timezone.localdate().isoformat(),
-            'producto': '', 'subtotal': '0', 'isv': '0', 'monto_total': '100.00',
+            'subtotal': '0', 'isv': '0', 'monto_total': '100.00',
             'estado_revision': 'pendiente', 'notas': '', 'accion': 'guardar_revisar',
             'next': next_url,
         })
