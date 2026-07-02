@@ -37,9 +37,16 @@
       <span id="cnt-visible">0</span> ítem(s) · busca o filtra abajo
     </small>
   </div>
-  <a href="{% url 'item_crear' %}" class="btn btn-light btn-sm fw-semibold">
-    <i class="bi bi-plus-lg me-1"></i>Nuevo
-  </a>
+  <div class="d-flex gap-2">
+    {% if perms.core.ver_inventario %}
+    <a href="{% url 'item_etiquetas' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-qr-code me-1"></i>Etiquetas QR
+    </a>
+    {% endif %}
+    <a href="{% url 'item_crear' %}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-plus-lg me-1"></i>Nuevo
+    </a>
+  </div>
 </div>
 
 <!-- Buscador -->

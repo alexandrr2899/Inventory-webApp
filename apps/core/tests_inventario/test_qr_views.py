@@ -44,3 +44,37 @@ class ItemDetalleQrTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         qr_url = reverse('item_qr_png', args=[self.item.pk])
         self.assertContains(resp, qr_url)
+
+
+class ItemEtiquetasTests(TestCase):
+    def setUp(self):
+        self.rep = Item.objects.create(codigo='R-1', nombre='Rep', tipo='repuesto', unidad_medida='u')
+        self.con = Item.objects.create(codigo='C-1', nombre='Con', tipo='consumible', unidad_medida='u')
+        self.prod = Item.objects.create(codigo='P-1', nombre='Prod', tipo='producto', unidad_medida='u')
+        self.user = User.objects.create_user('w', password='x')
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
+        self.client.force_login(self.user)
+
+    def test_por_defecto_solo_repuestos_y_consumibles(self):
+        resp = self.client.get(reverse('item_etiquetas'))
+        self.assertEqual(resp.status_code, 200)
+        items = list(resp.context['items'])
+        self.assertIn(self.rep, items)
+        self.assertIn(self.con, items)
+        self.assertNotIn(self.prod, items)
+
+    def test_filtro_tipo_producto(self):
+        resp = self.client.get(reverse('item_etiquetas'), {'tipo': 'producto'})
+        items = list(resp.context['items'])
+        self.assertEqual(items, [self.prod])
+
+    def test_filtro_todos(self):
+        resp = self.client.get(reverse('item_etiquetas'), {'tipo': 'todos'})
+        items = list(resp.context['items'])
+        self.assertEqual(set(items), {self.rep, self.con, self.prod})
+
+    def test_sin_permiso_403(self):
+        self.client.logout()
+        self.client.force_login(User.objects.create_user('w2', password='x'))
+        resp = self.client.get(reverse('item_etiquetas'))
+        self.assertEqual(resp.status_code, 403)
