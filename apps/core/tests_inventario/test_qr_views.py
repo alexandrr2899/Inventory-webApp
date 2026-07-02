@@ -29,3 +29,18 @@ class ItemQrPngTests(TestCase):
         self.client.force_login(self.user)
         resp = self.client.get(reverse('item_qr_png', args=[999999]))
         self.assertEqual(resp.status_code, 404)
+
+
+class ItemDetalleQrTests(TestCase):
+    def setUp(self):
+        self.item = Item.objects.create(
+            codigo='R-002', nombre='Faja', tipo='consumible', unidad_medida='u')
+        self.user = User.objects.create_user('v', password='x')
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
+        self.client.force_login(self.user)
+
+    def test_ficha_incluye_img_del_qr(self):
+        resp = self.client.get(reverse('item_detalle', args=[self.item.pk]))
+        self.assertEqual(resp.status_code, 200)
+        qr_url = reverse('item_qr_png', args=[self.item.pk])
+        self.assertContains(resp, qr_url)
