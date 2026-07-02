@@ -10,12 +10,9 @@ import os
 import re
 
 
+# Se usa solo para separar el nombre del cliente del token de producto en el
+# patrón "<CLIENTE> <PRODUCTO> <NUM>". La categoría se decide en invoice_service.
 _PRODUCTOS = ('camiseta', 'lisa', 'otro')
-
-
-def _producto_envio(base):
-    """Producto de un envío según el nombre: 'camiseta' si lo menciona, si no 'lisa'."""
-    return 'camiseta' if re.search(r'camiseta', base, re.IGNORECASE) else 'lisa'
 
 
 def extraer_de_nombre(nombre_archivo):
@@ -82,7 +79,4 @@ def extraer_de_nombre(nombre_archivo):
                     datos['tipo_documento'] = 'envio'
                     datos['numero_documento'] = nums[-1]
 
-    # Producto del envío por el nombre: camiseta si lo menciona, si no lisa.
-    if datos.get('tipo_documento') == 'envio':
-        datos['producto'] = _producto_envio(base)
     return datos

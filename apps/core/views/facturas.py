@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
-from ..models import DocumentoFactura, TarifaCliente, MetodoPago
+from ..models import DocumentoFactura, TarifaCliente, MetodoPago, CategoriaProducto
 from ..forms import DocumentoUploadForm, DocumentoEditarForm
 from ..services.facturas import invoice_service, status_service, payment_service
 
@@ -32,10 +32,10 @@ def _safe_return_url(request):
 @permission_required(_perm('ver_facturas'), raise_exception=True)
 @facturas_enabled
 def facturas_lista(request):
-    qs = DocumentoFactura.objects.select_related('cliente').all()
+    qs = DocumentoFactura.objects.select_related('cliente', 'categoria').all()
     tipo = request.GET.get('tipo', '')
     cliente_id = request.GET.get('cliente', '')
-    producto = request.GET.get('producto', '')
+    categoria_id = request.GET.get('categoria', '')
     estado = request.GET.get('estado', '')
     revision = request.GET.get('revision', '')
     q = request.GET.get('q', '').strip()
@@ -51,8 +51,8 @@ def facturas_lista(request):
         qs = qs.filter(tipo_documento=tipo)
     if cliente_id:
         qs = qs.filter(cliente_id=cliente_id)
-    if producto:
-        qs = qs.filter(producto=producto)
+    if categoria_id:
+        qs = qs.filter(categoria_id=categoria_id)
     # Estado lógico (vencida/pendiente se calculan por fecha, sin depender de un cron).
     if estado == 'pagada':
         qs = qs.filter(estado_pago='pagada')
@@ -93,13 +93,13 @@ def facturas_lista(request):
         # El contador "por revisar" lo aporta el context processor (facturas_por_revisar).
         'clientes': Cliente.objects.order_by('nombre'),
         'filtros': {
-            'tipo': tipo, 'cliente': cliente_id, 'producto': producto,
+            'tipo': tipo, 'cliente': cliente_id, 'categoria': categoria_id,
             'estado': estado, 'revision': revision, 'q': q,
             'desde': desde, 'hasta': hasta,
         },
         'tipo_choices': DocumentoFactura.TIPO_CHOICES,
         'estado_choices': DocumentoFactura.ESTADO_PAGO_CHOICES,
-        'producto_choices': DocumentoFactura._meta.get_field('producto').choices,
+        'categorias': CategoriaProducto.objects.filter(activa=True),
         'return_url': request.get_full_path(),
     }
     return render(request, 'facturas/lista.html', ctx)
@@ -152,7 +152,7 @@ def factura_upload(request):
         if form.is_valid():
             cliente = form.cleaned_data['cliente']
             tipo = form.cleaned_data['tipo_documento']
-            producto = form.cleaned_data['producto']
+            categoria = form.cleaned_data['categoria']
             archivo = form.cleaned_data['archivo_pdf']
 
             # Auto-detección del tipo desde el nombre del archivo si no se eligió.
@@ -168,7 +168,7 @@ def factura_upload(request):
 
             doc = invoice_service.crear_documento(
                 cliente=cliente, tipo_documento=tipo, archivo=archivo,
-                producto=producto or datos.get('producto'),
+                categoria=categoria,
                 datos=datos, texto_extraido=texto_extraido,
             )
             payment_service.aplicar_saldo_a_favor(doc)

@@ -109,14 +109,15 @@ class FacturasTarifasTests(TestCase):
 
     @override_settings(FACTURAS_MODULE_ENABLED=True)
     def test_crear_tarifa(self):
-        from apps.core.models import TarifaCliente
+        from apps.core.models import TarifaCliente, CategoriaProducto
+        camiseta = CategoriaProducto.objects.get(nombre='Camiseta')
         self.client.force_login(self.admin)
         resp = self.client.post(reverse('cliente_tarifas', args=[self.cliente.pk]), {
-            'producto': 'camiseta', 'precio_por_libra': '32.00', 'activa': 'on',
+            'categoria': camiseta.pk, 'precio_por_libra': '32.00', 'activa': 'on',
             'fecha_inicio': timezone.localdate().isoformat(),
         })
         self.assertEqual(resp.status_code, 302)
-        self.assertTrue(TarifaCliente.objects.filter(cliente=self.cliente, producto='camiseta').exists())
+        self.assertTrue(TarifaCliente.objects.filter(cliente=self.cliente, categoria=camiseta).exists())
 
 
 @override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
@@ -270,7 +271,7 @@ class MejorasUXTests(TestCase):
         resp = self.client.post(reverse('factura_editar', args=[self.doc.pk]), {
             'cliente': self.cliente.pk, 'tipo_documento': 'factura',
             'numero_documento': 'F-555', 'fecha_documento': timezone.localdate().isoformat(),
-            'producto': '', 'subtotal': '0', 'isv': '0', 'monto_total': '100.00',
+            'subtotal': '0', 'isv': '0', 'monto_total': '100.00',
             'estado_revision': 'pendiente', 'notas': '', 'accion': 'guardar_revisar',
             'next': next_url,
         })

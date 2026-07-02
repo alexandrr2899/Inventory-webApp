@@ -64,7 +64,6 @@ class HooksSaldoTests(TestCase):
             'numero_documento': 'F-0002',
             'fecha_documento': self.hoy.isoformat(),
             'fecha_vencimiento': '',
-            'producto': '',
             'total_libras': '',
             'precio_por_libra': '',
             'subtotal': '0',

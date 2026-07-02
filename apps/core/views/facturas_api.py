@@ -79,8 +79,7 @@ def factura_api_ingest(request):
     archivo.seek(0)
     doc = invoice_service.crear_documento(
         cliente=cliente, tipo_documento=tipo, archivo=archivo,
-        producto=datos.get('producto'), datos=datos,
-        texto_extraido=prev['texto_extraido'],
+        datos=datos, texto_extraido=prev['texto_extraido'],
     )
     if requiere_revision:
         doc.notas = (

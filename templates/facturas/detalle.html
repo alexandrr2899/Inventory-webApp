@@ -90,8 +90,8 @@
           <dt class="col-5">Vencimiento</dt>
           <dd class="col-7">{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"–" }}</dd>
 
-          <dt class="col-5">Producto</dt>
-          <dd class="col-7">{{ doc.get_producto_display|default:"–" }}</dd>
+          <dt class="col-5">Categoría</dt>
+          <dd class="col-7">{% if doc.categoria %}{{ doc.categoria.nombre }}{% else %}–{% endif %}</dd>
 
           <dt class="col-5">Libras</dt>
           <dd class="col-7">{{ doc.total_libras|floatformat:2|default:"–" }}</dd>

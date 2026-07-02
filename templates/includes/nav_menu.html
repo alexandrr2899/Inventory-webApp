@@ -62,6 +62,11 @@
     <i class="bi bi-credit-card"></i> Métodos de pago
   </a>
   {% endif %}
+  {% if perms.core.gestionar_categorias_producto %}
+  <a href="{% url 'categoria_producto_lista' %}" class="nav-link {% if 'categoria' in un %}active{% endif %}">
+    <i class="bi bi-tags"></i> Categorías de producto
+  </a>
+  {% endif %}
 </div>
 {% else %}
 <a href="{% url 'facturas_lista' %}" class="nav-link {% if 'factura' in un %}active{% endif %}">

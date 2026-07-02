@@ -468,16 +468,45 @@ class InventarioConfig(models.Model):
 
 # ─── MÓDULO FACTURAS ──────────────────────────────────────────────────────────
 
-PRODUCTO_CHOICES = [
-    ('camiseta', 'Camiseta'),
-    ('lisa', 'Lisa'),
-    ('otro', 'Otro'),
-]
+
+class CategoriaProducto(models.Model):
+    nombre = models.CharField(max_length=60)
+    palabra_clave = models.CharField(
+        max_length=60, blank=True,
+        help_text='Si el nombre del archivo la contiene, el envío se clasifica en esta categoría.')
+    es_predeterminada = models.BooleanField(
+        default=False,
+        help_text='Categoría asignada cuando ninguna palabra clave coincide.')
+    activa = models.BooleanField(default=True)
+    orden = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Categoría de producto'
+        verbose_name_plural = 'Categorías de producto'
+        ordering = ['orden', 'nombre']
+        permissions = [
+            ('gestionar_categorias_producto', 'Puede gestionar categorías de producto'),
+        ]
+
+    def __str__(self):
+        return self.nombre
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.es_predeterminada:
+            CategoriaProducto.objects.exclude(pk=self.pk).filter(
+                es_predeterminada=True).update(es_predeterminada=False)
+
+    @classmethod
+    def predeterminada(cls):
+        """Categoría efectiva por defecto: debe estar activa para poder usarse."""
+        return cls.objects.filter(es_predeterminada=True, activa=True).first()
 
 
 class TarifaCliente(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='tarifas')
-    producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES)
+    categoria = models.ForeignKey(
+        'CategoriaProducto', on_delete=models.PROTECT, related_name='tarifas')
     precio_por_libra = models.DecimalField(max_digits=12, decimal_places=2)
     activa = models.BooleanField(default=True)
     fecha_inicio = models.DateField(default=timezone.now)
@@ -487,23 +516,23 @@ class TarifaCliente(models.Model):
     class Meta:
         verbose_name = 'Tarifa de cliente'
         verbose_name_plural = 'Tarifas de cliente'
-        ordering = ['cliente', 'producto', '-fecha_inicio']
+        ordering = ['cliente', 'categoria', '-fecha_inicio']
         constraints = [
             models.UniqueConstraint(
-                fields=['cliente', 'producto'],
+                fields=['cliente', 'categoria'],
                 condition=models.Q(activa=True),
-                name='tarifa_unica_activa_por_cliente_producto',
+                name='tarifa_unica_activa_por_cliente_categoria',
             ),
         ]
 
     def __str__(self):
-        return f'{self.cliente.nombre} · {self.get_producto_display()} · L {self.precio_por_libra}/lb'
+        return f'{self.cliente.nombre} · {self.categoria.nombre} · L {self.precio_por_libra}/lb'
 
     @classmethod
-    def activa_para(cls, cliente, producto):
-        """Tarifa activa vigente del cliente para el producto, o None."""
+    def activa_para(cls, cliente, categoria):
+        """Tarifa activa vigente del cliente para la categoría, o None."""
         return cls.objects.filter(
-            cliente=cliente, producto=producto, activa=True,
+            cliente=cliente, categoria=categoria, activa=True,
         ).order_by('-fecha_inicio').first()
 
 
@@ -556,7 +585,9 @@ class DocumentoFactura(models.Model):
     numero_documento = models.CharField(max_length=60, blank=True)
     fecha_documento = models.DateField(null=True, blank=True)
     fecha_vencimiento = models.DateField(null=True, blank=True)
-    producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES, blank=True)
+    categoria = models.ForeignKey(
+        'CategoriaProducto', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='documentos')
 
     total_libras = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     precio_por_libra = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)

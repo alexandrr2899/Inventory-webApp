@@ -81,10 +81,11 @@ class FilenameExtractorTests(TestCase):
         self.assertEqual(d['cliente_nombre'], 'Inversiones Zaga')
 
     def test_envio(self):
+        # La categoría ya no la decide el extractor (ver test_clasificar_categoria);
+        # aquí solo se valida tipo/numero/cliente del nombre.
         d = filename_extractor.extraer_de_nombre('RENATO DIAZ Envio camiseta 126.pdf')
         self.assertEqual(d['tipo_documento'], 'envio')
         self.assertEqual(d['numero_documento'], '126')
-        self.assertEqual(d['producto'], 'camiseta')
         self.assertEqual(d['cliente_nombre'], 'RENATO DIAZ')
 
     def test_factura_nombre_compuesto(self):
@@ -98,14 +99,12 @@ class FilenameExtractorTests(TestCase):
         d = filename_extractor.extraer_de_nombre('Walter Aguilera Envio Camiseta 98.pdf')
         self.assertEqual(d['tipo_documento'], 'envio')
         self.assertEqual(d['numero_documento'], '98')
-        self.assertEqual(d['producto'], 'camiseta')
         self.assertEqual(d['cliente_nombre'], 'Walter Aguilera')
 
     def test_envio_sin_palabra_envio(self):
         d = filename_extractor.extraer_de_nombre('Antonio Sanchez camiseta 126.pdf')
         self.assertEqual(d['tipo_documento'], 'envio')
         self.assertEqual(d['numero_documento'], '126')
-        self.assertEqual(d['producto'], 'camiseta')
         self.assertEqual(d['cliente_nombre'], 'Antonio Sanchez')
 
     def test_envio_sin_fact_usa_numero_final_y_cliente(self):
@@ -113,26 +112,11 @@ class FilenameExtractorTests(TestCase):
         self.assertEqual(d['tipo_documento'], 'envio')
         self.assertEqual(d['numero_documento'], '126')
         self.assertEqual(d['cliente_nombre'], 'Antonio Sanchez')
-        # Regla: envío sin "camiseta" en el nombre -> producto lisa por defecto.
-        self.assertEqual(d['producto'], 'lisa')
 
-    def test_envio_sin_camiseta_es_lisa(self):
-        # "Envio" explícito pero el nombre no dice camiseta -> lisa.
-        d = filename_extractor.extraer_de_nombre('RENATO DIAZ Envio 126.pdf')
-        self.assertEqual(d['tipo_documento'], 'envio')
-        self.assertEqual(d['producto'], 'lisa')
-
-    def test_envio_dice_lisa_es_lisa(self):
+    def test_envio_dice_lisa_conserva_cliente(self):
         d = filename_extractor.extraer_de_nombre('Antonio Sanchez lisa 126.pdf')
         self.assertEqual(d['tipo_documento'], 'envio')
-        self.assertEqual(d['producto'], 'lisa')
         self.assertEqual(d['cliente_nombre'], 'Antonio Sanchez')
-
-    def test_envio_camiseta_en_cualquier_posicion(self):
-        # Basta con que el nombre contenga "camiseta" (case-insensitive).
-        d = filename_extractor.extraer_de_nombre('Marvin Reyes CAMISETA 77.pdf')
-        self.assertEqual(d['tipo_documento'], 'envio')
-        self.assertEqual(d['producto'], 'camiseta')
 
 
 # ---------------------------------------------------------------------------

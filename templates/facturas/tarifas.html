@@ -7,11 +7,11 @@
   <button class="btn btn-primary" type="submit">Guardar tarifa</button>
 </form>
 <table class="table table-sm">
-  <thead><tr><th>Producto</th><th>Precio/lb</th><th>Activa</th><th>Desde</th><th></th></tr></thead>
+  <thead><tr><th>Categoría</th><th>Precio/lb</th><th>Activa</th><th>Desde</th><th></th></tr></thead>
   <tbody>
   {% for t in tarifas %}
     <tr>
-      <td>{{ t.get_producto_display }}</td>
+      <td>{{ t.categoria.nombre }}</td>
       <td>L {{ t.precio_por_libra }}</td>
       <td>{% if t.activa %}<span class="badge bg-success">Activa</span>{% else %}<span class="badge bg-secondary">Inactiva</span>{% endif %}</td>
       <td>{{ t.fecha_inicio|date:"d/m/Y" }}</td>

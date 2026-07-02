@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from apps.core.models import (
     Cliente, DocumentoFactura, TarifaCliente, MetodoPago, Pago, AplicacionPago,
+    CategoriaProducto,
 )
 
 
@@ -53,7 +54,6 @@ class DocumentoFacturaPropsTests(TestCase):
             numero_documento='F-001',
             fecha_documento=date(2026, 6, 1),
             fecha_vencimiento=date(2026, 6, 30),
-            producto='otro',
             subtotal=Decimal('100.00'),
             isv=Decimal('15.00'),
             monto_total=Decimal('115.00'),
@@ -87,29 +87,33 @@ class DocumentoFacturaPropsTests(TestCase):
 class TarifaClienteTests(TestCase):
     def setUp(self):
         self.cliente = Cliente.objects.create(nombre='Renato Díaz')
+        CategoriaProducto.objects.all().delete()
+        self.camiseta = CategoriaProducto.objects.create(nombre='Camiseta', palabra_clave='camiseta')
+        self.lisa = CategoriaProducto.objects.create(nombre='Lisa', palabra_clave='lisa')
+        self.otro = CategoriaProducto.objects.create(nombre='Otro')
 
     def test_activa_para_devuelve_la_vigente(self):
         TarifaCliente.objects.create(
-            cliente=self.cliente, producto='camiseta',
+            cliente=self.cliente, categoria=self.camiseta,
             precio_por_libra=Decimal('32.00'), activa=True,
             fecha_inicio=date(2026, 1, 1),
         )
         TarifaCliente.objects.create(
-            cliente=self.cliente, producto='lisa',
+            cliente=self.cliente, categoria=self.lisa,
             precio_por_libra=Decimal('29.50'), activa=True,
             fecha_inicio=date(2026, 1, 1),
         )
-        t = TarifaCliente.activa_para(self.cliente, 'camiseta')
+        t = TarifaCliente.activa_para(self.cliente, self.camiseta)
         self.assertIsNotNone(t)
         self.assertEqual(t.precio_por_libra, Decimal('32.00'))
 
     def test_activa_para_sin_tarifa_devuelve_none(self):
-        self.assertIsNone(TarifaCliente.activa_para(self.cliente, 'otro'))
+        self.assertIsNone(TarifaCliente.activa_para(self.cliente, self.otro))
 
     def test_inactiva_no_se_devuelve(self):
         TarifaCliente.objects.create(
-            cliente=self.cliente, producto='camiseta',
+            cliente=self.cliente, categoria=self.camiseta,
             precio_por_libra=Decimal('10.00'), activa=False,
             fecha_inicio=date(2026, 1, 1),
         )
-        self.assertIsNone(TarifaCliente.activa_para(self.cliente, 'camiseta'))
+        self.assertIsNone(TarifaCliente.activa_para(self.cliente, self.camiseta))
