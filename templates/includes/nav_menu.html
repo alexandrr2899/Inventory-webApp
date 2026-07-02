@@ -8,11 +8,9 @@
 <a href="{% url 'inventario_lista' %}" class="nav-link {% if 'inventario' in un %}active{% endif %}">
   <i class="bi bi-box-fill"></i> Inventario
 </a>
-{% if perms.core.ver_inventario %}
 <a href="{% url 'item_etiquetas' %}" class="nav-link {% if un == 'item_etiquetas' %}active{% endif %}">
   <i class="bi bi-qr-code"></i> Etiquetas QR
 </a>
-{% endif %}
 {% endif %}
 
 {% if perms.core.registrar_salida or perms.core.ver_inventario or perms.core.registrar_entrada %}

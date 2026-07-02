@@ -51,6 +51,8 @@ class ItemEtiquetasTests(TestCase):
         self.rep = Item.objects.create(codigo='R-1', nombre='Rep', tipo='repuesto', unidad_medida='u')
         self.con = Item.objects.create(codigo='C-1', nombre='Con', tipo='consumible', unidad_medida='u')
         self.prod = Item.objects.create(codigo='P-1', nombre='Prod', tipo='producto', unidad_medida='u')
+        self.inactivo = Item.objects.create(
+            codigo='X-1', nombre='Inactivo', tipo='repuesto', unidad_medida='u', activo=False)
         self.user = User.objects.create_user('w', password='x')
         self.user.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
         self.client.force_login(self.user)
@@ -62,6 +64,7 @@ class ItemEtiquetasTests(TestCase):
         self.assertIn(self.rep, items)
         self.assertIn(self.con, items)
         self.assertNotIn(self.prod, items)
+        self.assertNotIn(self.inactivo, items)
 
     def test_filtro_tipo_producto(self):
         resp = self.client.get(reverse('item_etiquetas'), {'tipo': 'producto'})
