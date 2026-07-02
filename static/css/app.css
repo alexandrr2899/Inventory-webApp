@@ -128,6 +128,12 @@ body { background: var(--app-page-bg); }
 
 /* Sub-links dentro de un grupo colapsable (Configuración) */
 .nav-group-sub .nav-link { padding-left: 2.1rem; font-size: .86rem; }
+/* Subtítulo de agrupación dentro de un grupo colapsable */
+.nav-subsection {
+  font-size: .66rem; text-transform: uppercase; color: var(--app-text-faint);
+  padding: .5rem 1rem .1rem 1.4rem; letter-spacing: .04em; font-weight: 600;
+}
+.nav-subsection:first-child { margin-top: 0; }
 .nav-group-toggle .chevron { transition: transform .2s ease; }
 .nav-group-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
 
