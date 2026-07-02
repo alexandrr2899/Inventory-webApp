@@ -57,6 +57,19 @@ class FacturasVistasTests(TestCase):
         resp = self.client.get(reverse('facturas_lista'))
         self.assertEqual(resp.status_code, 200)
 
+    def test_lista_incluye_tarjetas_movil_y_tabla(self):
+        self.client.force_login(self.admin)
+        DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura', numero_documento='F-9',
+            monto_total=Decimal('100.00'))
+        resp = self.client.get(reverse('facturas_lista'))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        # Móvil (tarjeta por documento) y desktop (tabla) deben coexistir.
+        self.assertIn('card mb-2 fac-row', html)          # tarjeta móvil (nueva)
+        self.assertIn('d-none d-md-block', html)           # tabla solo-desktop
+        self.assertIn('Renato Díaz', html)
+
     @override_settings(FACTURAS_MODULE_ENABLED=False)
     def test_apagado_devuelve_404(self):
         self.client.force_login(self.admin)

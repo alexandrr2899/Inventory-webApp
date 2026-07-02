@@ -135,7 +135,62 @@
   </div>
 </div>
 
-<div class="card border-0 shadow-sm">
+<!-- Móvil: tarjetas (una por documento) -->
+<div class="d-md-none">
+  {% for doc in documentos %}
+  <div class="card mb-2 fac-row" style="cursor:pointer"
+       data-href="{% url 'factura_detalle' doc.pk %}?next={{ return_url|urlencode }}">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex justify-content-between align-items-start mb-1">
+        <span>
+          {% if doc.tipo_documento == 'envio' %}
+          <span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-truck me-1"></i>Envío</span>
+          {% else %}
+          <span class="badge bg-primary-subtle text-primary-emphasis"><i class="bi bi-receipt me-1"></i>Factura</span>
+          {% endif %}
+        </span>
+        <span>{% include "facturas/_badges.html" with doc=doc %}</span>
+      </div>
+      <div class="fw-bold">{{ doc.cliente.nombre }}</div>
+      <div class="text-muted small mb-1">
+        #{{ doc.numero_documento|default:"–" }} · {% include "facturas/_producto.html" with doc=doc %}
+      </div>
+      <div class="d-flex flex-wrap gap-3 small mb-1">
+        <span>Total <strong>L {{ doc.monto_total|moneda }}</strong></span>
+        <span class="text-success">Pagado L {{ doc.monto_pagado|moneda }}</span>
+        <span class="{% if doc.saldo_pendiente > 0 %}text-danger fw-bold{% endif %}">Saldo L {{ doc.saldo_pendiente|moneda }}</span>
+      </div>
+      <div class="text-muted small mb-2">
+        <i class="bi bi-calendar3 me-1"></i>{{ doc.fecha_documento|date:"d/m/Y"|default:"–" }}
+        · Vence {{ doc.fecha_vencimiento|date:"d/m/Y"|default:"–" }}
+      </div>
+      <div class="d-flex gap-1" data-norow="1">
+        <a href="{% url 'factura_detalle' doc.pk %}?next={{ return_url|urlencode }}"
+           class="btn btn-sm btn-outline-primary"><i class="bi bi-eye me-1"></i>Ver</a>
+        {% if doc.archivo_pdf %}
+        <a href="{% url 'factura_pdf' doc.pk %}" target="_blank"
+           class="btn btn-sm btn-outline-secondary" title="PDF"><i class="bi bi-file-earmark-pdf-fill text-danger"></i></a>
+        {% endif %}
+        {% if perms.core.registrar_pago_factura and doc.estado_pago != 'anulada' and doc.estado_pago != 'pagada' %}
+        <button type="button" class="btn btn-sm btn-outline-success btn-pago" title="Registrar pago"
+                data-url="{% url 'factura_pago_nuevo' doc.pk %}"
+                data-saldo="{{ doc.saldo_pendiente|stringformat:'.2f' }}"
+                data-info="{{ doc.get_tipo_documento_display }} {{ doc.numero_documento }} · {{ doc.cliente.nombre }}">
+          <i class="bi bi-cash-coin me-1"></i>Pago
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="text-center text-muted py-4">
+    <i class="bi bi-inbox fs-3 d-block mb-2"></i>Sin documentos para los filtros seleccionados.
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Desktop: tabla -->
+<div class="card border-0 shadow-sm d-none d-md-block">
   <div class="table-responsive">
     <table class="table table-sm table-hover mb-0 align-middle">
       <thead class="table-light">
