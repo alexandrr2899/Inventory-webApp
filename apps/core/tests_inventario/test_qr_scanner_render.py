@@ -1,0 +1,20 @@
+from django.contrib.auth.models import User, Permission
+from django.test import TestCase
+from django.urls import reverse
+
+
+class QrScannerNavbarRenderTests(TestCase):
+    def test_boton_visible_con_ver_inventario(self):
+        user = User.objects.create_user('scan1', password='x')
+        user.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
+        self.client.force_login(user)
+        resp = self.client.get(reverse('dashboard'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'id="btnQrScan"')
+
+    def test_boton_oculto_sin_ver_inventario(self):
+        user = User.objects.create_user('scan2', password='x')
+        self.client.force_login(user)
+        resp = self.client.get(reverse('dashboard'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'id="btnQrScan"')
