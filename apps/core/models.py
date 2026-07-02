@@ -468,12 +468,6 @@ class InventarioConfig(models.Model):
 
 # ─── MÓDULO FACTURAS ──────────────────────────────────────────────────────────
 
-PRODUCTO_CHOICES = [
-    ('camiseta', 'Camiseta'),
-    ('lisa', 'Lisa'),
-    ('otro', 'Otro'),
-]
-
 
 class CategoriaProducto(models.Model):
     nombre = models.CharField(max_length=60)
@@ -510,7 +504,6 @@ class CategoriaProducto(models.Model):
 
 class TarifaCliente(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='tarifas')
-    producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES, blank=True)
     categoria = models.ForeignKey(
         'CategoriaProducto', on_delete=models.PROTECT, null=True, blank=True,
         related_name='tarifas')
@@ -592,7 +585,6 @@ class DocumentoFactura(models.Model):
     numero_documento = models.CharField(max_length=60, blank=True)
     fecha_documento = models.DateField(null=True, blank=True)
     fecha_vencimiento = models.DateField(null=True, blank=True)
-    producto = models.CharField(max_length=20, choices=PRODUCTO_CHOICES, blank=True)
     categoria = models.ForeignKey(
         'CategoriaProducto', on_delete=models.PROTECT, null=True, blank=True,
         related_name='documentos')

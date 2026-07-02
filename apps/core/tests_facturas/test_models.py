@@ -54,7 +54,6 @@ class DocumentoFacturaPropsTests(TestCase):
             numero_documento='F-001',
             fecha_documento=date(2026, 6, 1),
             fecha_vencimiento=date(2026, 6, 30),
-            producto='otro',
             subtotal=Decimal('100.00'),
             isv=Decimal('15.00'),
             monto_total=Decimal('115.00'),
