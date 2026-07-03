@@ -64,9 +64,14 @@ def previsualizar(tipo_documento, archivo):
         if enteros and numero and str(enteros[0]) == str(numero) and len(enteros) > 1:
             datos['total_libras'] = Decimal(enteros[1])
 
-    # Envío: sugerir la categoría según el nombre del archivo (para preseleccionar al revisar).
+    # Sugerir categoría para preseleccionar al revisar (factura: solo si hay coincidencia).
+    haystack = nombre + '\n' + texto
     if tipo_documento == 'envio':
-        cat = clasificar_categoria(nombre)
+        cat = clasificar_categoria(haystack)
+        if cat is not None:
+            datos['categoria_id'] = cat.pk
+    elif tipo_documento == 'factura':
+        cat = clasificar_categoria(haystack, con_predeterminada=False)
         if cat is not None:
             datos['categoria_id'] = cat.pk
 

@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from apps.core.models import Cliente, DocumentoFactura, TarifaCliente, CategoriaProducto
@@ -88,3 +90,41 @@ class InvoiceServiceTests(TestCase):
         )
         self.assertIsNone(doc.precio_por_libra)
         self.assertEqual(doc.monto_total, Decimal('0'))
+
+
+class PrevisualizarCategoriaTests(TestCase):
+    def setUp(self):
+        CategoriaProducto.objects.all().delete()
+        self.camiseta = CategoriaProducto.objects.create(
+            nombre='Camiseta', palabra_clave='camiseta', orden=0)
+        self.lisa = CategoriaProducto.objects.create(
+            nombre='Lisa', palabra_clave='lisa, blanca', es_predeterminada=True, orden=1)
+
+    def _run_previsualizar(self, tipo, nombre_archivo, texto_pdf):
+        archivo = SimpleUploadedFile(nombre_archivo, b'%PDF', content_type='application/pdf')
+        with patch('apps.core.services.facturas.invoice_service.pdf_service') as mock_pdf, \
+             patch('apps.core.services.facturas.invoice_service.filename_extractor') as mock_fe:
+            mock_pdf.extraer_texto.return_value = texto_pdf
+            mock_pdf.get_extractor.return_value.extraer.return_value = {}
+            mock_fe.extraer_de_nombre.return_value = {}
+            return invoice_service.previsualizar(tipo, archivo)
+
+    def test_factura_keyword_en_contenido_asigna_categoria(self):
+        result = self._run_previsualizar(
+            'factura', 'Fact 9546 Tekniplasticos.pdf', 'Lb Bolsa Camiseta\n2000.00')
+        self.assertEqual(result['datos']['categoria_id'], self.camiseta.pk)
+
+    def test_factura_sin_coincidencia_no_incluye_categoria_id(self):
+        result = self._run_previsualizar(
+            'factura', 'Fact 9544 Inversiones San Juan.pdf', 'Rollo de Poliducto x 100yd')
+        self.assertNotIn('categoria_id', result['datos'])
+
+    def test_envio_sin_coincidencia_usa_predeterminada(self):
+        result = self._run_previsualizar(
+            'envio', 'Envio 123 Cliente.pdf', 'texto sin keywords')
+        self.assertEqual(result['datos']['categoria_id'], self.lisa.pk)
+
+    def test_envio_keyword_en_contenido_asigna_categoria(self):
+        result = self._run_previsualizar(
+            'envio', 'Envio 123 Cliente.pdf', 'Lb Bolsa Camiseta\n500 Lb')
+        self.assertEqual(result['datos']['categoria_id'], self.camiseta.pk)
