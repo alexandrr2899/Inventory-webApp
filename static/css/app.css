@@ -300,3 +300,10 @@ body { background: var(--app-page-bg); }
     margin-bottom: 0 !important;
   }
 }
+
+/* Resaltado temporal de una fila existente al escanear un duplicado */
+@keyframes qr-flash-kf {
+  0%   { background-color: rgba(255, 193, 7, .55); }
+  100% { background-color: transparent; }
+}
+.qr-flash { animation: qr-flash-kf 1.4s ease-out; }

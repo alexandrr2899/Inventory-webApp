@@ -64,6 +64,12 @@
     </li>
   </ul>
 
+  <div class="mb-3">
+    <button type="button" id="btn-escanear" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-qr-code-scan me-1"></i>Escanear
+    </button>
+  </div>
+
   <div class="tab-content">
 
   <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -653,6 +659,48 @@ if (FILAS_PREVIAS.length > 0 && TAB_INICIAL !== 'producto_terminado') {
   const panel = TAB_INICIAL === 'repuestos' ? 'rep'
               : TAB_INICIAL === 'consumibles' ? 'con' : 'otros';
   FILAS_PREVIAS.forEach(f => agregarFila(panel, f));
+}
+
+// ── Escaneo QR: agrega ítems enrutando a la pestaña correcta ───────────────────
+function handleScanSalida(id) {
+  const mapa = [
+    { arr: ITEMS_PRODUCTO,   tabId: 'tab-pt',    panel: 'pt'    },
+    { arr: ITEMS_REPUESTO,   tabId: 'tab-rep',   panel: 'rep'   },
+    { arr: ITEMS_CONSUMIBLE, tabId: 'tab-con',   panel: 'con'   },
+    { arr: ITEMS_OTROS,      tabId: 'tab-otros', panel: 'otros' },
+  ];
+  const grupo = mapa.find(m => m.arr.some(x => String(x.pk) === String(id)));
+  if (!grupo) { QRScanner.notify('Ítem no disponible para salida.', 'warning'); return; }
+  const it = grupo.arr.find(x => String(x.pk) === String(id));
+
+  // Activar la pestaña de la categoría del ítem
+  bootstrap.Tab.getOrCreateInstance(document.getElementById(grupo.tabId)).show();
+
+  if (grupo.panel === 'pt') {
+    if (selectedPtPks.has(String(id))) {
+      QRScanner.notify(`"${it.nombre}" ya está en la lista.`, 'info');
+      QRScanner.flash(document.querySelector(`#contenedor-pt .fila-pt[data-item-pk="${id}"]`));
+      return;
+    }
+    agregarFilaPT({ item_id: String(id) });
+  } else {
+    const cont = document.getElementById(`contenedor-${grupo.panel}`);
+    const existente = QRScanner.findRowByItemId(cont, id);
+    if (existente) {
+      QRScanner.notify(`"${it.nombre}" ya está en la lista.`, 'info');
+      QRScanner.flash(existente);
+      return;
+    }
+    agregarFila(grupo.panel, { item_id: String(id) });
+  }
+  QRScanner.notify(`Agregado: ${it.nombre}`, 'success');
+}
+
+const btnEscanear = document.getElementById('btn-escanear');
+if (btnEscanear && window.QRScanner) {
+  btnEscanear.addEventListener('click', () => {
+    QRScanner.open({ mode: 'continuous', onItem: handleScanSalida });
+  });
 }
 </script>
 {% endblock %}

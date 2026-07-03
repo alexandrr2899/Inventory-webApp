@@ -42,9 +42,14 @@
   <div class="card mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
       <span class="fw-bold"><i class="bi bi-table me-2"></i>Ítems a ingresar</span>
-      <button type="button" id="btn-agregar" class="btn btn-success btn-sm">
-        <i class="bi bi-plus-lg me-1"></i>Agregar ítem
-      </button>
+      <div class="d-flex gap-2">
+        <button type="button" id="btn-escanear" class="btn btn-outline-success btn-sm">
+          <i class="bi bi-qr-code-scan me-1"></i>Escanear
+        </button>
+        <button type="button" id="btn-agregar" class="btn btn-success btn-sm">
+          <i class="bi bi-plus-lg me-1"></i>Agregar ítem
+        </button>
+      </div>
     </div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -209,6 +214,27 @@ if (FILAS_PREVIAS.length > 0) {
   agregarFila(ITEM_ID_INICIAL, '');
 } else {
   agregarFila();
+}
+
+// ── Escaneo QR: agrega ítems a la tabla ───────────────────────────────────────
+const btnEscanear = document.getElementById('btn-escanear');
+if (btnEscanear && window.QRScanner) {
+  btnEscanear.addEventListener('click', () => {
+    QRScanner.open({ mode: 'continuous', onItem: (id) => {
+      const it = ITEMS_DATA.find(x => String(x.pk) === String(id));
+      if (!it) { QRScanner.notify('Ítem no disponible en esta entrada.', 'warning'); return; }
+
+      const existente = QRScanner.findRowByItemId(tbody, id);
+      if (existente) {
+        QRScanner.notify(`"${it.nombre}" ya está en la lista.`, 'info');
+        QRScanner.flash(existente);
+        return;
+      }
+
+      agregarFila(String(id));
+      QRScanner.notify(`Agregado: ${it.nombre}`, 'success');
+    }});
+  });
 }
 </script>
 {% endblock %}
