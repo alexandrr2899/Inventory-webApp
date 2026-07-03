@@ -16,15 +16,18 @@ _CAMPOS_DIRECTOS = (
 )
 
 
-def clasificar_categoria(nombre_archivo):
-    """Categoría de un envío según el nombre del archivo: la primera categoría activa
-    cuya palabra clave aparezca en el nombre; si ninguna coincide, la predeterminada."""
-    base = (nombre_archivo or '')
+def clasificar_categoria(haystack, con_predeterminada=True):
+    """Primera categoría activa cuya palabra_clave aparece en haystack (case-insensitive).
+
+    palabra_clave puede contener varias palabras separadas por coma: cualquiera que coincida cuenta.
+    Si ninguna categoría coincide: devuelve predeterminada() si con_predeterminada=True, else None.
+    """
+    texto = (haystack or '').lower()
     for cat in CategoriaProducto.objects.filter(activa=True).order_by('orden', 'nombre'):
         kw = (cat.palabra_clave or '').strip()
-        if kw and kw.lower() in base.lower():
+        if kw and any(p.strip().lower() in texto for p in kw.split(',')):
             return cat
-    return CategoriaProducto.predeterminada()
+    return CategoriaProducto.predeterminada() if con_predeterminada else None
 
 
 def detectar_tipo(nombre_archivo, default='factura'):

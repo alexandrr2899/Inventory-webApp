@@ -39,3 +39,28 @@ class ClasificarCategoriaTests(TestCase):
         self.lisa.save(update_fields=['activa'])
         c = invoice_service.clasificar_categoria('Antonio Sanchez 126.pdf')
         self.assertIsNone(c)
+
+    def test_multiples_keywords_primera_parte_coincide(self):
+        self.lisa.palabra_clave = 'lisa, blanca'
+        self.lisa.save(update_fields=['palabra_clave'])
+        c = invoice_service.clasificar_categoria('Lb Bolsa Lisa\n345 kg')
+        self.assertEqual(c, self.lisa)
+
+    def test_multiples_keywords_segunda_parte_coincide(self):
+        self.lisa.palabra_clave = 'lisa, blanca'
+        self.lisa.save(update_fields=['palabra_clave'])
+        c = invoice_service.clasificar_categoria('Lb Bolsa Blanca\n345 kg')
+        self.assertEqual(c, self.lisa)
+
+    def test_sin_coincidencia_con_predeterminada_false_devuelve_none(self):
+        c = invoice_service.clasificar_categoria('Rollo de Poliducto x 100yd', con_predeterminada=False)
+        self.assertIsNone(c)
+
+    def test_sin_coincidencia_con_predeterminada_true_devuelve_predeterminada(self):
+        c = invoice_service.clasificar_categoria('Rollo de Poliducto x 100yd', con_predeterminada=True)
+        self.assertEqual(c, self.lisa)
+
+    def test_keyword_en_segunda_linea_del_haystack(self):
+        # Simula: primera línea = nombre del archivo, segunda = texto del PDF
+        c = invoice_service.clasificar_categoria('Fact 9544 Inversiones San Juan.pdf\nLb Bolsa Camiseta\n2000.00')
+        self.assertEqual(c, self.camiseta)
