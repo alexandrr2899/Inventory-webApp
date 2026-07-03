@@ -25,7 +25,7 @@ def clasificar_categoria(haystack, con_predeterminada=True):
     texto = (haystack or '').lower()
     for cat in CategoriaProducto.objects.filter(activa=True).order_by('orden', 'nombre'):
         kw = (cat.palabra_clave or '').strip()
-        if kw and any(p.strip().lower() in texto for p in kw.split(',')):
+        if kw and any(p in texto for p in (x.strip().lower() for x in kw.split(',')) if p):
             return cat
     return CategoriaProducto.predeterminada() if con_predeterminada else None
 
