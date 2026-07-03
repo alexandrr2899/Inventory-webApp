@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 
-  <!-- Tema claro/oscuro: aplicar ANTES del render para evitar el flash -->
+  <!-- Tema y estado del sidebar: aplicar ANTES del render para evitar el flash -->
   <script>
     (function () {
       try {
@@ -14,6 +14,11 @@
       } catch (e) {
         document.documentElement.setAttribute('data-bs-theme', 'light');
       }
+      try {
+        if (localStorage.getItem('app-sidebar-hidden') === '1') {
+          document.documentElement.classList.add('sidebar-hidden');
+        }
+      } catch (e) {}
     })();
   </script>
 
@@ -53,6 +58,17 @@
             data-bs-target="#menuMobile"
             aria-controls="menuMobile"
             aria-label="Abrir menú">
+      <i class="bi bi-list fs-5"></i>
+    </button>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+    <!-- Toggle del sidebar (solo desktop) -->
+    <button class="btn btn-outline-light btn-sm d-none d-md-inline-flex align-items-center me-2 px-2"
+            type="button"
+            id="sidebarToggle"
+            aria-label="Mostrar u ocultar menú"
+            aria-expanded="true">
       <i class="bi bi-list fs-5"></i>
     </button>
     {% endif %}
@@ -223,6 +239,22 @@
     }
     // Sincronizar el meta theme-color con el tema ya aplicado por el script del <head>
     apply(document.documentElement.getAttribute('data-bs-theme') || 'light');
+  })();
+
+  // ─── Toggle del sidebar (desktop) ──────────────────────────────────────────
+  (function () {
+    var btn = document.getElementById('sidebarToggle');
+    if (!btn) return;
+    var root = document.documentElement;
+    function sync() {
+      btn.setAttribute('aria-expanded', root.classList.contains('sidebar-hidden') ? 'false' : 'true');
+    }
+    sync();
+    btn.addEventListener('click', function () {
+      var oculto = root.classList.toggle('sidebar-hidden');
+      try { localStorage.setItem('app-sidebar-hidden', oculto ? '1' : '0'); } catch (e) {}
+      sync();
+    });
   })();
 
   if ('serviceWorker' in navigator) {
