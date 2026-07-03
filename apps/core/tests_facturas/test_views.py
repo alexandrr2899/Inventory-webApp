@@ -371,3 +371,33 @@ class BorrarPagoPreservaSaldoTests(TestCase):
         self.assertEqual(self.doc.monto_pagado, Decimal('0.00'))
         self.cliente.refresh_from_db()
         self.assertEqual(self.cliente.saldo_a_favor, Decimal('150.00'))
+
+
+@override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
+class FacturasListaMetodosPagoTests(TestCase):
+    """La lista de facturas incluye el modal de pago rápido, que necesita
+    `metodos_pago` en el contexto para poblar el <select> de método."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(username='admin_mp', password='pass12345')
+        self.admin.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        self.cliente = Cliente.objects.create(nombre='Cli')
+        DocumentoFactura.objects.create(
+            cliente=self.cliente, tipo_documento='factura',
+            fecha_documento=timezone.localdate(), monto_total=Decimal('100.00'),
+        )
+        self.metodo = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+
+    def test_lista_pasa_metodos_de_pago_al_modal(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('metodos_pago', resp.context)
+        self.assertIn(self.metodo, list(resp.context['metodos_pago']))
+        self.assertContains(resp, 'Efectivo')
+
+    def test_lista_no_muestra_metodos_inactivos(self):
+        MetodoPago.objects.create(nombre='Cheque viejo', tipo='cheque', activo=False)
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('facturas_lista'))
+        self.assertNotContains(resp, 'Cheque viejo')

@@ -100,6 +100,9 @@ def facturas_lista(request):
         'tipo_choices': DocumentoFactura.TIPO_CHOICES,
         'estado_choices': DocumentoFactura.ESTADO_PAGO_CHOICES,
         'categorias': CategoriaProducto.objects.filter(activa=True),
+        # El modal de pago rápido (_modal_pago.html, incluido en lista.html) itera
+        # `metodos_pago`; sin esto el <select> de método sale vacío al pagar desde la lista.
+        'metodos_pago': MetodoPago.objects.filter(activo=True),
         'return_url': request.get_full_path(),
     }
     return render(request, 'facturas/lista.html', ctx)
