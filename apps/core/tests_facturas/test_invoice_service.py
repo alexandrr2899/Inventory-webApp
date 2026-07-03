@@ -128,3 +128,54 @@ class PrevisualizarCategoriaTests(TestCase):
         result = self._run_previsualizar(
             'envio', 'Envio 123 Cliente.pdf', 'Lb Bolsa Camiseta\n500 Lb')
         self.assertEqual(result['datos']['categoria_id'], self.camiseta.pk)
+
+
+class CrearDocumentoCategoriaTests(TestCase):
+    def setUp(self):
+        CategoriaProducto.objects.all().delete()
+        self.cliente = Cliente.objects.create(nombre='Cliente Test')
+        self.camiseta = CategoriaProducto.objects.create(
+            nombre='Camiseta', palabra_clave='camiseta', orden=0)
+        self.lisa = CategoriaProducto.objects.create(
+            nombre='Lisa', palabra_clave='lisa, blanca', es_predeterminada=True, orden=1)
+
+    def test_factura_keyword_en_texto_extraido_asigna_categoria(self):
+        doc = invoice_service.crear_documento(
+            cliente=self.cliente,
+            tipo_documento='factura',
+            texto_extraido='Lb Bolsa Camiseta\n2000.00',
+        )
+        self.assertEqual(doc.categoria, self.camiseta)
+
+    def test_factura_sin_coincidencia_queda_sin_categoria(self):
+        doc = invoice_service.crear_documento(
+            cliente=self.cliente,
+            tipo_documento='factura',
+            texto_extraido='Rollo de Poliducto x 100yd',
+        )
+        self.assertIsNone(doc.categoria)
+
+    def test_envio_keyword_en_texto_extraido_asigna_categoria(self):
+        doc = invoice_service.crear_documento(
+            cliente=self.cliente,
+            tipo_documento='envio',
+            texto_extraido='Lb Bolsa Camiseta\n500 Lb',
+        )
+        self.assertEqual(doc.categoria, self.camiseta)
+
+    def test_envio_sin_coincidencia_usa_predeterminada(self):
+        doc = invoice_service.crear_documento(
+            cliente=self.cliente,
+            tipo_documento='envio',
+            texto_extraido='Rollo de Poliducto x 100yd',
+        )
+        self.assertEqual(doc.categoria, self.lisa)
+
+    def test_categoria_explicita_no_se_sobreescribe(self):
+        doc = invoice_service.crear_documento(
+            cliente=self.cliente,
+            tipo_documento='factura',
+            categoria=self.camiseta,
+            texto_extraido='Lb Bolsa Lisa',  # keyword de lisa, pero pasamos camiseta
+        )
+        self.assertEqual(doc.categoria, self.camiseta)

@@ -84,6 +84,7 @@ def crear_documento(*, cliente, tipo_documento, archivo=None, categoria=None,
                     datos=None, texto_extraido=''):
     """Crea un DocumentoFactura. Para envío aplica tarifa activa (snapshot)."""
     datos = dict(datos or {})
+    texto_extraido = texto_extraido or ''
 
     doc = DocumentoFactura(
         cliente=cliente,
@@ -105,14 +106,19 @@ def crear_documento(*, cliente, tipo_documento, archivo=None, categoria=None,
 
     if tipo_documento == 'envio':
         if categoria is None:
-            categoria = clasificar_categoria(getattr(archivo, 'name', '') or '')
+            nombre = getattr(archivo, 'name', '') or ''
+            categoria = clasificar_categoria(nombre + '\n' + texto_extraido)
         doc.categoria = categoria
         tarifa = TarifaCliente.activa_para(cliente, categoria) if categoria else None
         if tarifa and doc.total_libras is not None:
             doc.precio_por_libra = tarifa.precio_por_libra
             doc.monto_total = (doc.total_libras * tarifa.precio_por_libra).quantize(Decimal('0.01'))
-    elif categoria is not None:
-        doc.categoria = categoria
+    else:
+        if categoria is None:
+            nombre = getattr(archivo, 'name', '') or ''
+            categoria = clasificar_categoria(nombre + '\n' + texto_extraido, con_predeterminada=False)
+        if categoria is not None:
+            doc.categoria = categoria
 
     doc.save()
     status_service.actualizar_estado_pago(doc)
