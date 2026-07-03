@@ -4,8 +4,39 @@ from decimal import Decimal, InvalidOperation
 from .common import *  # noqa: F401,F403
 
 from ..models import Cliente, DocumentoFactura
-from ..forms import AbonoClienteForm
+from ..forms import AbonoClienteForm, ClienteInlineForm
 from ..services.facturas import payment_service
+
+
+def _form_errors_json(form):
+    return {
+        field: [str(error) for error in errors]
+        for field, errors in form.errors.items()
+    }
+
+
+@login_required
+@permission_required(_perm('gestionar_facturas'), raise_exception=True)
+@facturas_enabled
+@require_POST
+def cliente_crear_inline(request):
+    form = ClienteInlineForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({'ok': False, 'errors': _form_errors_json(form)}, status=400)
+
+    nombre = form.cleaned_data['nombre'].strip()
+    duplicado = Cliente.objects.filter(nombre__iexact=nombre).first()
+    if duplicado and request.POST.get('forzar') != '1':
+        return JsonResponse({
+            'ok': False,
+            'duplicado': {'id': duplicado.pk, 'nombre': duplicado.nombre},
+        })
+
+    cliente = form.save()
+    return JsonResponse({
+        'ok': True,
+        'cliente': {'id': cliente.pk, 'nombre': cliente.nombre},
+    }, status=201)
 
 
 @login_required

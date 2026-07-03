@@ -1,0 +1,55 @@
+<div class="modal fade" id="cliente-inline-modal" tabindex="-1" aria-labelledby="cliente-inline-title" aria-hidden="true" data-url="{% url 'cliente_crear_inline' %}">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="cliente-inline-form" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="cliente-inline-title">Nuevo cliente</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="cliente-modal-aviso" class="alert alert-danger d-none" role="alert"></div>
+
+          <div id="cliente-modal-duplicado" class="alert alert-warning d-none" role="alert">
+            <div class="fw-semibold">Ya existe &laquo;<span data-duplicado-nombre></span>&raquo;.</div>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              <button type="button" class="btn btn-sm btn-warning" id="cliente-usar-existente">Usar existente</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="cliente-forzar-creacion">Crear de todos modos</button>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="cliente-inline-nombre">Nombre *</label>
+              <input type="text" class="form-control" id="cliente-inline-nombre" name="nombre" required>
+              <div class="invalid-feedback" data-error-for="nombre"></div>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="cliente-inline-telefono">Tel&eacute;fono</label>
+              <input type="text" class="form-control" id="cliente-inline-telefono" name="telefono" placeholder="Ej: +504 9999-9999">
+              <div class="invalid-feedback" data-error-for="telefono"></div>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="cliente-inline-rtn">RTN</label>
+              <input type="text" class="form-control" id="cliente-inline-rtn" name="rtn">
+              <div class="invalid-feedback" data-error-for="rtn"></div>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="cliente-inline-dias-credito">D&iacute;as de cr&eacute;dito</label>
+              <input type="number" class="form-control" id="cliente-inline-dias-credito" name="dias_credito" min="0" placeholder="0 = contado">
+              <div class="invalid-feedback" data-error-for="dias_credito"></div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="cliente-inline-direccion">Direcci&oacute;n</label>
+              <textarea class="form-control" id="cliente-inline-direccion" name="direccion" rows="2"></textarea>
+              <div class="invalid-feedback" data-error-for="direccion"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="cliente-inline-submit">Crear</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

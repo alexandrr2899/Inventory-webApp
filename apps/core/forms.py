@@ -73,6 +73,31 @@ class ClienteForm(forms.ModelForm):
         }
 
 
+class ClienteInlineForm(forms.ModelForm):
+    dias_credito = forms.IntegerField(
+        required=False,
+        min_value=0,
+        initial=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'placeholder': '0 = contado'}),
+    )
+
+    class Meta:
+        model = Cliente
+        fields = ['nombre', 'telefono', 'rtn', 'direccion', 'dias_credito']
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control'}),
+            'telefono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: +504 9999-9999'}),
+            'rtn': forms.TextInput(attrs={'class': 'form-control'}),
+            'direccion': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def clean_dias_credito(self):
+        return self.cleaned_data.get('dias_credito') or 0
+
+    def clean_nombre(self):
+        return self.cleaned_data['nombre'].strip()
+
+
 class MovimientoEntradaForm(forms.Form):
     item = forms.ModelChoiceField(
         queryset=Item.objects.filter(activo=True).order_by('orden', 'nombre'),
@@ -429,7 +454,7 @@ class FiltroMovimientosForm(forms.Form):
 class DocumentoUploadForm(forms.Form):
     cliente = forms.ModelChoiceField(
         queryset=Cliente.objects.filter(activo=True).order_by('nombre'),
-        widget=forms.Select(attrs={'class': 'form-select'}),
+        widget=forms.Select(attrs={'class': 'form-select cliente-select'}),
     )
     tipo_documento = forms.ChoiceField(
         choices=[('', 'Auto-detectar por nombre')] + list(DocumentoFactura.TIPO_CHOICES),

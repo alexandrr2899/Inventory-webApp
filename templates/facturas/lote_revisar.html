@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Revisar lote{% endblock %}
 
 {% block content %}
@@ -41,12 +42,19 @@
               <input type="hidden" name="fila-{{ forloop.counter0 }}-monto_total" value="{{ fila.monto_total }}">
             </td>
             <td style="min-width:170px">
-              <select name="fila-{{ forloop.counter0 }}-cliente" class="form-select form-select-sm" required>
-                <option value="">— elegir —</option>
-                {% for c in clientes %}
-                <option value="{{ c.pk }}" {% if c.pk|stringformat:'s' == fila.cliente_id|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>
-                {% endfor %}
-              </select>
+              <div class="input-group input-group-sm">
+                <select id="cliente-fila-{{ forloop.counter0 }}" name="fila-{{ forloop.counter0 }}-cliente" class="form-select form-select-sm cliente-select" required>
+                  <option value="">— elegir —</option>
+                  {% for c in clientes %}
+                  <option value="{{ c.pk }}" {% if c.pk|stringformat:'s' == fila.cliente_id|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>
+                  {% endfor %}
+                </select>
+                {% if perms.core.gestionar_facturas %}
+                <button type="button" class="btn btn-outline-primary" data-cliente-inline data-target="cliente-fila-{{ forloop.counter0 }}">
+                  <i class="bi bi-plus-lg me-1"></i>+ Nuevo cliente
+                </button>
+                {% endif %}
+              </div>
               {% if fila.cliente_sugerido and not fila.cliente_id %}
               <div class="small text-muted">Del archivo: "{{ fila.cliente_sugerido }}"</div>
               {% endif %}
@@ -89,4 +97,13 @@
     <a href="{% url 'factura_lote' %}" class="btn btn-outline-secondary">Cancelar</a>
   </div>
 </form>
+{% if perms.core.gestionar_facturas %}
+{% include "facturas/_cliente_modal.html" %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if perms.core.gestionar_facturas %}
+<script src="{% static 'js/cliente-inline.js' %}"></script>
+{% endif %}
 {% endblock %}
