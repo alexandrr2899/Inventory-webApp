@@ -23,7 +23,11 @@
     var box = el('qr-notify');
     if (!box) return;
     type = type || 'info';
-    box.innerHTML = '<div class="alert alert-' + type + ' py-2 mb-0">' + message + '</div>';
+    var div = document.createElement('div');
+    div.className = 'alert alert-' + type + ' py-2 mb-0';
+    div.textContent = message;
+    box.innerHTML = '';
+    box.appendChild(div);
     if (type === 'success' || type === 'info') {
       setTimeout(function () {
         if (box.firstChild) box.innerHTML = '';
@@ -63,13 +67,14 @@
       return;
     }
     reader = new Html5Qrcode('qr-reader');
+    running = true;
     reader.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: 250 },
       onDecode,
       function () { /* fallo por cuadro: ignorar */ }
-    ).then(function () { running = true; })
-     .catch(function () {
+    ).catch(function () {
+       running = false;
        notify('No se pudo acceder a la cámara. Permití el acceso en tu navegador.', 'danger');
      });
   }

@@ -11,6 +11,7 @@ class QrScannerNavbarRenderTests(TestCase):
         resp = self.client.get(reverse('dashboard'))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'id="btnQrScan"')
+        self.assertContains(resp, 'id="qrScannerModal"')
 
     def test_boton_oculto_sin_ver_inventario(self):
         user = User.objects.create_user('scan2', password='x')
