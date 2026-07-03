@@ -685,11 +685,7 @@ function handleScanSalida(id) {
     agregarFilaPT({ item_id: String(id) });
   } else {
     const cont = document.getElementById(`contenedor-${grupo.panel}`);
-    const filas = Array.from(cont.querySelectorAll('.fila-dinamica'));
-    const existente = filas.find(w => {
-      const sel = w.querySelector('select[name="item[]"]');
-      return sel && String(sel.value) === String(id);
-    });
+    const existente = QRScanner.findRowByItemId(cont, id);
     if (existente) {
       QRScanner.notify(`"${it.nombre}" ya está en la lista.`, 'info');
       QRScanner.flash(existente);

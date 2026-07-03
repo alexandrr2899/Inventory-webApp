@@ -224,11 +224,7 @@ if (btnEscanear && window.QRScanner) {
       const it = ITEMS_DATA.find(x => String(x.pk) === String(id));
       if (!it) { QRScanner.notify('Ítem no disponible en esta entrada.', 'warning'); return; }
 
-      const filas = Array.from(tbody.querySelectorAll('.fila-item'));
-      const existente = filas.find(tr => {
-        const sel = tr.querySelector('select[name="item[]"]');
-        return sel && String(sel.value) === String(id);
-      });
+      const existente = QRScanner.findRowByItemId(tbody, id);
       if (existente) {
         QRScanner.notify(`"${it.nombre}" ya está en la lista.`, 'info');
         QRScanner.flash(existente);

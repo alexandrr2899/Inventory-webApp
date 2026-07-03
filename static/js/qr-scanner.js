@@ -8,6 +8,7 @@
   var config = { mode: 'single', onItem: null };
   var lastText = '';      // debounce de códigos repetidos
   var lastAt = 0;
+  var notifyTimer = null;
 
   function el(id) { return document.getElementById(id); }
 
@@ -22,6 +23,7 @@
   function notify(message, type) {
     var box = el('qr-notify');
     if (!box) return;
+    clearTimeout(notifyTimer);
     type = type || 'info';
     var div = document.createElement('div');
     div.className = 'alert alert-' + type + ' py-2 mb-0';
@@ -29,10 +31,21 @@
     box.innerHTML = '';
     box.appendChild(div);
     if (type === 'success' || type === 'info') {
-      setTimeout(function () {
+      notifyTimer = setTimeout(function () {
         if (box.firstChild) box.innerHTML = '';
       }, 2500);
     }
+  }
+
+  function findRowByItemId(container, id) {
+    if (!container) return null;
+    var selects = container.querySelectorAll('select[name="item[]"]');
+    for (var i = 0; i < selects.length; i++) {
+      if (String(selects[i].value) === String(id)) {
+        return selects[i].closest('.fila-item, .fila-dinamica');
+      }
+    }
+    return null;
   }
 
   function flash(node) {
@@ -51,8 +64,8 @@
 
     var id = parseItemId(decodedText);
     if (!id) { notify('QR no reconocido.', 'warning'); return; }
-    if (typeof config.onItem === 'function') config.onItem(id);
     if (config.mode === 'single') stop();  // navbar: detener tras un escaneo válido
+    if (typeof config.onItem === 'function') config.onItem(id);
   }
 
   function start() {
@@ -121,5 +134,6 @@
 
   window.QRScanner = {
     open: open, close: close, notify: notify, flash: flash, parseItemId: parseItemId,
+    findRowByItemId: findRowByItemId,
   };
 })();
