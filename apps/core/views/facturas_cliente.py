@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from .common import *  # noqa: F401,F403
 
-from ..models import Cliente, DocumentoFactura
+from ..models import Cliente, DocumentoFactura, Pago
 from ..forms import AbonoClienteForm, ClienteInlineForm
 from ..services.facturas import payment_service
 
@@ -91,21 +91,7 @@ def cliente_abono_nuevo(request, pk):
         form = AbonoClienteForm(request.POST, request.FILES)
         if form.is_valid():
             cd = form.cleaned_data
-            # Construir aplicaciones desde los campos aplicar_<pk> si vienen
-            aplicaciones = []
-            tiene_edicion = False
-            for doc in pendientes:
-                raw = request.POST.get(f'aplicar_{doc.pk}')
-                if raw in (None, ''):
-                    continue
-                try:
-                    monto = Decimal(raw)
-                except (InvalidOperation, ValueError):
-                    # Valor inválido: se ignora esa fila (no cuenta como edición).
-                    continue
-                tiene_edicion = True
-                if monto > 0:
-                    aplicaciones.append((doc, monto))
+            aplicaciones, tiene_edicion = _leer_reparto(request, pendientes)
             payment_service.registrar_abono(
                 cliente, fecha_pago=cd['fecha_pago'], metodo_pago=cd['metodo_pago'],
                 monto=cd['monto'], referencia=cd.get('referencia', ''),
@@ -117,5 +103,85 @@ def cliente_abono_nuevo(request, pk):
     else:
         form = AbonoClienteForm(initial={'fecha_pago': timezone.localdate()})
     return render(request, 'facturas/form_abono.html', {
-        'form': form, 'cliente': cliente, 'pendientes': pendientes,
+        'form': form, 'cliente': cliente,
+        'pendientes': [{'doc': d, 'aplicado': None} for d in pendientes],
+        'modo_edicion': False, 'pago': None,
+        'action_url': reverse('cliente_abono_nuevo', args=[cliente.pk]),
+        'titulo': 'Registrar abono', 'submit_label': 'Registrar abono',
     })
+
+
+def _leer_reparto(request, docs):
+    """Construye (aplicaciones, tiene_edicion) desde los campos aplicar_<pk>.
+
+    `docs`: iterable de DocumentoFactura. Devuelve una lista de (doc, monto) para
+    los valores válidos > 0, y un flag que indica si hubo algún valor numérico
+    (aunque sea 0) — si no hubo ninguno, el llamador auto-reparte.
+    """
+    aplicaciones = []
+    tiene_edicion = False
+    for doc in docs:
+        raw = request.POST.get(f'aplicar_{doc.pk}')
+        if raw in (None, ''):
+            continue
+        try:
+            monto = Decimal(raw)
+        except (InvalidOperation, ValueError):
+            continue
+        tiene_edicion = True
+        if monto > 0:
+            aplicaciones.append((doc, monto))
+    return aplicaciones, tiene_edicion
+
+
+@login_required
+@permission_required(_perm('registrar_pago_factura'), raise_exception=True)
+@facturas_enabled
+def cliente_abono_editar(request, pk):
+    pago = get_object_or_404(Pago, pk=pk)
+    cliente = pago.cliente
+    # Reparto: facturas pendientes + las ya aplicadas por ESTE pago (aunque este
+    # abono las haya dejado en saldo 0), para poder redistribuir hacia ellas.
+    aplicado_por_doc = {a.documento_id: a.monto for a in pago.aplicaciones.select_related('documento')}
+    docs = {d.pk: d for d in payment_service._facturas_pendientes(cliente)}
+    for a in pago.aplicaciones.select_related('documento'):
+        docs.setdefault(a.documento_id, a.documento)
+    docs = sorted(docs.values(), key=lambda d: (d.fecha_documento, d.created_at))
+
+    if request.method == 'POST':
+        form = AbonoClienteForm(request.POST, request.FILES)
+        if form.is_valid():
+            cd = form.cleaned_data
+            aplicaciones, tiene_edicion = _leer_reparto(request, docs)
+            payment_service.editar_abono(
+                pago, fecha_pago=cd['fecha_pago'], metodo_pago=cd['metodo_pago'],
+                monto=cd['monto'], referencia=cd.get('referencia', ''),
+                comprobante=cd.get('comprobante'), notas=cd.get('notas', ''),
+                aplicaciones=aplicaciones if tiene_edicion else None,
+            )
+            messages.success(request, 'Abono actualizado.')
+            return redirect('cliente_salidas', pk=cliente.pk)
+    else:
+        form = AbonoClienteForm(initial={
+            'fecha_pago': pago.fecha_pago, 'metodo_pago': pago.metodo_pago_id,
+            'monto': pago.monto, 'referencia': pago.referencia, 'notas': pago.notas,
+        })
+    return render(request, 'facturas/form_abono.html', {
+        'form': form, 'cliente': cliente,
+        'pendientes': [{'doc': d, 'aplicado': aplicado_por_doc.get(d.pk)} for d in docs],
+        'modo_edicion': True, 'pago': pago,
+        'action_url': reverse('cliente_abono_editar', args=[pago.pk]),
+        'titulo': 'Editar abono', 'submit_label': 'Guardar cambios',
+    })
+
+
+@login_required
+@permission_required(_perm('registrar_pago_factura'), raise_exception=True)
+@facturas_enabled
+@require_POST
+def cliente_abono_borrar(request, pk):
+    pago = get_object_or_404(Pago, pk=pk)
+    cliente_pk = pago.cliente_id
+    pago.delete()  # cascade borra aplicaciones; señales recalculan facturas
+    messages.success(request, 'Abono eliminado.')
+    return redirect('cliente_salidas', pk=cliente_pk)
