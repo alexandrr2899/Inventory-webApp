@@ -29,31 +29,60 @@ def proponer_reparto(cliente, monto):
     return reparto
 
 
+def _aplicar_reparto(pago, aplicaciones):
+    """Crea las AplicacionPago de `pago` según `aplicaciones` (lista de (doc, monto)).
+
+    Si `aplicaciones` es None, auto-reparte por antigüedad. Cada aplicación se
+    topa al saldo de la factura y a lo que resta del pago; el remanente queda
+    como saldo a favor del cliente.
+    """
+    if aplicaciones is None:
+        aplicaciones = proponer_reparto(pago.cliente, pago.monto)
+    restante = pago.monto
+    for documento, monto_aplicar in aplicaciones:
+        if restante <= 0:
+            break
+        monto_aplicar = min(Decimal(monto_aplicar), documento.saldo_pendiente, restante)
+        if monto_aplicar > 0:
+            AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
+            restante -= monto_aplicar
+
+
 @transaction.atomic
 def registrar_abono(cliente, *, fecha_pago, metodo_pago, monto,
                     referencia='', comprobante=None, notas='', aplicaciones=None):
     """Crea un Pago y reparte su monto entre facturas.
 
     `aplicaciones`: lista opcional de (documento, monto). Si es None se auto-reparte
-    por antigüedad. Cada aplicación se topa al saldo de la factura y a lo que resta
-    del pago; el remanente queda como saldo a favor del cliente.
+    por antigüedad.
     """
-    monto = Decimal(monto)
     pago = Pago.objects.create(
         cliente=cliente, fecha_pago=fecha_pago, metodo_pago=metodo_pago,
-        monto=monto, referencia=referencia, comprobante=comprobante, notas=notas,
+        monto=Decimal(monto), referencia=referencia, comprobante=comprobante, notas=notas,
     )
-    if aplicaciones is None:
-        aplicaciones = proponer_reparto(cliente, monto)
-    restante = monto
-    for documento, monto_aplicar in aplicaciones:
-        if restante <= 0:
-            break
-        # Nunca aplicar más que el saldo de la factura ni que lo que resta del pago.
-        monto_aplicar = min(Decimal(monto_aplicar), documento.saldo_pendiente, restante)
-        if monto_aplicar > 0:
-            AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
-            restante -= monto_aplicar
+    _aplicar_reparto(pago, aplicaciones)
+    return pago
+
+
+@transaction.atomic
+def editar_abono(pago, *, fecha_pago, metodo_pago, monto,
+                 referencia='', comprobante=None, notas='', aplicaciones=None):
+    """Actualiza un Pago y rehace su reparto entre facturas.
+
+    Borra las AplicacionPago existentes y las vuelve a crear con la misma lógica
+    de `registrar_abono`. El comprobante solo se reemplaza si `comprobante` no es
+    None (para no borrar el archivo existente al editar sin subir uno nuevo).
+    """
+    pago.fecha_pago = fecha_pago
+    pago.metodo_pago = metodo_pago
+    pago.monto = Decimal(monto)
+    pago.referencia = referencia
+    pago.notas = notas
+    if comprobante is not None:
+        pago.comprobante = comprobante
+    pago.save()
+    pago.aplicaciones.all().delete()
+    _aplicar_reparto(pago, aplicaciones)
     return pago
 
 
