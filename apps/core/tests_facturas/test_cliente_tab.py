@@ -13,6 +13,7 @@ class ClienteTabTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_user(username='admin', password='pass12345')
         self.admin.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        self.admin.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
         self.cliente = Cliente.objects.create(nombre='Renato Díaz')
         DocumentoFactura.objects.create(
             cliente=self.cliente, tipo_documento='factura',
@@ -88,3 +89,15 @@ class ClienteTabTests(TestCase):
         self.client.force_login(self.admin)  # solo tiene ver_facturas
         resp = self.client.get(reverse('cliente_facturas_fragment', args=[self.cliente.pk]))
         self.assertNotContains(resp, reverse('cliente_abono_borrar', args=[pago.pk]))
+
+    def test_ficha_muestra_facturas_como_primera_tab_activa(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('cliente_salidas', args=[self.cliente.pk]))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        i_fac = html.index('id="tab-facturas-btn"')
+        i_prod = html.index('id="tab-productos-btn"')
+        self.assertLess(i_fac, i_prod, 'La tab de Facturas debe ir antes que Productos')
+        # El botón de Facturas es el activo por defecto.
+        fac_btn = html[i_fac - 200:i_fac]
+        self.assertIn('active', fac_btn)
