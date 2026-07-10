@@ -75,13 +75,31 @@ class AbonoServiceTests(TestCase):
         self.assertEqual(self.cli.saldo_a_favor, Decimal('100.00'))
 
     def test_sobrepago_por_factura_va_a_saldo_a_favor(self):
-        """Aplicar más de lo que debe la factura deja el excedente como saldo a favor."""
-        # f1 tiene saldo_pendiente=100; pedimos aplicar 150 → solo se aplican 100
+        """Un excedente explícito sobre una factura fija se auto-reparte a la
+        siguiente factura pendiente (no fijada), en vez de ir directo a crédito."""
+        # f1 tiene saldo_pendiente=100; pedimos aplicar 150 → se aplican 100 a f1
+        # (topado) y los 50 restantes se auto-reparten a f2 (pendiente, no fijada).
         pago = self._abono('150.00', aplicaciones=[(self.f1, Decimal('150.00'))])
-        self.f1.refresh_from_db()
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
         self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
         self.assertEqual(self.f1.estado_pago, 'pagada')
-        self.assertEqual(self.cli.saldo_a_favor, Decimal('50.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('50.00'))
+        self.assertEqual(self.cli.saldo_a_favor, Decimal('0.00'))
+
+    def test_reparto_fija_explicitas_y_autoreparte_el_resto(self):
+        # f1=100 explícito; el resto (100) se auto-reparte a f2 (pendiente, no fijada).
+        self._abono('200.00', aplicaciones=[(self.f1, Decimal('100.00'))])
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.cli.saldo_a_favor, Decimal('0.00'))
+
+    def test_explicito_cero_no_recibe_remanente(self):
+        # f1=0 explícito (fija en 0); el pago va todo a f2.
+        self._abono('100.00', aplicaciones=[(self.f1, Decimal('0')), (self.f2, Decimal('100.00'))])
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('0.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
 
     def test_reparto_editado_no_excede_monto_del_abono(self):
         """La suma de aplicaciones no puede superar el monto del abono."""

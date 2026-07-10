@@ -115,8 +115,9 @@ def _leer_reparto(request, docs):
     """Construye (aplicaciones, tiene_edicion) desde los campos aplicar_<pk>.
 
     `docs`: iterable de DocumentoFactura. Devuelve una lista de (doc, monto) para
-    los valores válidos > 0, y un flag que indica si hubo algún valor numérico
-    (aunque sea 0) — si no hubo ninguno, el llamador auto-reparte.
+    todos los valores numéricos válidos (incluyendo 0, que fija la factura en 0),
+    y un flag que indica si hubo algún valor numérico — si no hubo ninguno, el
+    llamador auto-reparte.
     """
     aplicaciones = []
     tiene_edicion = False
@@ -129,8 +130,7 @@ def _leer_reparto(request, docs):
         except (InvalidOperation, ValueError):
             continue
         tiene_edicion = True
-        if monto > 0:
-            aplicaciones.append((doc, monto))
+        aplicaciones.append((doc, monto))
     return aplicaciones, tiene_edicion
 
 
@@ -142,9 +142,12 @@ def cliente_abono_editar(request, pk):
     cliente = pago.cliente
     # Reparto: facturas pendientes + las ya aplicadas por ESTE pago (aunque este
     # abono las haya dejado en saldo 0), para poder redistribuir hacia ellas.
-    aplicado_por_doc = {a.documento_id: a.monto for a in pago.aplicaciones.select_related('documento')}
+    apps_list = list(pago.aplicaciones.select_related('documento'))
+    aplicado_por_doc = {}
+    for a in apps_list:
+        aplicado_por_doc[a.documento_id] = aplicado_por_doc.get(a.documento_id, Decimal('0')) + a.monto
     docs = {d.pk: d for d in payment_service._facturas_pendientes(cliente)}
-    for a in pago.aplicaciones.select_related('documento'):
+    for a in apps_list:
         docs.setdefault(a.documento_id, a.documento)
     docs = sorted(docs.values(), key=lambda d: (d.fecha_documento, d.created_at))
 

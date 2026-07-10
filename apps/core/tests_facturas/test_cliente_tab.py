@@ -13,7 +13,6 @@ class ClienteTabTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_user(username='admin', password='pass12345')
         self.admin.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
-        self.admin.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
         self.cliente = Cliente.objects.create(nombre='Renato Díaz')
         DocumentoFactura.objects.create(
             cliente=self.cliente, tipo_documento='factura',
@@ -91,6 +90,7 @@ class ClienteTabTests(TestCase):
         self.assertNotContains(resp, reverse('cliente_abono_borrar', args=[pago.pk]))
 
     def test_ficha_muestra_facturas_como_primera_tab_activa(self):
+        self.admin.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
         self.client.force_login(self.admin)
         resp = self.client.get(reverse('cliente_salidas', args=[self.cliente.pk]))
         self.assertEqual(resp.status_code, 200)

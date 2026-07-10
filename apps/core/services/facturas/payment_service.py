@@ -15,13 +15,20 @@ def _facturas_pendientes(cliente):
     return [d for d in docs if d.saldo_pendiente > 0]
 
 
-def proponer_reparto(cliente, monto):
-    """Reparto sugerido por antigüedad SIN persistir: lista de (documento, monto)."""
+def proponer_reparto(cliente, monto, excluir=None):
+    """Reparto sugerido por antigüedad SIN persistir: lista de (documento, monto).
+
+    `excluir`: conjunto opcional de pks de facturas a saltar (p. ej. las que el
+    usuario fijó manualmente en el formulario).
+    """
+    excluir = excluir or set()
     restante = Decimal(monto)
     reparto = []
     for doc in _facturas_pendientes(cliente):
         if restante <= 0:
             break
+        if doc.pk in excluir:
+            continue
         aplicar = min(doc.saldo_pendiente, restante)
         if aplicar > 0:
             reparto.append((doc, aplicar))
@@ -30,22 +37,27 @@ def proponer_reparto(cliente, monto):
 
 
 def _aplicar_reparto(pago, aplicaciones):
-    """Crea las AplicacionPago de `pago` según `aplicaciones` (lista de (doc, monto)).
+    """Crea las AplicacionPago de `pago`.
 
-    Si `aplicaciones` es None, auto-reparte por antigüedad. Cada aplicación se
-    topa al saldo de la factura y a lo que resta del pago; el remanente queda
-    como saldo a favor del cliente.
+    `aplicaciones`: lista de (doc, monto) EXPLÍCITOS del usuario (un monto 0
+    significa "no aplicar a esta factura, pero déjala fija"). Las facturas
+    listadas quedan fijas a su monto (topado a su saldo y al remanente del
+    pago); el remanente se reparte por antigüedad entre las facturas pendientes
+    NO listadas. Si `aplicaciones` es None, se reparte todo automáticamente.
     """
-    if aplicaciones is None:
-        aplicaciones = proponer_reparto(pago.cliente, pago.monto)
     restante = pago.monto
-    for documento, monto_aplicar in aplicaciones:
+    fijas = set()
+    for documento, monto_aplicar in (aplicaciones or []):
+        fijas.add(documento.pk)
         if restante <= 0:
-            break
+            continue
         monto_aplicar = min(Decimal(monto_aplicar), documento.saldo_pendiente, restante)
         if monto_aplicar > 0:
             AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
             restante -= monto_aplicar
+    # Remanente: auto-repartir por antigüedad entre las pendientes no fijadas.
+    for documento, monto_aplicar in proponer_reparto(pago.cliente, restante, excluir=fijas):
+        AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
 
 
 @transaction.atomic

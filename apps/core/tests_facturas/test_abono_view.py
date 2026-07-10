@@ -61,6 +61,20 @@ class AbonoViewTests(TestCase):
         self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
         self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
 
+    def test_editar_sube_monto_con_reparto_precargado(self):
+        pago = self._pago('100.00')  # auto: cubre f1
+        # El form de edición precarga aplicar_<f1>=100; el usuario solo sube el monto a 200.
+        resp = self.client.post(reverse('cliente_abono_editar', args=[pago.pk]), {
+            'fecha_pago': self.hoy.isoformat(), 'metodo_pago': self.met.pk,
+            'monto': '200.00',
+            f'aplicar_{self.f1.pk}': '100.00',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        # f1 queda fija en 100; los 100 extra se auto-reparten a f2.
+        self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
+
     def test_borrar_elimina_pago_y_recalcula(self):
         pago = self._pago('100.00')  # cubre f1
         self.f1.refresh_from_db()
