@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 
@@ -74,13 +75,31 @@ class AbonoServiceTests(TestCase):
         self.assertEqual(self.cli.saldo_a_favor, Decimal('100.00'))
 
     def test_sobrepago_por_factura_va_a_saldo_a_favor(self):
-        """Aplicar más de lo que debe la factura deja el excedente como saldo a favor."""
-        # f1 tiene saldo_pendiente=100; pedimos aplicar 150 → solo se aplican 100
+        """Un excedente explícito sobre una factura fija se auto-reparte a la
+        siguiente factura pendiente (no fijada), en vez de ir directo a crédito."""
+        # f1 tiene saldo_pendiente=100; pedimos aplicar 150 → se aplican 100 a f1
+        # (topado) y los 50 restantes se auto-reparten a f2 (pendiente, no fijada).
         pago = self._abono('150.00', aplicaciones=[(self.f1, Decimal('150.00'))])
-        self.f1.refresh_from_db()
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
         self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
         self.assertEqual(self.f1.estado_pago, 'pagada')
-        self.assertEqual(self.cli.saldo_a_favor, Decimal('50.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('50.00'))
+        self.assertEqual(self.cli.saldo_a_favor, Decimal('0.00'))
+
+    def test_reparto_fija_explicitas_y_autoreparte_el_resto(self):
+        # f1=100 explícito; el resto (100) se auto-reparte a f2 (pendiente, no fijada).
+        self._abono('200.00', aplicaciones=[(self.f1, Decimal('100.00'))])
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.cli.saldo_a_favor, Decimal('0.00'))
+
+    def test_explicito_cero_no_recibe_remanente(self):
+        # f1=0 explícito (fija en 0); el pago va todo a f2.
+        self._abono('100.00', aplicaciones=[(self.f1, Decimal('0')), (self.f2, Decimal('100.00'))])
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('0.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
 
     def test_reparto_editado_no_excede_monto_del_abono(self):
         """La suma de aplicaciones no puede superar el monto del abono."""
@@ -105,3 +124,48 @@ class AbonoServiceTests(TestCase):
         self.assertEqual(self.cli.saldo_a_favor, Decimal('0.00'))
         self.assertEqual(pago.saldo_sin_aplicar, Decimal('0.00'))
         self.assertGreaterEqual(pago.saldo_sin_aplicar, Decimal('0.00'))
+
+    def test_editar_sube_monto_y_rehace_reparto(self):
+        pago = self._abono('100.00')  # auto: cubre f1
+        self.f1.refresh_from_db()
+        self.assertEqual(self.f1.estado_pago, 'pagada')
+        payment_service.editar_abono(
+            pago, fecha_pago=self.hoy, metodo_pago=self.met,
+            monto=Decimal('200.00'), aplicaciones=None)
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('100.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
+
+    def test_editar_baja_monto_libera_saldo(self):
+        pago = self._abono('200.00')  # auto: cubre f1 y f2
+        self.f2.refresh_from_db()
+        self.assertEqual(self.f2.estado_pago, 'pagada')
+        payment_service.editar_abono(
+            pago, fecha_pago=self.hoy, metodo_pago=self.met,
+            monto=Decimal('50.00'), aplicaciones=None)
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('50.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('0.00'))
+        self.assertEqual(self.f2.estado_pago, 'pendiente')
+
+    def test_editar_con_reparto_explicito(self):
+        pago = self._abono('100.00')  # auto: cubre f1
+        payment_service.editar_abono(
+            pago, fecha_pago=self.hoy, metodo_pago=self.met,
+            monto=Decimal('100.00'), aplicaciones=[(self.f2, Decimal('100.00'))])
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('0.00'))
+        self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
+
+    def test_editar_conserva_comprobante_si_no_se_envia_uno(self):
+        comp = SimpleUploadedFile('c.pdf', b'x', content_type='application/pdf')
+        pago = payment_service.registrar_abono(
+            self.cli, fecha_pago=self.hoy, metodo_pago=self.met,
+            monto=Decimal('100.00'), comprobante=comp)
+        nombre = pago.comprobante.name
+        self.assertTrue(nombre)
+        payment_service.editar_abono(
+            pago, fecha_pago=self.hoy, metodo_pago=self.met,
+            monto=Decimal('120.00'), comprobante=None)
+        pago.refresh_from_db()
+        self.assertEqual(pago.comprobante.name, nombre)

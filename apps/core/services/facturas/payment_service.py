@@ -15,18 +15,49 @@ def _facturas_pendientes(cliente):
     return [d for d in docs if d.saldo_pendiente > 0]
 
 
-def proponer_reparto(cliente, monto):
-    """Reparto sugerido por antigüedad SIN persistir: lista de (documento, monto)."""
+def proponer_reparto(cliente, monto, excluir=None):
+    """Reparto sugerido por antigüedad SIN persistir: lista de (documento, monto).
+
+    `excluir`: conjunto opcional de pks de facturas a saltar (p. ej. las que el
+    usuario fijó manualmente en el formulario).
+    """
+    excluir = excluir or set()
     restante = Decimal(monto)
     reparto = []
     for doc in _facturas_pendientes(cliente):
         if restante <= 0:
             break
+        if doc.pk in excluir:
+            continue
         aplicar = min(doc.saldo_pendiente, restante)
         if aplicar > 0:
             reparto.append((doc, aplicar))
             restante -= aplicar
     return reparto
+
+
+def _aplicar_reparto(pago, aplicaciones):
+    """Crea las AplicacionPago de `pago`.
+
+    `aplicaciones`: lista de (doc, monto) EXPLÍCITOS del usuario (un monto 0
+    significa "no aplicar a esta factura, pero déjala fija"). Las facturas
+    listadas quedan fijas a su monto (topado a su saldo y al remanente del
+    pago); el remanente se reparte por antigüedad entre las facturas pendientes
+    NO listadas. Si `aplicaciones` es None, se reparte todo automáticamente.
+    """
+    restante = pago.monto
+    fijas = set()
+    for documento, monto_aplicar in (aplicaciones or []):
+        fijas.add(documento.pk)
+        if restante <= 0:
+            continue
+        monto_aplicar = min(Decimal(monto_aplicar), documento.saldo_pendiente, restante)
+        if monto_aplicar > 0:
+            AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
+            restante -= monto_aplicar
+    # Remanente: auto-repartir por antigüedad entre las pendientes no fijadas.
+    for documento, monto_aplicar in proponer_reparto(pago.cliente, restante, excluir=fijas):
+        AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
 
 
 @transaction.atomic
@@ -35,25 +66,35 @@ def registrar_abono(cliente, *, fecha_pago, metodo_pago, monto,
     """Crea un Pago y reparte su monto entre facturas.
 
     `aplicaciones`: lista opcional de (documento, monto). Si es None se auto-reparte
-    por antigüedad. Cada aplicación se topa al saldo de la factura y a lo que resta
-    del pago; el remanente queda como saldo a favor del cliente.
+    por antigüedad.
     """
-    monto = Decimal(monto)
     pago = Pago.objects.create(
         cliente=cliente, fecha_pago=fecha_pago, metodo_pago=metodo_pago,
-        monto=monto, referencia=referencia, comprobante=comprobante, notas=notas,
+        monto=Decimal(monto), referencia=referencia, comprobante=comprobante, notas=notas,
     )
-    if aplicaciones is None:
-        aplicaciones = proponer_reparto(cliente, monto)
-    restante = monto
-    for documento, monto_aplicar in aplicaciones:
-        if restante <= 0:
-            break
-        # Nunca aplicar más que el saldo de la factura ni que lo que resta del pago.
-        monto_aplicar = min(Decimal(monto_aplicar), documento.saldo_pendiente, restante)
-        if monto_aplicar > 0:
-            AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
-            restante -= monto_aplicar
+    _aplicar_reparto(pago, aplicaciones)
+    return pago
+
+
+@transaction.atomic
+def editar_abono(pago, *, fecha_pago, metodo_pago, monto,
+                 referencia='', comprobante=None, notas='', aplicaciones=None):
+    """Actualiza un Pago y rehace su reparto entre facturas.
+
+    Borra las AplicacionPago existentes y las vuelve a crear con la misma lógica
+    de `registrar_abono`. El comprobante solo se reemplaza si `comprobante` no es
+    None (para no borrar el archivo existente al editar sin subir uno nuevo).
+    """
+    pago.fecha_pago = fecha_pago
+    pago.metodo_pago = metodo_pago
+    pago.monto = Decimal(monto)
+    pago.referencia = referencia
+    pago.notas = notas
+    if comprobante is not None:
+        pago.comprobante = comprobante
+    pago.save()
+    pago.aplicaciones.all().delete()
+    _aplicar_reparto(pago, aplicaciones)
     return pago
 
 

@@ -66,3 +66,38 @@ class ClienteTabTests(TestCase):
         self.assertEqual(doc.monto_pagado, Decimal('50.00'))
         resp = self.client.get(reverse('factura_detalle', args=[doc.pk]))
         self.assertContains(resp, 'Transferencia')
+
+    def test_tabla_abonos_muestra_acciones_con_permiso(self):
+        from apps.core.models import MetodoPago
+        from apps.core.services.facturas import payment_service
+        self.admin.user_permissions.add(Permission.objects.get(codename='registrar_pago_factura'))
+        met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+        pago = payment_service.registrar_abono(
+            self.cliente, fecha_pago=timezone.localdate(), metodo_pago=met, monto=Decimal('50.00'))
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('cliente_facturas_fragment', args=[self.cliente.pk]))
+        self.assertContains(resp, reverse('cliente_abono_editar', args=[pago.pk]))
+        self.assertContains(resp, reverse('cliente_abono_borrar', args=[pago.pk]))
+
+    def test_tabla_abonos_oculta_acciones_sin_permiso(self):
+        from apps.core.models import MetodoPago
+        from apps.core.services.facturas import payment_service
+        met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+        pago = payment_service.registrar_abono(
+            self.cliente, fecha_pago=timezone.localdate(), metodo_pago=met, monto=Decimal('50.00'))
+        self.client.force_login(self.admin)  # solo tiene ver_facturas
+        resp = self.client.get(reverse('cliente_facturas_fragment', args=[self.cliente.pk]))
+        self.assertNotContains(resp, reverse('cliente_abono_borrar', args=[pago.pk]))
+
+    def test_ficha_muestra_facturas_como_primera_tab_activa(self):
+        self.admin.user_permissions.add(Permission.objects.get(codename='ver_inventario'))
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('cliente_salidas', args=[self.cliente.pk]))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        i_fac = html.index('id="tab-facturas-btn"')
+        i_prod = html.index('id="tab-productos-btn"')
+        self.assertLess(i_fac, i_prod, 'La tab de Facturas debe ir antes que Productos')
+        # El botón de Facturas es el activo por defecto.
+        fac_btn = html[i_fac - 200:i_fac]
+        self.assertIn('active', fac_btn)

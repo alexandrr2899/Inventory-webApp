@@ -36,16 +36,16 @@
 {% if facturas_enabled and perms.core.ver_facturas %}
 <ul class="nav nav-tabs mb-3" id="clienteTabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="tab-productos-btn" data-bs-toggle="tab"
-            data-bs-target="#tab-productos" type="button" role="tab">
-      <i class="bi bi-box-seam me-1"></i>Productos llevados
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="tab-facturas-btn" data-bs-toggle="tab"
+    <button class="nav-link active" id="tab-facturas-btn" data-bs-toggle="tab"
             data-bs-target="#tab-facturas" type="button" role="tab"
             data-url="{% url 'cliente_facturas_fragment' cliente.pk %}">
       <i class="bi bi-receipt me-1"></i>Facturas
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-productos-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-productos" type="button" role="tab">
+      <i class="bi bi-box-seam me-1"></i>Productos llevados
     </button>
   </li>
   <li class="nav-item ms-auto" role="presentation">
@@ -57,7 +57,7 @@
   </li>
 </ul>
 <div class="tab-content">
-  <div class="tab-pane fade show active" id="tab-productos" role="tabpanel">
+  <div class="tab-pane fade" id="tab-productos" role="tabpanel">
 {% endif %}
 
 <div class="card mb-4 filters-card">
@@ -267,7 +267,7 @@
 
 {% if facturas_enabled and perms.core.ver_facturas %}
   </div>{# /tab-productos #}
-  <div class="tab-pane fade" id="tab-facturas" role="tabpanel">
+  <div class="tab-pane fade show active" id="tab-facturas" role="tabpanel">
     <div id="facturas-cont" class="text-center text-muted py-4">
       <span class="spinner-border spinner-border-sm"></span> Cargando facturas…
     </div>
@@ -341,6 +341,12 @@
   btn.addEventListener('shown.bs.tab', function () {
     if (!cargado) { cargado = true; cargar(''); }
   });
+
+  // Facturas es la tab activa por defecto: cargar el fragmento de una.
+  if (btn.classList.contains('active') && !cargado) {
+    cargado = true;
+    cargar('');
+  }
 })();
 </script>
 {% endif %}

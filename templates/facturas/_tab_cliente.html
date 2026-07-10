@@ -112,7 +112,10 @@
 {# Abonos del cliente #}
 <h2 class="h6 mt-4">Abonos del cliente</h2>
 <table class="table table-sm">
-  <thead><tr><th>Fecha</th><th>Método</th><th>Monto</th><th>Aplicado</th><th>Sin aplicar</th></tr></thead>
+  <thead><tr>
+    <th>Fecha</th><th>Método</th><th>Monto</th><th>Aplicado</th><th>Sin aplicar</th>
+    {% if perms.core.registrar_pago_factura %}<th class="text-end">Acciones</th>{% endif %}
+  </tr></thead>
   <tbody>
     {% for p in abonos %}
     <tr>
@@ -121,9 +124,23 @@
       <td>L {{ p.monto }}</td>
       <td>L {{ p.monto_aplicado }}</td>
       <td>L {{ p.saldo_sin_aplicar }}</td>
+      {% if perms.core.registrar_pago_factura %}
+      <td class="text-end text-nowrap">
+        <a href="{% url 'cliente_abono_editar' p.pk %}" class="btn btn-sm btn-outline-primary" title="Editar">
+          <i class="bi bi-pencil"></i>
+        </a>
+        <form method="post" action="{% url 'cliente_abono_borrar' p.pk %}" class="d-inline"
+              onsubmit="return confirm('¿Eliminar este abono? Se recalcularán las facturas afectadas.');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar">
+            <i class="bi bi-trash"></i>
+          </button>
+        </form>
+      </td>
+      {% endif %}
     </tr>
     {% empty %}
-    <tr><td colspan="5" class="text-muted">Sin abonos.</td></tr>
+    <tr><td colspan="{% if perms.core.registrar_pago_factura %}6{% else %}5{% endif %}" class="text-muted">Sin abonos.</td></tr>
     {% endfor %}
   </tbody>
 </table>
