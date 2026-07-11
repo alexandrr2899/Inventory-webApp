@@ -39,7 +39,10 @@ def _pdf_link_callback(uri, rel):
 
 def _render_pdf(html):
     salida = BytesIO()
-    resultado = pisa.CreatePDF(src=html, dest=salida, link_callback=_pdf_link_callback, encoding='utf-8')
+    try:
+        resultado = pisa.CreatePDF(src=html, dest=salida, link_callback=_pdf_link_callback, encoding='utf-8')
+    except Exception:
+        return None
     if resultado.err:
         return None
     return salida.getvalue()

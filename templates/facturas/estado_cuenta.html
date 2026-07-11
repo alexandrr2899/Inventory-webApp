@@ -33,35 +33,42 @@
 
   <table class="hdr">
     <tr>
-      <td style="width:25%"><img src="{% static 'images/logo.png' %}" style="height:46px"></td>
-      <td style="width:50%">
+      <td style="width:180pt"><img src="{% static 'images/logo.png' %}" style="height:46px"></td>
+      <td style="width:352pt">
         <div class="title">Estado de Cuenta</div>
         <div class="cliente">{{ cliente.nombre }}</div>
       </td>
-      <td style="width:25%; text-align:right">{{ hasta|date:'d/m/Y' }}</td>
+      <td style="width:180pt; text-align:right">{{ hasta|date:'d/m/Y' }}</td>
     </tr>
   </table>
 
   <table class="doc">
+    <colgroup>
+      <col style="width: 62pt"/><col style="width: 66pt"/><col style="width: 60pt"/>
+      <col style="width: 64pt"/><col style="width: 58pt"/><col style="width: 66pt"/>
+      <col style="width: 92pt"/><col style="width: 92pt"/><col style="width: 64pt"/>
+    </colgroup>
     <thead>
       <tr>
-        <th>Subcliente</th><th>Producto</th><th>Fact</th><th>Fecha</th>
-        <th class="num">Lbs</th><th class="num">Precio</th><th class="num">Valor</th>
-        <th class="num">Pago</th><th>F. Canc</th>
+        <th style="width: 62pt">Subcliente</th><th style="width: 66pt">Producto</th>
+        <th style="width: 60pt">Fact</th><th style="width: 64pt">Fecha</th>
+        <th class="num" style="width: 58pt">Lbs</th><th class="num" style="width: 66pt">Precio</th>
+        <th class="num" style="width: 92pt">Valor</th>
+        <th class="num" style="width: 92pt">Pago</th><th style="width: 64pt">F. Canc</th>
       </tr>
     </thead>
     <tbody>
       {% for f in filas %}
       <tr>
-        <td>{{ f.subcliente }}</td>
-        <td>{{ f.producto }}</td>
-        <td{% if f.color %} style="background-color: {{ f.color }}"{% endif %}>{{ f.etiqueta }}</td>
-        <td>{{ f.fecha|date:'d/m/Y' }}</td>
-        <td class="num">{{ f.libras|floatformat:'-2' }}</td>
-        <td class="num">{% if f.precio %}L {{ f.precio|moneda }}{% endif %}</td>
-        <td class="num">L {{ f.valor|moneda }}</td>
-        <td class="num">{% if f.pago %}L {{ f.pago|moneda }}{% endif %}</td>
-        <td>{{ f.fecha_cancelacion|date:'d/m/Y' }}</td>
+        <td style="width: 62pt">{{ f.subcliente }}</td>
+        <td style="width: 66pt">{{ f.producto }}</td>
+        <td style="width: 60pt{% if f.color %}; background-color: {{ f.color }}{% endif %}">{{ f.etiqueta }}</td>
+        <td style="width: 64pt">{{ f.fecha|date:'d/m/Y' }}</td>
+        <td class="num" style="width: 58pt">{{ f.libras|floatformat:'-2' }}</td>
+        <td class="num" style="width: 66pt">{% if f.precio %}L {{ f.precio|moneda }}{% endif %}</td>
+        <td class="num" style="width: 92pt">L {{ f.valor|moneda }}</td>
+        <td class="num" style="width: 92pt">{% if f.pago %}L {{ f.pago|moneda }}{% endif %}</td>
+        <td style="width: 64pt">{{ f.fecha_cancelacion|date:'d/m/Y' }}</td>
       </tr>
       {% empty %}
       <tr><td colspan="9" style="text-align:center; padding:10px">Sin documentos en el rango.</td></tr>
@@ -69,16 +76,20 @@
     </tbody>
     <tfoot>
       <tr class="tot">
-        <td colspan="4" class="num">Totales</td>
-        <td class="num">{{ totales.libras|floatformat:'-2' }}</td>
-        <td></td>
-        <td class="num">L {{ totales.valor|moneda }}</td>
-        <td class="num">L {{ totales.pago|moneda }}</td>
-        <td></td>
+        <td style="width: 62pt"></td><td style="width: 66pt"></td><td style="width: 60pt"></td>
+        <td class="num" style="width: 64pt">Totales</td>
+        <td class="num" style="width: 58pt">{{ totales.libras|floatformat:'-2' }}</td>
+        <td style="width: 66pt"></td>
+        <td class="num" style="width: 92pt">L {{ totales.valor|moneda }}</td>
+        <td class="num" style="width: 92pt">L {{ totales.pago|moneda }}</td>
+        <td style="width: 64pt"></td>
       </tr>
       <tr class="saldo">
-        <td colspan="6" class="num">Saldo Total</td>
-        <td colspan="3" class="num">L {{ totales.saldo|moneda }}</td>
+        <td style="width: 62pt"></td><td style="width: 66pt"></td><td style="width: 60pt"></td>
+        <td style="width: 64pt"></td><td style="width: 58pt"></td>
+        <td class="num" style="width: 66pt">Saldo Total</td>
+        <td class="num" style="width: 92pt">L {{ totales.saldo|moneda }}</td>
+        <td style="width: 92pt"></td><td style="width: 64pt"></td>
       </tr>
     </tfoot>
   </table>
