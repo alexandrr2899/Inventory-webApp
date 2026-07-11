@@ -31,3 +31,66 @@ class ModeloCamposNuevosTests(TestCase):
             cliente=cli, tipo_documento='factura', monto_total=Decimal('1.00'))
         self.assertEqual(doc.subcliente, '')
         self.assertEqual(cat.color, '')
+
+
+class EstadoCuentaServiceTests(TestCase):
+    def setUp(self):
+        from apps.core.services.facturas import estado_cuenta_service
+        self.svc = estado_cuenta_service
+        self.hoy = timezone.localdate()
+        self.cli = Cliente.objects.create(nombre='Renato')
+        self.cat = CategoriaProducto.objects.create(nombre='Camiseta', color='#FFA500')
+        self.met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+        self.f1 = DocumentoFactura.objects.create(
+            cliente=self.cli, tipo_documento='factura', categoria=self.cat,
+            numero_documento='125', fecha_documento=self.hoy - timedelta(days=5),
+            total_libras=Decimal('2500'), precio_por_libra=Decimal('36.00'),
+            monto_total=Decimal('90000.00'), subcliente='Johan')
+        self.e1 = DocumentoFactura.objects.create(
+            cliente=self.cli, tipo_documento='envio',
+            numero_documento='870', fecha_documento=self.hoy - timedelta(days=3),
+            total_libras=Decimal('2400'), precio_por_libra=Decimal('37.50'),
+            monto_total=Decimal('90000.00'))
+
+    def test_incluye_rango_y_excluye_anuladas(self):
+        anulada = DocumentoFactura.objects.create(
+            cliente=self.cli, tipo_documento='factura', numero_documento='X',
+            fecha_documento=self.hoy, monto_total=Decimal('50.00'), estado_pago='anulada')
+        fuera = DocumentoFactura.objects.create(
+            cliente=self.cli, tipo_documento='factura', numero_documento='Y',
+            fecha_documento=self.hoy - timedelta(days=40), monto_total=Decimal('50.00'))
+        datos = self.svc.build(self.cli, self.hoy - timedelta(days=10), self.hoy)
+        etiquetas = [f['etiqueta'] for f in datos['filas']]
+        self.assertIn('125', etiquetas)
+        self.assertIn('Envio 870', etiquetas)   # los envíos llevan prefijo
+        self.assertNotIn('X', etiquetas)         # anulada excluida
+        self.assertNotIn('Y', etiquetas)         # fuera de rango
+
+    def test_fila_lleva_subcliente_y_color(self):
+        datos = self.svc.build(self.cli, self.hoy - timedelta(days=10), self.hoy)
+        fila125 = next(f for f in datos['filas'] if f['etiqueta'] == '125')
+        self.assertEqual(fila125['subcliente'], 'Johan')
+        self.assertEqual(fila125['producto'], 'Camiseta')
+        self.assertEqual(fila125['color'], '#FFA500')
+
+    def test_fecha_cancelacion_solo_si_saldo_cero(self):
+        # f1 sin pago -> None; e1 pagada completa -> fecha del abono
+        payment_service.registrar_abono(
+            self.cli, fecha_pago=self.hoy, metodo_pago=self.met,
+            monto=Decimal('90000.00'), aplicaciones=[(self.e1, Decimal('90000.00'))])
+        datos = self.svc.build(self.cli, self.hoy - timedelta(days=10), self.hoy)
+        fila_f1 = next(f for f in datos['filas'] if f['etiqueta'] == '125')
+        fila_e1 = next(f for f in datos['filas'] if f['etiqueta'] == 'Envio 870')
+        self.assertIsNone(fila_f1['fecha_cancelacion'])
+        self.assertEqual(fila_e1['fecha_cancelacion'], self.hoy)
+
+    def test_totales_y_saldo(self):
+        payment_service.registrar_abono(
+            self.cli, fecha_pago=self.hoy, metodo_pago=self.met,
+            monto=Decimal('40000.00'), aplicaciones=[(self.f1, Decimal('40000.00'))])
+        datos = self.svc.build(self.cli, self.hoy - timedelta(days=10), self.hoy)
+        t = datos['totales']
+        self.assertEqual(t['libras'], Decimal('4900'))          # 2500 + 2400
+        self.assertEqual(t['valor'], Decimal('180000.00'))      # 90000 + 90000
+        self.assertEqual(t['pago'], Decimal('40000.00'))
+        self.assertEqual(t['saldo'], Decimal('140000.00'))      # valor - pago
