@@ -102,6 +102,7 @@ urlpatterns = [
     path('facturas/clientes/<int:pk>/abono/', views.cliente_abono_nuevo, name='cliente_abono_nuevo'),
     path('facturas/abonos/<int:pk>/editar/', views.cliente_abono_editar, name='cliente_abono_editar'),
     path('facturas/abonos/<int:pk>/borrar/', views.cliente_abono_borrar, name='cliente_abono_borrar'),
+    path('facturas/clientes/<int:pk>/estado-cuenta/', views.cliente_estado_cuenta, name='cliente_estado_cuenta'),
     # Ingesta automática (n8n → Google Drive). Auth por token, sin sesión.
     path('facturas/api/ingest/', views.factura_api_ingest, name='factura_api_ingest'),
 

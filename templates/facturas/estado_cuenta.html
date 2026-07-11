@@ -1,0 +1,95 @@
+{% load static facturas_extras %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: letter landscape; margin: 1.4cm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #000; }
+  table.hdr { width: 100%; margin-bottom: 10px; }
+  table.hdr td { vertical-align: middle; }
+  .title { text-align: center; font-size: 18px; font-weight: bold; }
+  .cliente { text-align: center; font-size: 13px; color: #1a5fb4; font-weight: bold; }
+  table.doc { width: 100%; border-collapse: collapse; }
+  table.doc th, table.doc td { border: 1px solid #cccccc; padding: 3px 5px; }
+  table.doc th { background-color: #f0f0f0; }
+  .num { text-align: right; }
+  .tot td { font-weight: bold; background-color: #fafafa; }
+  .saldo td { font-size: 14px; font-weight: bold; background-color: #cfe2ff; }
+  .filtro { margin-bottom: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+  {% if not es_pdf %}
+  <div class="filtro">
+    <form method="get" style="display:inline">
+      Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}">
+      Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}">
+      <button type="submit">Consultar</button>
+    </form>
+    <a href="?format=pdf&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}">Descargar PDF</a>
+  </div>
+  {% endif %}
+
+  <table class="hdr">
+    <tr>
+      <td style="width:180pt"><img src="{% static 'images/logo.png' %}" style="height:46px"></td>
+      <td style="width:352pt">
+        <div class="title">Estado de Cuenta</div>
+        <div class="cliente">{{ cliente.nombre }}</div>
+      </td>
+      <td style="width:180pt; text-align:right">{{ hasta|date:'d/m/Y' }}</td>
+    </tr>
+  </table>
+
+  <table class="doc">
+    <colgroup>
+      <col style="width: 62pt"/><col style="width: 66pt"/><col style="width: 60pt"/>
+      <col style="width: 64pt"/><col style="width: 58pt"/><col style="width: 66pt"/>
+      <col style="width: 92pt"/><col style="width: 92pt"/><col style="width: 64pt"/>
+    </colgroup>
+    <thead>
+      <tr>
+        <th style="width: 62pt">Subcliente</th><th style="width: 66pt">Producto</th>
+        <th style="width: 60pt">Fact</th><th style="width: 64pt">Fecha</th>
+        <th class="num" style="width: 58pt">Lbs</th><th class="num" style="width: 66pt">Precio</th>
+        <th class="num" style="width: 92pt">Valor</th>
+        <th class="num" style="width: 92pt">Pago</th><th style="width: 64pt">F. Canc</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in filas %}
+      <tr>
+        <td style="width: 62pt">{{ f.subcliente }}</td>
+        <td style="width: 66pt">{{ f.producto }}</td>
+        <td style="width: 60pt{% if f.color %}; background-color: {{ f.color }}{% endif %}">{{ f.etiqueta }}</td>
+        <td style="width: 64pt">{{ f.fecha|date:'d/m/Y' }}</td>
+        <td class="num" style="width: 58pt">{{ f.libras|floatformat:'-2' }}</td>
+        <td class="num" style="width: 66pt">{% if f.precio %}L {{ f.precio|moneda }}{% endif %}</td>
+        <td class="num" style="width: 92pt">L {{ f.valor|moneda }}</td>
+        <td class="num" style="width: 92pt">{% if f.pago %}L {{ f.pago|moneda }}{% endif %}</td>
+        <td style="width: 64pt">{{ f.fecha_cancelacion|date:'d/m/Y' }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" style="text-align:center; padding:10px">Sin documentos en el rango.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      {# Los rótulos usan colspan (celdas pasivas para xhtml2pdf) para quedar en una
+         sola línea; los anchos de columna los fijan thead/tbody y las celdas numéricas. #}
+      <tr class="tot">
+        <td colspan="4" class="num">Totales</td>
+        <td class="num" style="width: 58pt">{{ totales.libras|floatformat:'-2' }}</td>
+        <td style="width: 66pt"></td>
+        <td class="num" style="width: 92pt">L {{ totales.valor|moneda }}</td>
+        <td class="num" style="width: 92pt">L {{ totales.pago|moneda }}</td>
+        <td style="width: 64pt"></td>
+      </tr>
+      <tr class="saldo">
+        <td colspan="6" class="num">Saldo Total</td>
+        <td colspan="3" class="num">L {{ totales.saldo|moneda }}</td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>

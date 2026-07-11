@@ -479,6 +479,9 @@ class CategoriaProducto(models.Model):
         help_text='Categoría asignada cuando ninguna palabra clave coincide.')
     activa = models.BooleanField(default=True)
     orden = models.PositiveIntegerField(default=0)
+    color = models.CharField(
+        max_length=7, blank=True,
+        help_text='Color hex (p. ej. #FFA500) para resaltar la categoría en el estado de cuenta.')
 
     class Meta:
         verbose_name = 'Categoría de producto'
@@ -599,6 +602,7 @@ class DocumentoFactura(models.Model):
     estado_revision = models.CharField(max_length=12, choices=ESTADO_REVISION_CHOICES, default='pendiente')
     estado_pago = models.CharField(max_length=12, choices=ESTADO_PAGO_CHOICES, default='pendiente')
     notas = models.TextField(blank=True)
+    subcliente = models.CharField(max_length=120, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

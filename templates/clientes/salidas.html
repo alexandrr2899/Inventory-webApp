@@ -24,6 +24,11 @@
     </small>
   </div>
   <div class="d-flex gap-2">
+    {% if facturas_enabled and perms.core.ver_facturas %}
+    <a href="{% url 'cliente_estado_cuenta' cliente.pk %}" class="btn btn-light btn-sm fw-semibold">
+      <i class="bi bi-file-earmark-text me-1"></i>Estado de cuenta
+    </a>
+    {% endif %}
     <a href="{% url 'cliente_editar' cliente.pk %}" class="btn btn-light btn-sm fw-semibold">
       <i class="bi bi-pencil me-1"></i>Editar
     </a>

@@ -479,7 +479,7 @@ class DocumentoEditarForm(forms.ModelForm):
         fields = [
             'cliente', 'tipo_documento', 'numero_documento', 'fecha_documento',
             'fecha_vencimiento', 'categoria', 'total_libras', 'precio_por_libra',
-            'subtotal', 'isv', 'monto_total', 'estado_revision', 'notas',
+            'subtotal', 'isv', 'monto_total', 'estado_revision', 'notas', 'subcliente',
         ]
         widgets = {
             'cliente': forms.Select(attrs={'class': 'form-select'}),
@@ -495,6 +495,7 @@ class DocumentoEditarForm(forms.ModelForm):
             'monto_total': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'estado_revision': forms.Select(attrs={'class': 'form-select'}),
             'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'subcliente': forms.TextInput(attrs={'class': 'form-control'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -552,13 +553,14 @@ class MetodoPagoForm(forms.ModelForm):
 class CategoriaProductoForm(forms.ModelForm):
     class Meta:
         model = CategoriaProducto
-        fields = ['nombre', 'palabra_clave', 'es_predeterminada', 'activa', 'orden']
+        fields = ['nombre', 'palabra_clave', 'es_predeterminada', 'activa', 'orden', 'color']
         widgets = {
             'nombre': forms.TextInput(attrs={'class': 'form-control'}),
             'palabra_clave': forms.TextInput(attrs={'class': 'form-control'}),
             'es_predeterminada': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'orden': forms.NumberInput(attrs={'class': 'form-control'}),
+            'color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),
         }
 
 

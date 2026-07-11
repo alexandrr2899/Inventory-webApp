@@ -73,6 +73,11 @@
             <div class="col-md-4">
               <label class="form-label">Categoría</label>{{ form.categoria }}
             </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label">Subcliente</label>
+              {{ form.subcliente }}
+              {% if form.subcliente.errors %}<div class="text-danger small">{{ form.subcliente.errors }}</div>{% endif %}
+            </div>
           </div>
         </div>
       </div>
