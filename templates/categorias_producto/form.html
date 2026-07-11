@@ -30,6 +30,12 @@
           <div class="form-text">Si el nombre del archivo la contiene, el envío se clasifica en esta categoría.</div>
           {% if form.palabra_clave.errors %}<div class="text-danger small">{{ form.palabra_clave.errors }}</div>{% endif %}
         </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Color</label>
+          {{ form.color }}
+          <div class="form-text">Resalta la categoría en el estado de cuenta.</div>
+          {% if form.color.errors %}<div class="text-danger small">{{ form.color.errors }}</div>{% endif %}
+        </div>
         <div class="col-12">
           <div class="form-check">
             {{ form.es_predeterminada }}

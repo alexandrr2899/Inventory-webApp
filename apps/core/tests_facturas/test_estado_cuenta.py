@@ -10,6 +10,7 @@ from apps.core.models import (
     Cliente, DocumentoFactura, CategoriaProducto, MetodoPago,
 )
 from apps.core.services.facturas import payment_service
+from apps.core.forms import DocumentoEditarForm, CategoriaProductoForm
 
 
 class ModeloCamposNuevosTests(TestCase):
@@ -127,3 +128,24 @@ class EstadoCuentaViewTests(TestCase):
         self.client.force_login(otro)
         resp = self.client.get(reverse('cliente_estado_cuenta', args=[self.cli.pk]))
         self.assertEqual(resp.status_code, 403)
+
+
+class CapturaCamposFormTests(TestCase):
+    def test_documento_editar_form_guarda_subcliente(self):
+        cli = Cliente.objects.create(nombre='Cli')
+        doc = DocumentoFactura.objects.create(
+            cliente=cli, tipo_documento='factura', monto_total=Decimal('100.00'))
+        form = DocumentoEditarForm({
+            'cliente': cli.pk, 'tipo_documento': 'factura', 'numero_documento': 'F-1',
+            'estado_revision': 'pendiente', 'subtotal': '0', 'isv': '0',
+            'monto_total': '100', 'subcliente': 'Johan',
+        }, instance=doc)
+        self.assertTrue(form.is_valid(), form.errors)
+        guardado = form.save()
+        self.assertEqual(guardado.subcliente, 'Johan')
+
+    def test_categoria_form_guarda_color(self):
+        form = CategoriaProductoForm({'nombre': 'Camiseta', 'orden': '0', 'color': '#FFA500'})
+        self.assertTrue(form.is_valid(), form.errors)
+        cat = form.save()
+        self.assertEqual(cat.color, '#FFA500')
