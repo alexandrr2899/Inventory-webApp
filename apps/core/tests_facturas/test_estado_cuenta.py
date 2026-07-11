@@ -94,3 +94,36 @@ class EstadoCuentaServiceTests(TestCase):
         self.assertEqual(t['valor'], Decimal('180000.00'))      # 90000 + 90000
         self.assertEqual(t['pago'], Decimal('40000.00'))
         self.assertEqual(t['saldo'], Decimal('140000.00'))      # valor - pago
+
+
+@override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
+class EstadoCuentaViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('u', password='x')
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        self.cli = Cliente.objects.create(nombre='Renato Diaz')
+        DocumentoFactura.objects.create(
+            cliente=self.cli, tipo_documento='factura', numero_documento='125',
+            fecha_documento=timezone.localdate(), total_libras=Decimal('2500'),
+            precio_por_libra=Decimal('36.00'), monto_total=Decimal('90000.00'))
+
+    def test_html_ok(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('cliente_estado_cuenta', args=[self.cli.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Estado de Cuenta')
+        self.assertContains(resp, 'Renato Diaz')
+        self.assertContains(resp, '125')
+
+    def test_pdf_ok(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('cliente_estado_cuenta', args=[self.cli.pk]), {'format': 'pdf'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertTrue(resp.content.startswith(b'%PDF'))
+
+    def test_sin_permiso_403(self):
+        otro = User.objects.create_user('sinperm', password='x')
+        self.client.force_login(otro)
+        resp = self.client.get(reverse('cliente_estado_cuenta', args=[self.cli.pk]))
+        self.assertEqual(resp.status_code, 403)

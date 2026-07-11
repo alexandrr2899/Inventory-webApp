@@ -1,0 +1,86 @@
+{% load static facturas_extras %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: letter landscape; margin: 1.4cm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #000; }
+  table.hdr { width: 100%; margin-bottom: 10px; }
+  table.hdr td { vertical-align: middle; }
+  .title { text-align: center; font-size: 18px; font-weight: bold; }
+  .cliente { text-align: center; font-size: 13px; color: #1a5fb4; font-weight: bold; }
+  table.doc { width: 100%; border-collapse: collapse; }
+  table.doc th, table.doc td { border: 1px solid #cccccc; padding: 3px 5px; }
+  table.doc th { background-color: #f0f0f0; }
+  .num { text-align: right; }
+  .tot td { font-weight: bold; background-color: #fafafa; }
+  .saldo td { font-size: 14px; font-weight: bold; background-color: #cfe2ff; }
+  .filtro { margin-bottom: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+  {% if not es_pdf %}
+  <div class="filtro">
+    <form method="get" style="display:inline">
+      Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}">
+      Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}">
+      <button type="submit">Consultar</button>
+    </form>
+    <a href="?format=pdf&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}">Descargar PDF</a>
+  </div>
+  {% endif %}
+
+  <table class="hdr">
+    <tr>
+      <td style="width:25%"><img src="{% static 'images/logo.png' %}" style="height:46px"></td>
+      <td style="width:50%">
+        <div class="title">Estado de Cuenta</div>
+        <div class="cliente">{{ cliente.nombre }}</div>
+      </td>
+      <td style="width:25%; text-align:right">{{ hasta|date:'d/m/Y' }}</td>
+    </tr>
+  </table>
+
+  <table class="doc">
+    <thead>
+      <tr>
+        <th>Subcliente</th><th>Producto</th><th>Fact</th><th>Fecha</th>
+        <th class="num">Lbs</th><th class="num">Precio</th><th class="num">Valor</th>
+        <th class="num">Pago</th><th>F. Canc</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in filas %}
+      <tr>
+        <td>{{ f.subcliente }}</td>
+        <td>{{ f.producto }}</td>
+        <td{% if f.color %} style="background-color: {{ f.color }}"{% endif %}>{{ f.etiqueta }}</td>
+        <td>{{ f.fecha|date:'d/m/Y' }}</td>
+        <td class="num">{{ f.libras|floatformat:'-2' }}</td>
+        <td class="num">{% if f.precio %}L {{ f.precio|moneda }}{% endif %}</td>
+        <td class="num">L {{ f.valor|moneda }}</td>
+        <td class="num">{% if f.pago %}L {{ f.pago|moneda }}{% endif %}</td>
+        <td>{{ f.fecha_cancelacion|date:'d/m/Y' }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" style="text-align:center; padding:10px">Sin documentos en el rango.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="tot">
+        <td colspan="4" class="num">Totales</td>
+        <td class="num">{{ totales.libras|floatformat:'-2' }}</td>
+        <td></td>
+        <td class="num">L {{ totales.valor|moneda }}</td>
+        <td class="num">L {{ totales.pago|moneda }}</td>
+        <td></td>
+      </tr>
+      <tr class="saldo">
+        <td colspan="6" class="num">Saldo Total</td>
+        <td colspan="3" class="num">L {{ totales.saldo|moneda }}</td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>
