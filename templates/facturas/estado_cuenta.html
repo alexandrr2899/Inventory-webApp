@@ -75,9 +75,10 @@
       {% endfor %}
     </tbody>
     <tfoot>
+      {# Los rótulos usan colspan (celdas pasivas para xhtml2pdf) para quedar en una
+         sola línea; los anchos de columna los fijan thead/tbody y las celdas numéricas. #}
       <tr class="tot">
-        <td style="width: 62pt"></td><td style="width: 66pt"></td><td style="width: 60pt"></td>
-        <td class="num" style="width: 64pt">Totales</td>
+        <td colspan="4" class="num">Totales</td>
         <td class="num" style="width: 58pt">{{ totales.libras|floatformat:'-2' }}</td>
         <td style="width: 66pt"></td>
         <td class="num" style="width: 92pt">L {{ totales.valor|moneda }}</td>
@@ -85,11 +86,8 @@
         <td style="width: 64pt"></td>
       </tr>
       <tr class="saldo">
-        <td style="width: 62pt"></td><td style="width: 66pt"></td><td style="width: 60pt"></td>
-        <td style="width: 64pt"></td><td style="width: 58pt"></td>
-        <td class="num" style="width: 66pt">Saldo Total</td>
-        <td class="num" style="width: 92pt">L {{ totales.saldo|moneda }}</td>
-        <td style="width: 92pt"></td><td style="width: 64pt"></td>
+        <td colspan="6" class="num">Saldo Total</td>
+        <td colspan="3" class="num">L {{ totales.saldo|moneda }}</td>
       </tr>
     </tfoot>
   </table>
