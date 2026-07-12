@@ -75,8 +75,7 @@
       {% endfor %}
     </tbody>
     <tfoot>
-      {# Los rótulos usan colspan (celdas pasivas para xhtml2pdf) para quedar en una
-         sola línea; los anchos de columna los fijan thead/tbody y las celdas numéricas. #}
+      {# Rótulos con colspan (celda pasiva en xhtml2pdf) para una sola línea; los anchos los fijan thead/tbody. #}
       <tr class="tot">
         <td colspan="4" class="num">Totales</td>
         <td class="num" style="width: 58pt">{{ totales.libras|floatformat:'-2' }}</td>
