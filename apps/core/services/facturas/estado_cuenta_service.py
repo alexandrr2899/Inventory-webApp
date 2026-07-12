@@ -1,23 +1,31 @@
 """estado_cuenta_service — arma los datos del estado de cuenta por cliente."""
 from decimal import Decimal
 
+from apps.core.models import DocumentoFactura
+
 
 def _fecha_cancelacion(doc):
-    """Fecha del abono que cerró la factura (saldo 0), o None si aún tiene saldo."""
+    """Fecha del abono que cerró la factura (saldo 0), o None si aún tiene saldo.
+
+    Usa `doc.aplicaciones.all()` (no `.select_related`) para aprovechar el
+    prefetch de `build` y no consultar por fila.
+    """
     if doc.saldo_pendiente > 0:
         return None
-    fechas = [a.pago.fecha_pago for a in doc.aplicaciones.select_related('pago')]
+    fechas = [a.pago.fecha_pago for a in doc.aplicaciones.all()]
     return max(fechas) if fechas else None
 
 
 def build(cliente, desde, hasta):
     """Datos del estado de cuenta de `cliente` en el rango [desde, hasta] (inclusive)."""
-    docs = (cliente.documentos
-            .filter(tipo_documento__in=('factura', 'envio'),
-                    fecha_documento__gte=desde, fecha_documento__lte=hasta)
-            .exclude(estado_pago='anulada')
-            .select_related('categoria')
-            .order_by('fecha_documento', 'created_at'))
+    docs = DocumentoFactura.anotar_pagado(
+        cliente.documentos
+        .filter(tipo_documento__in=('factura', 'envio'),
+                fecha_documento__gte=desde, fecha_documento__lte=hasta)
+        .exclude(estado_pago='anulada')
+        .select_related('categoria')
+        .prefetch_related('aplicaciones__pago')
+        .order_by('fecha_documento', 'created_at'))
     filas = []
     tot_libras = tot_valor = tot_pago = Decimal('0')
     for doc in docs:

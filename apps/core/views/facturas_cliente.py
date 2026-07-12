@@ -44,7 +44,7 @@ def cliente_crear_inline(request):
 @facturas_enabled
 def cliente_facturas_fragment(request, pk):
     cliente = get_object_or_404(Cliente, pk=pk)
-    qs = DocumentoFactura.objects.filter(cliente=cliente)
+    qs = DocumentoFactura.anotar_pagado(DocumentoFactura.objects.filter(cliente=cliente))
 
     tipo = request.GET.get('tipo', '')
     if tipo in ('factura', 'envio'):
@@ -57,7 +57,8 @@ def cliente_facturas_fragment(request, pk):
     if hasta:
         qs = qs.filter(fecha_documento__lte=hasta)
 
-    activos = list(DocumentoFactura.objects.filter(cliente=cliente).exclude(estado_pago='anulada'))
+    activos = list(DocumentoFactura.anotar_pagado(
+        DocumentoFactura.objects.filter(cliente=cliente).exclude(estado_pago='anulada')))
     total_facturado = sum((d.monto_total for d in activos), Decimal('0'))
     total_pagado = sum((d.monto_pagado for d in activos), Decimal('0'))
     resumen = {

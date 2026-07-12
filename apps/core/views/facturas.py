@@ -32,7 +32,8 @@ def _safe_return_url(request):
 @permission_required(_perm('ver_facturas'), raise_exception=True)
 @facturas_enabled
 def facturas_lista(request):
-    qs = DocumentoFactura.objects.select_related('cliente', 'categoria').all()
+    qs = DocumentoFactura.anotar_pagado(
+        DocumentoFactura.objects.select_related('cliente', 'categoria'))
     tipo = request.GET.get('tipo', '')
     cliente_id = request.GET.get('cliente', '')
     categoria_id = request.GET.get('categoria', '')
