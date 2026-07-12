@@ -1,6 +1,8 @@
 """facturas_lote.py — Subida en bloque de PDFs con revisión y auto-emparejado."""
 from .common import *  # noqa: F401,F403
 
+from django.core.exceptions import ValidationError
+
 from ..models import Cliente, DocumentoFactura, CategoriaProducto
 from ..services.facturas import bulk_service
 
@@ -14,7 +16,12 @@ def factura_lote(request):
         if not archivos:
             messages.error(request, 'Seleccioná al menos un PDF.')
             return redirect('factura_lote')
-        batch_id, filas = bulk_service.procesar_archivos(archivos)
+        try:
+            batch_id, filas = bulk_service.procesar_archivos(archivos)
+        except ValidationError as exc:
+            mensaje = '; '.join(exc.messages) if hasattr(exc, 'messages') else str(exc)
+            messages.error(request, mensaje)
+            return redirect('factura_lote')
         return render(request, 'facturas/lote_revisar.html', {
             'batch_id': batch_id,
             'filas': filas,

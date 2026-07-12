@@ -102,7 +102,7 @@
         {% for det in detalles|slice:":3" %}
         <div class="fw-semibold" style="font-size:.85rem;">
           {{ det.item.nombre }}
-          <span class="text-muted small">× {{ det.cantidad }} {{ det.item.unidad_medida }}</span>
+          <span class="text-muted small">× {{ det.cantidad|floatformat:0 }} {{ det.item.unidad_medida }}</span>
         </div>
         {% endfor %}
         {% if mov.num_detalles > 3 %}
@@ -209,7 +209,7 @@
                 <a href="{% url 'item_detalle' det.item.pk %}" class="text-decoration-none fw-semibold">
                   {{ det.item.nombre }}
                 </a>
-                <span class="text-muted small">× {{ det.cantidad }}</span>
+                <span class="text-muted small">× {{ det.cantidad|floatformat:0 }}</span>
               </div>
               {% endfor %}
               {% if mov.num_detalles > 3 %}

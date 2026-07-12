@@ -179,12 +179,12 @@
           </td>
           <td class="text-muted small">{{ r.item.categoria|default:"–" }}</td>
           <td class="text-end fw-bold {% if r.negativo %}text-danger{% elif r.bajo %}text-danger{% else %}text-success{% endif %}">
-            {{ r.stock }} {{ r.item.unidad_medida }}
+            {{ r.stock|floatformat:0 }} {{ r.item.unidad_medida }}
             {% if r.negativo %}
               <i class="bi bi-arrow-down-circle-fill" title="Stock negativo"></i>
             {% endif %}
           </td>
-          <td class="text-end text-muted small">{{ r.item.stock_minimo }}</td>
+          <td class="text-end text-muted small">{{ r.item.stock_minimo|floatformat:0 }}</td>
           <td class="text-muted small">{{ r.ub_principal }}</td>
           <td>
             {% if not r.item.activo %}
@@ -267,7 +267,7 @@
           <div class="text-end flex-shrink-0">
             <div class="fw-bold fs-5 lh-1
               {% if r.negativo or r.bajo %}text-danger{% else %}text-success{% endif %}">
-              {{ r.stock }}
+              {{ r.stock|floatformat:0 }}
             </div>
             <div class="text-muted small">{{ r.item.unidad_medida }}</div>
             {% if r.negativo %}

@@ -79,7 +79,7 @@
     <div class="card text-center py-2 px-1">
       <div class="text-muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;">Stock actual</div>
       <div class="fw-bold fs-5 {% if item.bajo_stock %}text-danger{% else %}text-success{% endif %}">
-        {{ item.stock_total }} <span class="fs-6 fw-normal text-muted">{{ item.unidad_medida }}</span>
+        {{ item.stock_total|floatformat:0 }} <span class="fs-6 fw-normal text-muted">{{ item.unidad_medida }}</span>
       </div>
     </div>
   </div>
@@ -211,7 +211,7 @@
       {% if entrada.delta > 0 %}text-success
       {% elif entrada.delta < 0 %}text-danger
       {% else %}text-muted{% endif %}">
-      {% if entrada.delta > 0 %}+{% endif %}{{ entrada.delta|floatformat:"-2" }} {{ item.unidad_medida }}
+      {% if entrada.delta > 0 %}+{% endif %}{{ entrada.delta|floatformat:0 }} {{ item.unidad_medida }}
     </span>
     {% else %}
     <span class="delta-badge text-muted" style="opacity:.5;">
@@ -225,13 +225,13 @@
   {% if entrada.afecta_stock %}
   <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
     <div class="stock-flow">
-      <span class="val-antes">{{ entrada.stock_antes|floatformat:"-2" }}</span>
+      <span class="val-antes">{{ entrada.stock_antes|floatformat:0 }}</span>
       <span class="arrow"><i class="bi bi-arrow-right"></i></span>
       <span class="val-despues
         {% if entrada.stock_despues <= 0 %}cero
         {% elif item.stock_minimo > 0 and entrada.stock_despues <= item.stock_minimo %}bajo
         {% else %}normal{% endif %}">
-        {{ entrada.stock_despues|floatformat:"-2" }}
+        {{ entrada.stock_despues|floatformat:0 }}
       </span>
       <span class="text-muted fw-normal" style="font-size:.75rem;">{{ item.unidad_medida }}</span>
     </div>
@@ -248,9 +248,9 @@
   {% else %}
   <div class="d-flex align-items-center gap-2 mb-1">
     <div class="stock-flow" style="opacity:.5;">
-      <span class="val-antes">{{ entrada.stock_antes|floatformat:"-2" }}</span>
+      <span class="val-antes">{{ entrada.stock_antes|floatformat:0 }}</span>
       <span class="arrow"><i class="bi bi-arrow-right"></i></span>
-      <span class="val-despues text-muted">{{ entrada.stock_antes|floatformat:"-2" }}</span>
+      <span class="val-despues text-muted">{{ entrada.stock_antes|floatformat:0 }}</span>
       <span class="text-muted fw-normal" style="font-size:.75rem;">{{ item.unidad_medida }}</span>
     </div>
     <span class="badge bg-secondary" style="font-size:.68rem;">

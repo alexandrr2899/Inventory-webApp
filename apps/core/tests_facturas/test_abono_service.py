@@ -2,10 +2,13 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.core.models import Cliente, DocumentoFactura, MetodoPago, AplicacionPago
+from apps.core.forms import AbonoClienteForm, PagoFacturaForm
+from apps.core.models import Cliente, DocumentoFactura, MetodoPago, AplicacionPago, Pago
 from apps.core.services.facturas import payment_service
 
 
@@ -53,6 +56,23 @@ class AbonoServiceTests(TestCase):
         self.assertEqual([(d.pk, m) for d, m in reparto],
                          [(self.f1.pk, Decimal('100.00')), (self.f2.pk, Decimal('20.00'))])
         self.assertEqual(AplicacionPago.objects.count(), 0)
+
+    def test_forms_rechazan_pago_negativo(self):
+        data = {'fecha_pago': self.hoy, 'metodo_pago': self.met.pk, 'monto': '-1.00'}
+        self.assertFalse(PagoFacturaForm(data).is_valid())
+        self.assertFalse(AbonoClienteForm(data).is_valid())
+
+    def test_servicio_rechaza_abono_negativo(self):
+        with self.assertRaises(ValidationError):
+            self._abono('-1.00')
+
+    def test_constraint_rechaza_pago_negativo(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Pago.objects.create(
+                    cliente=self.cli, fecha_pago=self.hoy,
+                    metodo_pago=self.met, monto=Decimal('-1.00'),
+                )
 
     def test_aplicar_saldo_a_favor_a_factura_nueva(self):
         self._abono('250.00')  # 50 de crédito

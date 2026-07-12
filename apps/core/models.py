@@ -710,6 +710,9 @@ class Pago(models.Model):
         verbose_name = 'Pago'
         verbose_name_plural = 'Pagos'
         ordering = ['-fecha_pago', '-created_at']
+        constraints = [
+            models.CheckConstraint(check=models.Q(monto__gt=0), name='pago_monto_positivo'),
+        ]
 
     def __str__(self):
         return f'Abono L {self.monto} · {self.cliente.nombre}'

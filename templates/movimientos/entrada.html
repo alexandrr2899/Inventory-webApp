@@ -142,8 +142,9 @@ function agregarFila(preItemId = '', preCant = '') {
   inputCant.name = 'cantidad[]';
   inputCant.className = 'form-control';
   inputCant.placeholder = '0';
-  inputCant.step = '0.01';
-  inputCant.min = '0.01';
+  inputCant.step = '1';
+  inputCant.min = '1';
+  inputCant.inputMode = 'numeric';
   inputCant.required = true;
   if (preCant) inputCant.value = preCant;
   const unidadSpan = document.createElement('span');

@@ -2,29 +2,42 @@
 from decimal import Decimal
 
 from django.db import transaction
+from django.core.exceptions import ValidationError
 
-from apps.core.models import Pago, AplicacionPago
+from apps.core.models import Pago, AplicacionPago, DocumentoFactura
 from . import status_service
 
 
-def _facturas_pendientes(cliente):
+def _validar_monto_positivo(monto):
+    monto = Decimal(monto)
+    if monto <= 0:
+        raise ValidationError('El monto debe ser mayor que cero.')
+    return monto
+
+
+def _facturas_base(cliente, *, bloquear=False):
+    qs = cliente.documentos.exclude(estado_pago='anulada')
+    if bloquear:
+        qs = qs.select_for_update()
+    return qs.order_by('fecha_documento', 'created_at')
+
+
+def _facturas_pendientes(cliente, *, bloquear=False):
     """Facturas no anuladas con saldo, de la más vieja a la más nueva."""
-    docs = (cliente.documentos
-            .exclude(estado_pago='anulada')
-            .order_by('fecha_documento', 'created_at'))
+    docs = _facturas_base(cliente, bloquear=bloquear)
     return [d for d in docs if d.saldo_pendiente > 0]
 
 
-def proponer_reparto(cliente, monto, excluir=None):
+def proponer_reparto(cliente, monto, excluir=None, *, bloquear=False):
     """Reparto sugerido por antigüedad SIN persistir: lista de (documento, monto).
 
     `excluir`: conjunto opcional de pks de facturas a saltar (p. ej. las que el
     usuario fijó manualmente en el formulario).
     """
     excluir = excluir or set()
-    restante = Decimal(monto)
+    restante = _validar_monto_positivo(monto)
     reparto = []
-    for doc in _facturas_pendientes(cliente):
+    for doc in _facturas_pendientes(cliente, bloquear=bloquear):
         if restante <= 0:
             break
         if doc.pk in excluir:
@@ -51,13 +64,17 @@ def _aplicar_reparto(pago, aplicaciones):
         fijas.add(documento.pk)
         if restante <= 0:
             continue
+        # Refrescar la factura bloqueada antes de leer saldo_pendiente.
+        documento = DocumentoFactura.objects.select_for_update().get(pk=documento.pk)
         monto_aplicar = min(Decimal(monto_aplicar), documento.saldo_pendiente, restante)
         if monto_aplicar > 0:
             AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
             restante -= monto_aplicar
     # Remanente: auto-repartir por antigüedad entre las pendientes no fijadas.
-    for documento, monto_aplicar in proponer_reparto(pago.cliente, restante, excluir=fijas):
-        AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
+    if restante > 0:
+        for documento, monto_aplicar in proponer_reparto(
+            pago.cliente, restante, excluir=fijas, bloquear=True):
+            AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
 
 
 @transaction.atomic
@@ -68,9 +85,11 @@ def registrar_abono(cliente, *, fecha_pago, metodo_pago, monto,
     `aplicaciones`: lista opcional de (documento, monto). Si es None se auto-reparte
     por antigüedad.
     """
+    monto = _validar_monto_positivo(monto)
+    _facturas_pendientes(cliente, bloquear=True)
     pago = Pago.objects.create(
         cliente=cliente, fecha_pago=fecha_pago, metodo_pago=metodo_pago,
-        monto=Decimal(monto), referencia=referencia, comprobante=comprobante, notas=notas,
+        monto=monto, referencia=referencia, comprobante=comprobante, notas=notas,
     )
     _aplicar_reparto(pago, aplicaciones)
     return pago
@@ -85,9 +104,12 @@ def editar_abono(pago, *, fecha_pago, metodo_pago, monto,
     de `registrar_abono`. El comprobante solo se reemplaza si `comprobante` no es
     None (para no borrar el archivo existente al editar sin subir uno nuevo).
     """
+    monto = _validar_monto_positivo(monto)
+    pago = Pago.objects.select_for_update(of=('self',)).select_related('cliente').get(pk=pago.pk)
+    _facturas_pendientes(pago.cliente, bloquear=True)
     pago.fecha_pago = fecha_pago
     pago.metodo_pago = metodo_pago
-    pago.monto = Decimal(monto)
+    pago.monto = monto
     pago.referencia = referencia
     pago.notas = notas
     if comprobante is not None:
@@ -105,9 +127,11 @@ def aplicar_saldo_a_favor(documento):
     Devuelve el monto total aplicado.
     """
     aplicado = Decimal('0.00')
+    documento = DocumentoFactura.objects.select_for_update(of=('self',)).select_related('cliente').get(pk=documento.pk)
     if documento.estado_pago == 'anulada':
         return aplicado
-    pagos = documento.cliente.pagos.order_by('fecha_pago', 'created_at')
+    _facturas_pendientes(documento.cliente, bloquear=True)
+    pagos = documento.cliente.pagos.select_for_update().order_by('fecha_pago', 'created_at')
     for pago in pagos:
         saldo_doc = documento.saldo_pendiente
         if saldo_doc <= 0:

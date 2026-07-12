@@ -253,8 +253,8 @@
               <div class="text-muted" style="font-size:.75rem">{{ item.codigo }}</div>
             </div>
             <div class="text-end">
-              <span class="badge bg-danger">{{ item.stock_calc }} {{ item.unidad_medida }}</span>
-              <div class="text-muted" style="font-size:.7rem">mín: {{ item.stock_minimo }}</div>
+              <span class="badge bg-danger">{{ item.stock_calc|floatformat:0 }} {{ item.unidad_medida }}</span>
+              <div class="text-muted" style="font-size:.7rem">mín: {{ item.stock_minimo|floatformat:0 }}</div>
             </div>
           </li>
           {% endfor %}
@@ -302,7 +302,7 @@
                   <span class="small text-muted ms-1">→ {{ det.maquina.nombre }}</span>
                 {% endif %}
               </div>
-              <span class="small fw-bold">{{ det.cantidad }} {{ det.item.unidad_medida }}</span>
+              <span class="small fw-bold">{{ det.cantidad|floatformat:0 }} {{ det.item.unidad_medida }}</span>
             </div>
             <div class="text-muted mt-1" style="font-size:.72rem">
               {{ mov.fecha|date:"d/m/Y H:i" }} · {{ mov.usuario.username }}

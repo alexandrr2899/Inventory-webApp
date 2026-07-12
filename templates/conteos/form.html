@@ -360,9 +360,9 @@ function renderTablaFija(tipo) {
     inputCant.name = 'cantidad_contada[]';
     inputCant.className = 'form-control cant-input';
     inputCant.placeholder = '–';
-    inputCant.step = '0.01';
+    inputCant.step = '1';
     inputCant.min  = '0';
-    inputCant.setAttribute('inputmode', 'decimal');
+    inputCant.inputMode = 'numeric';
     if (previa.cant) inputCant.value = previa.cant;
     const unidadSpan = document.createElement('span');
     unidadSpan.className = 'input-group-text text-muted small';
@@ -454,9 +454,9 @@ function agregarFilaOtros(pre = {}) {
   inputCant.name = 'cantidad_contada[]';
   inputCant.className = 'form-control cant-input';
   inputCant.placeholder = '0';
-  inputCant.step = '0.01';
+  inputCant.step = '1';
   inputCant.min  = '0';
-  inputCant.setAttribute('inputmode', 'decimal');
+  inputCant.inputMode = 'numeric';
   if (pre.cant) inputCant.value = pre.cant;
   const unidadSpan = document.createElement('span');
   unidadSpan.className = 'input-group-text text-muted small';

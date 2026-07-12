@@ -136,8 +136,11 @@ class MovimientoEntradaForm(forms.Form):
         empty_label='-- Seleccionar ítem --'
     )
     cantidad = forms.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0'}),
+        max_digits=12, decimal_places=0, min_value=Decimal('1'),
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control', 'step': '1', 'min': '1',
+            'inputmode': 'numeric', 'placeholder': '0',
+        }),
     )
     ubicacion_destino = forms.ModelChoiceField(
         queryset=Ubicacion.objects.all(),
@@ -159,8 +162,11 @@ class MovimientoSalidaForm(forms.Form):
         empty_label='-- Seleccionar ítem --'
     )
     cantidad = forms.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0'}),
+        max_digits=12, decimal_places=0, min_value=Decimal('1'),
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control', 'step': '1', 'min': '1',
+            'inputmode': 'numeric', 'placeholder': '0',
+        }),
     )
     ubicacion_origen = forms.ModelChoiceField(
         queryset=Ubicacion.objects.all(),
@@ -223,8 +229,11 @@ class MovimientoTransferenciaForm(forms.Form):
         empty_label='-- Seleccionar ítem --'
     )
     cantidad = forms.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0'}),
+        max_digits=12, decimal_places=0, min_value=Decimal('1'),
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control', 'step': '1', 'min': '1',
+            'inputmode': 'numeric', 'placeholder': '0',
+        }),
     )
     ubicacion_origen = forms.ModelChoiceField(
         queryset=Ubicacion.objects.all(),
@@ -306,11 +315,11 @@ class ProduccionForm(forms.Form):
         empty_label='-- Seleccionar producto --',
     )
     cantidad = forms.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        max_digits=12, decimal_places=0, min_value=Decimal('1'),
         widget=forms.NumberInput(attrs={
             'class': 'form-control form-control-lg',
-            'step': '0.01', 'placeholder': '0',
-            'inputmode': 'decimal',
+            'step': '1', 'min': '1', 'placeholder': '0',
+            'inputmode': 'numeric',
         }),
         label='Cantidad producida',
     )
@@ -549,8 +558,8 @@ class PagoFacturaForm(forms.Form):
         queryset=MetodoPago.objects.filter(activo=True),
         widget=forms.Select(attrs={'class': 'form-select'}))
     monto = forms.DecimalField(
-        max_digits=12, decimal_places=2,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}))
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0.01'}))
     referencia = forms.CharField(
         required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
     comprobante = forms.FileField(
@@ -571,8 +580,8 @@ class AbonoClienteForm(forms.Form):
         queryset=MetodoPago.objects.filter(activo=True),
         widget=forms.Select(attrs={'class': 'form-select'}))
     monto = forms.DecimalField(
-        max_digits=12, decimal_places=2,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}))
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0.01'}))
     referencia = forms.CharField(
         required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
     comprobante = forms.FileField(

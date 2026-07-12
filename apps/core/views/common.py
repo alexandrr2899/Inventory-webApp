@@ -65,6 +65,17 @@ def _perm(codename):
     return f'core.{codename}'
 
 
+def _parse_cantidad_entera(cant_str, *, permite_cero=False):
+    """Parsea cantidades de inventario: solo enteros, nunca fracciones."""
+    cantidad = Decimal(str(cant_str).strip())
+    if cantidad != cantidad.to_integral_value():
+        raise ValueError('Las cantidades deben ser números enteros.')
+    cantidad = cantidad.quantize(Decimal('1'))
+    if cantidad < 0 or (cantidad == 0 and not permite_cero):
+        raise ValueError('Cantidad fuera de rango.')
+    return cantidad
+
+
 def facturas_enabled(viewfunc):
     """Devuelve 404 si el módulo Facturas está desactivado por configuración."""
     @wraps(viewfunc)

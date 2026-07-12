@@ -1,7 +1,9 @@
 import os
 import tempfile
+from unittest import SkipTest
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 
 from apps.core.models import Cliente, DocumentoFactura, TarifaCliente, CategoriaProducto
@@ -39,9 +41,12 @@ class MatchClienteTests(TestCase):
 def _archivos_reales():
     archivos = []
     for ruta in (_FACTURA, _ENVIO):
-        with open(ruta, 'rb') as fh:
-            archivos.append(SimpleUploadedFile(os.path.basename(ruta), fh.read(),
-                                               content_type='application/pdf'))
+        try:
+            with open(ruta, 'rb') as fh:
+                archivos.append(SimpleUploadedFile(os.path.basename(ruta), fh.read(),
+                                                   content_type='application/pdf'))
+        except OSError as exc:
+            raise SkipTest(f'PDF de muestra no disponible: {exc}')
     return archivos
 
 
@@ -92,3 +97,25 @@ class LoteEndToEndTests(TestCase):
         creados, errores = bulk_service.crear_desde_lote(batch_id, filas)
         self.assertEqual(creados, 0)
         self.assertEqual(len(errores), 2)
+
+    def test_rechaza_archivo_no_pdf(self):
+        archivo = SimpleUploadedFile('nota.txt', b'hola', content_type='text/plain')
+        with self.assertRaises(ValidationError):
+            bulk_service.procesar_archivos([archivo])
+
+    def test_rechaza_pdf_demasiado_grande(self):
+        archivo = SimpleUploadedFile(
+            'grande.pdf',
+            b'%PDF' + b'x' * (26 * 1024 * 1024),
+            content_type='application/pdf',
+        )
+        with self.assertRaises(ValidationError):
+            bulk_service.procesar_archivos([archivo])
+
+    def test_rechaza_exceso_de_archivos(self):
+        archivos = [
+            SimpleUploadedFile(f'{i}.pdf', b'%PDF\n', content_type='application/pdf')
+            for i in range(bulk_service.MAX_ARCHIVOS_LOTE + 1)
+        ]
+        with self.assertRaises(ValidationError):
+            bulk_service.procesar_archivos(archivos)

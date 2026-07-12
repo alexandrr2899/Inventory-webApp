@@ -24,16 +24,16 @@
             <div class="fw-semibold">{{ d.item.nombre }}</div>
             <div class="text-muted small">{{ d.ubicacion.nombre }}</div>
             <div class="small mt-1">
-              Sistema: <strong>{{ d.cantidad_sistema }}</strong> →
-              Contado: <strong class="text-primary">{{ d.cantidad_contada }}</strong>
+              Sistema: <strong>{{ d.cantidad_sistema|floatformat:0 }}</strong> →
+              Contado: <strong class="text-primary">{{ d.cantidad_contada|floatformat:0 }}</strong>
               {{ d.item.unidad_medida }}
             </div>
           </div>
           <div class="text-end">
             {% if d.diferencia > 0 %}
-              <span class="badge bg-success fs-5">+{{ d.diferencia }}</span>
+              <span class="badge bg-success fs-5">+{{ d.diferencia|floatformat:0 }}</span>
             {% else %}
-              <span class="badge bg-danger fs-5">{{ d.diferencia }}</span>
+              <span class="badge bg-danger fs-5">{{ d.diferencia|floatformat:0 }}</span>
             {% endif %}
             <div class="text-muted small mt-1">{{ d.item.unidad_medida }}</div>
           </div>
