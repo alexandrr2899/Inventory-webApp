@@ -1,3 +1,5 @@
+import os
+
 from django import forms
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User, Group
@@ -7,6 +9,34 @@ from .models import (
     MovimientoInventario, Conteo, ConteoDetalle,
     DocumentoFactura, TarifaCliente, MetodoPago, CategoriaProducto,
 )
+
+# Límites de subida de archivos (MB).
+MAX_PDF_MB = 25
+MAX_COMPROBANTE_MB = 10
+MAX_EXCEL_MB = 10
+
+
+def validar_upload(archivo, *, extensiones, max_mb, magic=None):
+    """Valida un archivo subido por extensión, tamaño y (opcional) bytes iniciales.
+
+    `extensiones`: lista de extensiones permitidas en minúsculas, con punto ('.pdf').
+    `magic`: si se da, los primeros bytes del archivo deben coincidir (p. ej. b'%PDF').
+    Devuelve el archivo (o None si venía vacío) para usarse desde un `clean_<campo>`.
+    """
+    if not archivo:
+        return archivo
+    ext = os.path.splitext(archivo.name)[1].lower()
+    if ext not in extensiones:
+        raise ValidationError(
+            'Tipo de archivo no permitido. Debe ser: %s.' % ', '.join(extensiones))
+    if archivo.size > max_mb * 1024 * 1024:
+        raise ValidationError('El archivo supera el tamaño máximo de %d MB.' % max_mb)
+    if magic:
+        cabecera = archivo.read(len(magic))
+        archivo.seek(0)
+        if cabecera != magic:
+            raise ValidationError('El archivo está dañado o no es del tipo esperado.')
+    return archivo
 
 
 class ItemForm(forms.ModelForm):
@@ -424,6 +454,10 @@ class ImportarItemsForm(forms.Form):
         help_text='Descargá la plantilla para ver el formato esperado.',
     )
 
+    def clean_archivo(self):
+        return validar_upload(self.cleaned_data.get('archivo'),
+                              extensiones=['.xlsx', '.xls'], max_mb=MAX_EXCEL_MB)
+
 
 class FiltroMovimientosForm(forms.Form):
     fecha_inicio = forms.DateField(
@@ -471,6 +505,10 @@ class DocumentoUploadForm(forms.Form):
         required=False,
         widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'application/pdf'}),
     )
+
+    def clean_archivo_pdf(self):
+        return validar_upload(self.cleaned_data.get('archivo_pdf'),
+                              extensiones=['.pdf'], max_mb=MAX_PDF_MB, magic=b'%PDF')
 
 
 class DocumentoEditarForm(forms.ModelForm):
@@ -520,6 +558,11 @@ class PagoFacturaForm(forms.Form):
     notas = forms.CharField(
         required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
 
+    def clean_comprobante(self):
+        return validar_upload(self.cleaned_data.get('comprobante'),
+                              extensiones=['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
+                              max_mb=MAX_COMPROBANTE_MB)
+
 
 class AbonoClienteForm(forms.Form):
     fecha_pago = forms.DateField(
@@ -536,6 +579,11 @@ class AbonoClienteForm(forms.Form):
         required=False, widget=forms.ClearableFileInput(attrs={'class': 'form-control'}))
     notas = forms.CharField(
         required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
+
+    def clean_comprobante(self):
+        return validar_upload(self.cleaned_data.get('comprobante'),
+                              extensiones=['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
+                              max_mb=MAX_COMPROBANTE_MB)
 
 
 class MetodoPagoForm(forms.ModelForm):

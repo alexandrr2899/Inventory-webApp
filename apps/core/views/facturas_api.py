@@ -22,6 +22,25 @@ def _token_valido(request):
     return constant_time_compare(recibido, esperado)
 
 
+# Rate-limit de intentos fallidos de token por IP (anti fuerza bruta del X-API-Key).
+# Solo cuentan los fallos: el tráfico legítimo con token válido nunca se penaliza.
+_INGEST_MAX_FALLOS = 10
+_INGEST_VENTANA_SEG = 300  # 5 minutos
+
+
+def _ingest_bloqueado(ip):
+    return cache.get(f'ingest_fail:{ip}', 0) >= _INGEST_MAX_FALLOS
+
+
+def _ingest_registrar_fallo(ip):
+    key = f'ingest_fail:{ip}'
+    try:
+        cache.incr(key)
+    except ValueError:
+        # La clave no existía (o expiró): iniciar la ventana.
+        cache.set(key, 1, _INGEST_VENTANA_SEG)
+
+
 def _cliente_sin_identificar():
     cliente, _created = Cliente.objects.get_or_create(
         nombre='Sin identificar',
@@ -37,10 +56,15 @@ def _cliente_sin_identificar():
 @facturas_enabled
 @require_POST
 def factura_api_ingest(request):
+    ip = _get_client_ip(request)
+    if _ingest_bloqueado(ip):
+        return JsonResponse(
+            {'ok': False, 'error': 'demasiados intentos, intente más tarde'}, status=429)
     valido = _token_valido(request)
     if valido is None:
         return JsonResponse({'ok': False, 'error': 'ingesta no configurada'}, status=503)
     if not valido:
+        _ingest_registrar_fallo(ip)
         return JsonResponse({'ok': False, 'error': 'token inválido'}, status=401)
 
     archivo = request.FILES.get('archivo')

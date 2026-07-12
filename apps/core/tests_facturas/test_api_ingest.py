@@ -1,6 +1,7 @@
 import os
 import tempfile
 
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -24,6 +25,7 @@ def _factura_upload(nombre='Fact 9543 Inversiones Zaga.pdf'):
                    ALLOWED_HOSTS=['testserver', 'localhost'], MEDIA_ROOT=tempfile.mkdtemp())
 class IngestTokenTests(TestCase):
     def setUp(self):
+        cache.clear()  # aislar el contador de rate-limit entre tests
         self.url = reverse('factura_api_ingest')
         Cliente.objects.create(nombre='Inversiones Zaga')
 
@@ -71,6 +73,32 @@ class IngestTokenTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertTrue(r2.json().get('duplicado'))
         self.assertEqual(DocumentoFactura.objects.count(), 1)
+
+
+@override_settings(FACTURAS_MODULE_ENABLED=True, FACTURAS_INGEST_TOKEN=TOKEN,
+                   ALLOWED_HOSTS=['testserver', 'localhost'], MEDIA_ROOT=tempfile.mkdtemp())
+class IngestRateLimitTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('factura_api_ingest')
+
+    def test_bloquea_tras_muchos_fallos_de_token(self):
+        for _ in range(10):
+            r = self.client.post(self.url, {}, HTTP_X_API_KEY='malo')
+            self.assertEqual(r.status_code, 401)
+        # El siguiente intento queda bloqueado, aun con token válido
+        # (el bloqueo se evalúa antes de validar el token).
+        r = self.client.post(
+            self.url, {'archivo': SimpleUploadedFile('x.pdf', b'%PDF-1.4')},
+            HTTP_X_API_KEY=TOKEN)
+        self.assertEqual(r.status_code, 429)
+
+    def test_token_valido_no_dispara_rate_limit(self):
+        # Muchas peticiones con token válido nunca se bloquean (siguen dando 400
+        # por falta de archivo, no 429).
+        for _ in range(15):
+            r = self.client.post(self.url, {}, HTTP_X_API_KEY=TOKEN)
+            self.assertEqual(r.status_code, 400)
 
 
 @override_settings(FACTURAS_MODULE_ENABLED=True, FACTURAS_INGEST_TOKEN='',
