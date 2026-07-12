@@ -129,6 +129,38 @@ class EstadoCuentaViewTests(TestCase):
         resp = self.client.get(reverse('cliente_estado_cuenta', args=[self.cli.pk]))
         self.assertEqual(resp.status_code, 403)
 
+    def test_no_filtra_comentario_de_plantilla(self):
+        """Los comentarios {# #} de la plantilla no deben aparecer en el HTML ni en el PDF."""
+        self.client.force_login(self.user)
+        html = self.client.get(reverse('cliente_estado_cuenta', args=[self.cli.pk]))
+        self.assertNotContains(html, '{#')
+        self.assertNotContains(html, 'Rótulos con colspan')
+        import fitz  # PyMuPDF
+        pdf = self.client.get(reverse('cliente_estado_cuenta', args=[self.cli.pk]), {'format': 'pdf'})
+        texto = fitz.open(stream=pdf.content, filetype='pdf')[0].get_text()
+        self.assertNotIn('{#', texto)
+        self.assertNotIn('Rótulos con colspan', texto)
+
+    def test_pdf_columnas_no_colapsan_y_saldo_en_una_linea(self):
+        """Guarda contra la regresión de columnas colapsadas / rótulo partido en el PDF."""
+        import fitz  # PyMuPDF
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('cliente_estado_cuenta', args=[self.cli.pk]), {'format': 'pdf'})
+        page = fitz.open(stream=resp.content, filetype='pdf')[0]
+        texto = page.get_text()
+        for encabezado in ['Subcliente', 'Producto', 'Fact', 'Fecha', 'Lbs', 'Precio', 'Valor', 'Pago', 'Canc']:
+            self.assertIn(encabezado, texto, f'Falta el encabezado {encabezado} en el PDF')
+        # Posición de cada palabra: (x0, y0, x1, y1, palabra, ...)
+        x0, y0 = {}, {}
+        for w in page.get_text('words'):
+            x0.setdefault(w[4], w[0])
+            y0.setdefault(w[4], round(w[1]))
+        # Valor y Pago son columnas de 92pt: si el PDF colapsa, se enciman (antes ~9pt).
+        self.assertGreater(x0['Pago'] - x0['Valor'], 50,
+                           'Columnas Valor/Pago encimadas: el PDF colapsó')
+        # "Saldo Total" debe quedar en una sola línea.
+        self.assertEqual(y0['Saldo'], y0['Total'], '"Saldo Total" quedó partido en dos líneas')
+
 
 class CapturaCamposFormTests(TestCase):
     def test_documento_editar_form_guarda_subcliente(self):
