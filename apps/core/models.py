@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal
@@ -622,8 +623,26 @@ class DocumentoFactura(models.Model):
     def __str__(self):
         return f'{self.get_tipo_documento_display()} {self.numero_documento or self.pk} · {self.cliente.nombre}'
 
+    @staticmethod
+    def anotar_pagado(qs):
+        """Anota `pagado_ann` (suma de AplicacionPago) en `qs`.
+
+        Cualquier queryset de DocumentoFactura anotado así hace que `monto_pagado`
+        y `saldo_pendiente` sean O(1) por fila (una sola consulta agregada en la
+        BD), evitando el N+1 al recorrer listas o el estado de cuenta.
+        """
+        return qs.annotate(pagado_ann=Coalesce(
+            models.Sum('aplicaciones__monto'),
+            models.Value(Decimal('0')),
+            output_field=models.DecimalField(max_digits=12, decimal_places=2),
+        ))
+
     @property
     def monto_pagado(self):
+        # Si el queryset anotó `pagado_ann` (ver anotar_pagado) se usa ese valor y
+        # se evita un aggregate por fila (N+1) en listas/estados de cuenta.
+        if 'pagado_ann' in self.__dict__:
+            return self.__dict__['pagado_ann'] or Decimal('0.00')
         total = self.aplicaciones.aggregate(s=models.Sum('monto'))['s']
         return total if total is not None else Decimal('0.00')
 
