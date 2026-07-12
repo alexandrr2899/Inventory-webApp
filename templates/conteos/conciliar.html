@@ -51,6 +51,12 @@
 {% if conteo.estado != 'conciliado' %}
 <!-- Acciones globales -->
 <div class="d-flex gap-2 flex-wrap mb-3">
+  <form method="post" action="{% url 'conteo_conciliar' conteo.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary fw-semibold">
+      <i class="bi bi-save me-1"></i>Guardar cálculo
+    </button>
+  </form>
   <form method="post" action="{% url 'conteo_ajustar_todos' conteo.pk %}"
         onsubmit="return confirm('¿Aplicar TODOS los ajustes pendientes con diferencia?')">
     {% csrf_token %}
@@ -91,7 +97,7 @@
       </thead>
       <tbody>
         {% for p in plan %}
-        {% with d=p.detalle estado=p.detalle.estado_badge %}
+        {% with d=p.detalle estado=p.estado_badge %}
         <tr class="row-{{ estado }}">
           <td>
             <div class="fw-semibold">{{ d.item.nombre }}</div>
@@ -107,28 +113,28 @@
 
           <!-- Sistema al registro (snapshot al crear el conteo — auditoría) -->
           <td class="text-end text-muted">
-            {{ d.cantidad_sistema_al_conteo }}
+            {{ d.cantidad_sistema_al_conteo|floatformat:0 }}
             <span class="text-muted small">{{ d.item.unidad_medida }}</span>
           </td>
 
           <!-- Stock teórico calculado con fecha_movimiento -->
           <td class="text-end fw-semibold">
-            {{ p.stock_teorico }}
+            {{ p.stock_teorico|floatformat:0 }}
             <span class="text-muted small">{{ d.item.unidad_medida }}</span>
           </td>
 
           <!-- Contado -->
           <td class="text-end fw-bold">
-            {{ d.cantidad_contada }}
+            {{ d.cantidad_contada|floatformat:0 }}
             <span class="text-muted small">{{ d.item.unidad_medida }}</span>
           </td>
 
           <!-- Diferencia final -->
           <td class="text-end">
             {% if p.diferencia_final > 0 %}
-              <span class="diff-pos">+{{ p.diferencia_final }}</span>
+              <span class="diff-pos">+{{ p.diferencia_final|floatformat:0 }}</span>
             {% elif p.diferencia_final < 0 %}
-              <span class="diff-neg">{{ p.diferencia_final }}</span>
+              <span class="diff-neg">{{ p.diferencia_final|floatformat:0 }}</span>
             {% else %}
               <span class="diff-zero">0</span>
             {% endif %}
@@ -154,7 +160,7 @@
             {% if not d.ajuste_aplicado and p.diferencia_final != 0 and conteo.estado != 'conciliado' %}
             <form method="post"
                   action="{% url 'conteo_ajustar_detalle' conteo.pk d.pk %}"
-                  onsubmit="return confirm('¿Aplicar ajuste de {{ p.diferencia_final }} para {{ d.item.nombre }}?')">
+                  onsubmit="return confirm('¿Aplicar ajuste de {{ p.diferencia_final|floatformat:0 }} para {{ d.item.nombre }}?')">
               {% csrf_token %}
               <button type="submit" class="btn btn-sm
                 {% if p.diferencia_final > 0 %}btn-outline-primary{% else %}btn-outline-danger{% endif %}
@@ -188,7 +194,7 @@
                 {% for mt in p.movs_tardios %}
                   <span class="badge bg-secondary fw-normal text-start" style="font-size:.72rem;white-space:normal;">
                     {{ mt.movimiento.get_tipo_movimiento_display }}
-                    {% if mt.cantidad > 0 %}+{% endif %}{{ mt.cantidad }} {{ d.item.unidad_medida }}
+                    {% if mt.cantidad > 0 %}+{% endif %}{{ mt.cantidad|floatformat:0 }} {{ d.item.unidad_medida }}
                     &nbsp;·&nbsp;
                     <span title="Fecha del movimiento">
                       <i class="bi bi-calendar2-check"></i>

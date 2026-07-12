@@ -39,7 +39,7 @@
             <div class="fw-semibold">{{ det.item.nombre }}</div>
             <div class="text-muted small">{{ det.item.codigo }}</div>
           </td>
-          <td class="text-end fw-bold">{{ det.cantidad }} {{ det.item.unidad_medida }}</td>
+          <td class="text-end fw-bold">{{ det.cantidad|floatformat:0 }} {{ det.item.unidad_medida }}</td>
           <td class="text-muted small">
             {% if mov.tipo_movimiento == 'entrada' %}{{ det.ubicacion_destino.nombre|default:"–" }}
             {% else %}{{ det.ubicacion_origen.nombre|default:"–" }}
@@ -47,9 +47,9 @@
           </td>
           <td>
             {% if mov.tipo_movimiento == 'entrada' %}
-              <span class="badge bg-danger">–{{ det.cantidad }} {{ det.item.unidad_medida }}</span>
+              <span class="badge bg-danger">–{{ det.cantidad|floatformat:0 }} {{ det.item.unidad_medida }}</span>
             {% elif mov.tipo_movimiento == 'salida' %}
-              <span class="badge bg-success">+{{ det.cantidad }} {{ det.item.unidad_medida }}</span>
+              <span class="badge bg-success">+{{ det.cantidad|floatformat:0 }} {{ det.item.unidad_medida }}</span>
             {% else %}
               <span class="badge bg-secondary">Revertir</span>
             {% endif %}

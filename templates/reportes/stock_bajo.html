@@ -34,9 +34,9 @@
             <div class="text-muted small">{{ r.item.codigo }}</div>
           </div>
           <div class="text-end">
-            <div class="fw-bold text-danger fs-5">{{ r.stock }}</div>
-            <div class="text-muted small">/ {{ r.item.stock_minimo }} mín.</div>
-            <div class="badge bg-danger mt-1">Faltan {{ r.deficit }}</div>
+            <div class="fw-bold text-danger fs-5">{{ r.stock|floatformat:0 }}</div>
+            <div class="text-muted small">/ {{ r.item.stock_minimo|floatformat:0 }} mín.</div>
+            <div class="badge bg-danger mt-1">Faltan {{ r.deficit|floatformat:0 }}</div>
           </div>
         </div>
         <div class="progress mt-2" style="height:6px;">
@@ -81,9 +81,9 @@
               </span>
             </td>
             <td class="text-muted small">{{ r.item.categoria|default:"–" }}</td>
-            <td class="text-end fw-bold text-danger">{{ r.stock }} {{ r.item.unidad_medida }}</td>
-            <td class="text-end text-muted">{{ r.item.stock_minimo }}</td>
-            <td class="text-end fw-bold text-danger">{{ r.deficit }}</td>
+            <td class="text-end fw-bold text-danger">{{ r.stock|floatformat:0 }} {{ r.item.unidad_medida }}</td>
+            <td class="text-end text-muted">{{ r.item.stock_minimo|floatformat:0 }}</td>
+            <td class="text-end fw-bold text-danger">{{ r.deficit|floatformat:0 }}</td>
             <td>
               {% if r.stock == 0 %}
                 <span class="badge bg-dark">Agotado</span>

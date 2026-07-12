@@ -13,9 +13,11 @@ import uuid
 
 from django.conf import settings
 from django.core.files import File
+from django.core.exceptions import ValidationError
 from django.utils.text import get_valid_filename
 
 from apps.core.models import Cliente, CategoriaProducto
+from apps.core.forms import validar_upload, MAX_PDF_MB
 from . import invoice_service, pdf_service, payment_service
 from .pdf_extractors import filename_extractor
 from .pdf_extractors.base_extractor import parse_decimal, parse_fecha
@@ -26,6 +28,7 @@ def _s(v):
     return '' if v in (None, '') else str(v)
 
 _LOTE_SUBDIR = os.path.join('facturas', '_lote')
+MAX_ARCHIVOS_LOTE = 50
 
 
 def _lote_dir(batch_id):
@@ -86,6 +89,13 @@ def procesar_archivos(archivos):
     numero_documento, fecha_documento (iso o ''), producto, total_libras, subtotal,
     isv, monto_total.
     """
+    archivos = list(archivos)
+    if len(archivos) > MAX_ARCHIVOS_LOTE:
+        raise ValidationError(f'El lote no puede superar {MAX_ARCHIVOS_LOTE} archivos.')
+
+    for archivo in archivos:
+        validar_upload(archivo, extensiones=['.pdf'], max_mb=MAX_PDF_MB, magic=b'%PDF')
+
     batch_id = uuid.uuid4().hex
     carpeta = _lote_dir(batch_id)
     os.makedirs(carpeta, exist_ok=True)

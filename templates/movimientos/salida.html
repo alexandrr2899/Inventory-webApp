@@ -293,7 +293,7 @@ function actualizarStockBadgePT(wrap, itemPk, ubPk) {
   if (!it) return;
   const stock = stockParaItemUb(itemPk, ubPk);
   const bajo = stock <= 0;
-  badge.textContent = `Stock: ${stock.toLocaleString('es-HN', {maximumFractionDigits:2})} ${it.unidad}`;
+  badge.textContent = `Stock: ${stock.toLocaleString('es-HN', {maximumFractionDigits:0})} ${it.unidad}`;
   badge.className = `badge stock-badge-pt ${bajo ? 'bg-warning text-dark' : 'bg-success'}`;
 }
 
@@ -364,8 +364,9 @@ function agregarFilaPT(pre = {}) {
   inputCant.name = 'cantidad_pt[]';   // campo separado
   inputCant.className = 'form-control';
   inputCant.placeholder = '0';
-  inputCant.step = '0.01';
-  inputCant.min = '0.01';
+  inputCant.step = '1';
+  inputCant.min = '1';
+  inputCant.inputMode = 'numeric';
   inputCant.required = true;
   if (pre.cantidad) inputCant.value = pre.cantidad;
   const unidLbl = document.createElement('span');
@@ -527,8 +528,9 @@ function agregarFila(panel, pre = {}) {
   inputCant.name = 'cantidad[]';
   inputCant.className = 'form-control';
   inputCant.placeholder = '0';
-  inputCant.step = '0.01';
-  inputCant.min = '0.01';
+  inputCant.step = '1';
+  inputCant.min = '1';
+  inputCant.inputMode = 'numeric';
   inputCant.required = true;
   if (pre.cantidad) inputCant.value = pre.cantidad;
   const unidLbl = document.createElement('span');
@@ -603,7 +605,7 @@ function agregarFila(panel, pre = {}) {
     const ubVal = tsUb.getValue();
     const s = stockParaItemUb(it.pk, ubVal);
     stockDiv.querySelector('.stock-val').textContent =
-      `${s.toLocaleString('es-HN', {maximumFractionDigits:2})} ${it.unidad}`;
+      `${s.toLocaleString('es-HN', {maximumFractionDigits:0})} ${it.unidad}`;
     stockDiv.classList.remove('d-none');
   }
   tsItem.on('change', val => onItemChange(val));

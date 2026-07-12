@@ -164,15 +164,15 @@
               style="font-size:.65rem">{{ d.item.get_tipo_display }}</span>
           </td>
           <td class="text-muted small">{{ d.ubicacion.nombre }}</td>
-          <td class="text-end">{{ d.cantidad_sistema_al_conteo }}</td>
-          <td class="text-end fw-semibold">{{ d.cantidad_contada }}</td>
+          <td class="text-end">{{ d.cantidad_sistema_al_conteo|floatformat:0 }}</td>
+          <td class="text-end fw-semibold">{{ d.cantidad_contada|floatformat:0 }}</td>
           <td class="text-end {% if d.diferencia_original > 0 %}diff-pos{% elif d.diferencia_original < 0 %}diff-neg{% else %}diff-zero{% endif %}">
-            {% if d.diferencia_original > 0 %}+{% endif %}{{ d.diferencia_original }}
+            {% if d.diferencia_original > 0 %}+{% endif %}{{ d.diferencia_original|floatformat:0 }}
           </td>
           <td class="text-end">
             {% if d.diferencia_final is not None %}
               <span class="{% if d.diferencia_final > 0 %}diff-pos{% elif d.diferencia_final < 0 %}diff-neg{% else %}diff-zero{% endif %}">
-                {% if d.diferencia_final > 0 %}+{% endif %}{{ d.diferencia_final }}
+                {% if d.diferencia_final > 0 %}+{% endif %}{{ d.diferencia_final|floatformat:0 }}
               </span>
             {% else %}
               <span class="text-muted small">–</span>

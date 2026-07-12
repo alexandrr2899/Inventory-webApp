@@ -72,8 +72,8 @@
             <td>
               <div class="input-group input-group-sm">
                 <input type="number" name="det_cantidad[]"
-                       class="form-control" value="{{ det.cantidad }}"
-                       step="0.01" min="0.01" required>
+                       class="form-control" value="{{ det.cantidad|floatformat:0 }}"
+                       step="1" min="1" inputmode="numeric" required>
                 <span class="input-group-text text-muted small">{{ det.item.unidad_medida }}</span>
               </div>
             </td>

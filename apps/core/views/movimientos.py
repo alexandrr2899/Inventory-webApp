@@ -170,9 +170,13 @@ def movimiento_entrada(request):
                 errores.append(f'Fila {i}: ingresa una cantidad.')
                 continue
             try:
-                cantidad = Decimal(cant_str)
-                if cantidad <= 0:
-                    raise ValueError
+                cantidad = _parse_cantidad_entera(cant_str)
+            except ValueError as exc:
+                if 'enteros' in str(exc):
+                    errores.append('Las cantidades de inventario deben ser números enteros.')
+                else:
+                    errores.append(f'Fila {i}: cantidad inválida.')
+                continue
             except (ValueError, Exception):
                 errores.append(f'Fila {i}: cantidad inválida.')
                 continue
@@ -387,9 +391,13 @@ def movimiento_salida(request):
                 errores.append(f'Fila {i}: ingresa una cantidad.')
                 continue
             try:
-                cantidad = Decimal(cant_str)
-                if cantidad <= 0:
-                    raise ValueError
+                cantidad = _parse_cantidad_entera(cant_str)
+            except ValueError as exc:
+                if 'enteros' in str(exc):
+                    errores.append('Las cantidades de inventario deben ser números enteros.')
+                else:
+                    errores.append(f'Fila {i}: cantidad inválida.')
+                continue
             except (ValueError, Exception):
                 errores.append(f'Fila {i}: cantidad inválida.')
                 continue
@@ -497,9 +505,13 @@ def movimiento_salida(request):
             errores.append(f'Fila {i}: ingresa una cantidad.')
             continue
         try:
-            cantidad = Decimal(cant_str)
-            if cantidad <= 0:
-                raise ValueError
+            cantidad = _parse_cantidad_entera(cant_str)
+        except ValueError as exc:
+            if 'enteros' in str(exc):
+                errores.append('Las cantidades de inventario deben ser números enteros.')
+            else:
+                errores.append(f'Fila {i}: cantidad inválida.')
+            continue
         except (ValueError, Exception):
             errores.append(f'Fila {i}: cantidad inválida.')
             continue
@@ -703,9 +715,13 @@ def movimiento_editar(request, pk):
 
                 cant_str = det_cantidades[idx].strip() if idx < len(det_cantidades) else ''
                 try:
-                    nueva_cant = Decimal(cant_str)
-                    if nueva_cant <= 0:
-                        raise ValueError
+                    nueva_cant = _parse_cantidad_entera(cant_str)
+                except ValueError as exc:
+                    if 'enteros' in str(exc):
+                        errores.append('Las cantidades de inventario deben ser números enteros.')
+                    else:
+                        errores.append(f'Línea {i+1} ({det.item.nombre}): cantidad inválida.')
+                    continue
                 except Exception:
                     errores.append(f'Línea {i+1} ({det.item.nombre}): cantidad inválida.')
                     continue

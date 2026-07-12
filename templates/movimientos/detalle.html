@@ -122,7 +122,7 @@
             <div class="text-muted small">{{ det.item.codigo }}</div>
           </td>
           <td class="text-end fw-bold">
-            {{ det.cantidad }} <span class="text-muted small">{{ det.item.unidad_medida }}</span>
+            {{ det.cantidad|floatformat:0 }} <span class="text-muted small">{{ det.item.unidad_medida }}</span>
           </td>
           <td class="text-muted small">{{ det.ubicacion_origen.nombre|default:"–" }}</td>
           <td class="text-muted small">{{ det.ubicacion_destino.nombre|default:"–" }}</td>

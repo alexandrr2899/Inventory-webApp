@@ -152,7 +152,7 @@
       <div class="row g-2 mb-2" style="font-size:.85rem;">
         <div class="col-6">
           <div class="text-muted" style="font-size:.7rem;">Consumo</div>
-          <div class="fw-semibold">{{ r.consumo|floatformat:2 }} {{ r.item.unidad_medida }}</div>
+          <div class="fw-semibold">{{ r.consumo|floatformat:0 }} {{ r.item.unidad_medida }}</div>
         </div>
         <div class="col-6">
           <div class="text-muted" style="font-size:.7rem;">Promedio/día</div>
@@ -161,7 +161,7 @@
         <div class="col-6">
           <div class="text-muted" style="font-size:.7rem;">Stock actual</div>
           <div class="fw-semibold {% if r.stock <= 0 %}text-danger{% endif %}">
-            {{ r.stock|floatformat:2 }} {{ r.item.unidad_medida }}
+            {{ r.stock|floatformat:0 }} {{ r.item.unidad_medida }}
           </div>
         </div>
         <div class="col-6">
@@ -182,7 +182,7 @@
       {% if r.pedido > 0 %}
       <div class="alert alert-warning py-1 px-2 mb-0 mt-1" style="font-size:.8rem;">
         <i class="bi bi-cart-fill me-1"></i>
-        Pedido sugerido: <strong>{{ r.pedido|floatformat:2 }} {{ r.item.unidad_medida }}</strong>
+        Pedido sugerido: <strong>{{ r.pedido|floatformat:0 }} {{ r.item.unidad_medida }}</strong>
         <span class="text-muted">(objetivo {{ dias_objetivo }} días)</span>
       </div>
       {% endif %}
@@ -239,7 +239,7 @@
               <div class="text-muted small">{{ r.item.codigo }}</div>
             </td>
             <td class="text-end fw-semibold">
-              {{ r.consumo|floatformat:2 }}
+              {{ r.consumo|floatformat:0 }}
               <span class="text-muted small">{{ r.item.unidad_medida }}</span>
             </td>
             <td class="text-end">
@@ -250,10 +250,10 @@
               {% endif %}
             </td>
             <td class="text-end {% if r.stock <= 0 %}text-danger fw-bold{% endif %}">
-              {{ r.stock|floatformat:2 }}
+              {{ r.stock|floatformat:0 }}
             </td>
             <td class="text-end text-muted">
-              {{ r.item.stock_minimo|floatformat:2 }}
+              {{ r.item.stock_minimo|floatformat:0 }}
             </td>
             <td class="text-end">
               {% if r.dias_cobertura is not None %}
@@ -268,7 +268,7 @@
             </td>
             <td class="text-end">
               {% if r.pedido > 0 %}
-                <span class="fw-bold text-warning">{{ r.pedido|floatformat:2 }}</span>
+                <span class="fw-bold text-warning">{{ r.pedido|floatformat:0 }}</span>
                 <span class="text-muted small">{{ r.item.unidad_medida }}</span>
               {% else %}
                 <span class="text-muted small">–</span>
@@ -289,9 +289,9 @@
         <tfoot class="table-light fw-bold">
           <tr>
             <td>Total ({{ resultados|length }} pigmentos)</td>
-            <td class="text-end">{{ total_consumo|floatformat:2 }}</td>
+            <td class="text-end">{{ total_consumo|floatformat:0 }}</td>
             <td colspan="4"></td>
-            <td class="text-end text-warning">{{ total_pedido|floatformat:2 }}</td>
+            <td class="text-end text-warning">{{ total_pedido|floatformat:0 }}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -334,7 +334,7 @@
             {{ det.movimiento.fecha_movimiento|date:"d/m/Y H:i" }}
           </td>
           <td class="text-end fw-semibold">
-            {{ det.cantidad|floatformat:2|slice:"1:" }}
+            {{ det.cantidad|floatformat:0|slice:"1:" }}
             <span class="text-muted small">{{ det.item.unidad_medida }}</span>
           </td>
           <td class="small">

@@ -34,7 +34,7 @@
       </div>
       <div class="col-6 col-md-3">
         <div class="text-muted small">Stock mínimo</div>
-        <div class="fw-semibold">{{ item.stock_minimo }} {{ item.unidad_medida }}</div>
+        <div class="fw-semibold">{{ item.stock_minimo|floatformat:0 }} {{ item.unidad_medida }}</div>
       </div>
       <div class="col-6 col-md-3">
         <div class="text-muted small">Estado</div>
@@ -78,13 +78,13 @@
           <div class="fw-semibold">{{ s.ubicacion.nombre }}</div>
           <div class="text-muted small">{{ s.ubicacion.get_tipo_display }}</div>
         </div>
-        <span class="badge bg-primary fs-6">{{ s.cantidad_actual }} {{ item.unidad_medida }}</span>
+        <span class="badge bg-primary fs-6">{{ s.cantidad_actual|floatformat:0 }} {{ item.unidad_medida }}</span>
       </li>
       {% endfor %}
       <li class="list-group-item d-flex justify-content-between align-items-center px-3 bg-light">
         <div class="fw-bold">TOTAL</div>
         <span class="badge {% if item.bajo_stock %}bg-danger{% else %}bg-success{% endif %} fs-6">
-          {{ item.stock_total }} {{ item.unidad_medida }}
+          {{ item.stock_total|floatformat:0 }} {{ item.unidad_medida }}
         </span>
       </li>
     </ul>
@@ -144,7 +144,7 @@
           </div>
           <div class="text-end">
             <span class="fw-bold {% if mov.anulado %}text-decoration-line-through text-muted{% endif %}">
-              {{ det.cantidad }} {{ item.unidad_medida }}
+              {{ det.cantidad|floatformat:0 }} {{ item.unidad_medida }}
             </span>
             <div>
               <a href="{% url 'movimiento_detalle' mov.pk %}"

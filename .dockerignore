@@ -11,5 +11,8 @@ __pycache__/
 media/
 staticfiles/
 postgres_data/
+backups/
+*.sql
+*.sql.gz
 
 .claude/

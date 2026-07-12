@@ -111,7 +111,7 @@ def _filas_previas_from_post(request):
 
 def _filas_previas_from_conteo(conteo):
     return [
-        {'item_id': d.item_id, 'ub_id': d.ubicacion_id, 'cant': str(d.cantidad_contada)}
+        {'item_id': d.item_id, 'ub_id': d.ubicacion_id, 'cant': str(int(d.cantidad_contada))}
         for d in conteo.detalles.select_related('item', 'ubicacion').order_by('item__orden', 'item__nombre')
     ]
 
@@ -138,10 +138,14 @@ def _validar_filas_conteo(request):
             errores.append(f'Fila {i}: selecciona una ubicación.')
             continue
         try:
-            cantidad_contada = Decimal(cant_str)
+            cantidad_raw = Decimal(cant_str)
         except Exception:
             errores.append(f'Fila {i}: cantidad inválida.')
             continue
+        if cantidad_raw != cantidad_raw.to_integral_value():
+            errores.append('Las cantidades del conteo deben ser números enteros.')
+            continue
+        cantidad_contada = cantidad_raw.quantize(Decimal('1'))
         if cantidad_contada < 0:
             errores.append(f'Fila {i}: la cantidad no puede ser negativa.')
             continue
@@ -198,6 +202,67 @@ def _recalcular_diferencias_conteo(conteo):
             ConteoDetalle.objects.filter(pk=detalle.pk).update(
                 diferencia_final=diferencia_final
             )
+
+
+def _estado_preview_conciliacion(detalle, diferencia_final):
+    if detalle.ajuste_aplicado:
+        return 'ajustado'
+    if diferencia_final is None:
+        return 'pendiente'
+    if diferencia_final == 0:
+        return 'ok'
+    return 'sobrante' if diferencia_final > 0 else 'faltante'
+
+
+def _plan_conciliacion(conteo, *, persistir=False):
+    detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__orden', 'item__nombre')
+    plan = []
+    for detalle in detalles:
+        # Stock teórico al momento del conteo usando fecha_movimiento como
+        # timestamp oficial. No depende de cuándo se registró el movimiento.
+        stock_teorico = _stock_en_momento(
+            detalle.item, detalle.ubicacion, conteo.fecha_hora_conteo
+        )
+        diferencia_final = detalle.cantidad_contada - stock_teorico
+
+        if persistir and detalle.diferencia_final != diferencia_final:
+            detalle.diferencia_final = diferencia_final
+            ConteoDetalle.objects.filter(pk=detalle.pk).update(
+                diferencia_final=diferencia_final
+            )
+
+        # Movimientos registrados DESPUÉS del conteo pero con fecha_movimiento
+        # ANTES del conteo. Se muestran para transparencia: ya están
+        # correctamente incluidos en stock_teorico (no son "atrasados" — son
+        # movimientos reales anteriores al conteo, solo ingresados tarde).
+        movs_tardios = (
+            DetalleMovimiento.objects
+            .filter(
+                item=detalle.item,
+                movimiento__anulado=False,
+                movimiento__eliminado=False,
+                movimiento__fecha__gt=conteo.fecha_hora_conteo,
+                movimiento__fecha_movimiento__lte=conteo.fecha_hora_conteo,
+            )
+            .filter(
+                Q(ubicacion_destino=detalle.ubicacion)
+                | Q(ubicacion_origen=detalle.ubicacion)
+            )
+            .select_related(
+                'movimiento', 'movimiento__usuario',
+                'ubicacion_origen', 'ubicacion_destino',
+            )
+            .order_by('movimiento__fecha_movimiento')
+        )
+
+        plan.append({
+            'detalle': detalle,
+            'stock_teorico': stock_teorico,
+            'diferencia_final': diferencia_final,
+            'estado_badge': _estado_preview_conciliacion(detalle, diferencia_final),
+            'movs_tardios': movs_tardios,   # solo informativos
+        })
+    return plan
 
 
 @login_required
@@ -504,55 +569,14 @@ def conteo_conciliar(request, pk):
     if conteo.anulado:
         messages.error(request, 'Este conteo está anulado y no puede conciliarse.')
         return redirect('conteo_detalle', pk=pk)
-    detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__orden', 'item__nombre')
 
-    plan = []
-    with transaction.atomic():
-        for detalle in detalles:
-            # Stock teórico al momento del conteo usando fecha_movimiento como
-            # timestamp oficial. No depende de cuándo se registró el movimiento.
-            stock_teorico = _stock_en_momento(
-                detalle.item, detalle.ubicacion, conteo.fecha_hora_conteo
-            )
-            diferencia_final = detalle.cantidad_contada - stock_teorico
+    if request.method == 'POST':
+        with transaction.atomic():
+            _plan_conciliacion(conteo, persistir=True)
+        messages.success(request, 'Cálculo de diferencias guardado.')
+        return redirect('conteo_conciliar', pk=pk)
 
-            # Persistir diferencia_final si cambió
-            if detalle.diferencia_final != diferencia_final:
-                detalle.diferencia_final = diferencia_final
-                ConteoDetalle.objects.filter(pk=detalle.pk).update(
-                    diferencia_final=diferencia_final
-                )
-
-            # Movimientos registrados DESPUÉS del conteo pero con fecha_movimiento
-            # ANTES del conteo. Se muestran para transparencia: ya están
-            # correctamente incluidos en stock_teorico (no son "atrasados" — son
-            # movimientos reales anteriores al conteo, solo ingresados tarde).
-            movs_tardios = (
-                DetalleMovimiento.objects
-                .filter(
-                    item=detalle.item,
-                    movimiento__anulado=False,
-                    movimiento__eliminado=False,
-                    movimiento__fecha__gt=conteo.fecha_hora_conteo,
-                    movimiento__fecha_movimiento__lte=conteo.fecha_hora_conteo,
-                )
-                .filter(
-                    Q(ubicacion_destino=detalle.ubicacion)
-                    | Q(ubicacion_origen=detalle.ubicacion)
-                )
-                .select_related(
-                    'movimiento', 'movimiento__usuario',
-                    'ubicacion_origen', 'ubicacion_destino',
-                )
-                .order_by('movimiento__fecha_movimiento')
-            )
-
-            plan.append({
-                'detalle': detalle,
-                'stock_teorico': stock_teorico,
-                'diferencia_final': diferencia_final,
-                'movs_tardios': movs_tardios,   # solo informativos
-            })
+    plan = _plan_conciliacion(conteo, persistir=False)
 
     return render(request, 'conteos/conciliar.html', {
         'conteo': conteo,

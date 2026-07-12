@@ -183,8 +183,11 @@ class IntegracionFacturaTests(TestCase):
             name = _PDF_FACTURA
 
             def read(self):
-                with open(_PDF_FACTURA, 'rb') as f:
-                    return f.read()
+                try:
+                    with open(_PDF_FACTURA, 'rb') as f:
+                        return f.read()
+                except OSError as exc:
+                    raise unittest.SkipTest(f'PDF de muestra no disponible: {exc}')
 
             def tell(self):
                 return 0
@@ -207,8 +210,11 @@ class IntegracionFacturaTests(TestCase):
             name = _PDF_ENVIO
 
             def read(self):
-                with open(_PDF_ENVIO, 'rb') as f:
-                    return f.read()
+                try:
+                    with open(_PDF_ENVIO, 'rb') as f:
+                        return f.read()
+                except OSError as exc:
+                    raise unittest.SkipTest(f'PDF de muestra no disponible: {exc}')
 
             def tell(self):
                 return 0

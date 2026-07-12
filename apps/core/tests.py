@@ -371,6 +371,38 @@ class SalidaPendienteConciliacionTests(TestCase):
         # El JSON con stocks_by_ub debe contener -4
         self.assertContains(response, '-4')
 
+    def test_conteo_rechaza_cantidad_decimal(self):
+        self.user.user_permissions.add(Permission.objects.get(codename='registrar_conteo'))
+        self.client.force_login(self.user)
+        response = self.client.post(reverse('conteo_nuevo'), {
+            'fecha': date.today().isoformat(),
+            'turno': 'manana',
+            'tipo_conteo': 'camiseta',
+            'fecha_hora_conteo': timezone.localtime().strftime('%Y-%m-%dT%H:%M'),
+            'item[]': [str(self.item.pk)],
+            'ubicacion[]': [str(self.ubicacion.pk)],
+            'cantidad_contada[]': ['5.5'],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Las cantidades del conteo deben ser números enteros.')
+        self.assertEqual(Conteo.objects.count(), 0)
+
+    def test_editar_conteo_precarga_cantidad_sin_decimales(self):
+        conteo = Conteo.objects.create(
+            fecha=date.today(), turno='manana', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=timezone.now(),
+        )
+        ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ubicacion,
+            cantidad_contada=Decimal('5.00'),
+            cantidad_sistema_al_conteo=Decimal('21.00'),
+        )
+        self.user.user_permissions.add(Permission.objects.get(codename='editar_conteo'))
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('conteo_editar', args=[conteo.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '"cant": "5"')
+
     def test_conciliacion_genera_ajuste_positivo_correcto(self):
         """
         Stock sistema -4, contado 21 → diferencia = 21 - (-4) = +25.
@@ -395,6 +427,24 @@ class SalidaPendienteConciliacionTests(TestCase):
         diferencia = Decimal('21') - stock_teorico  # 21 - (-4) = 25
         self.assertEqual(stock_teorico, Decimal('-4'))
         self.assertEqual(diferencia, Decimal('25'))
+
+    def test_get_conciliar_no_persiste_diferencia_final(self):
+        ahora = timezone.now()
+        conteo = Conteo.objects.create(
+            fecha=date.today(), turno='manana', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=ahora,
+        )
+        detalle = ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ubicacion,
+            cantidad_contada=Decimal('10'),
+            cantidad_sistema_al_conteo=Decimal('21'),
+        )
+        self.user.user_permissions.add(Permission.objects.get(codename='aplicar_conciliacion'))
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('conteo_conciliar', args=[conteo.pk]))
+        self.assertEqual(response.status_code, 200)
+        detalle.refresh_from_db()
+        self.assertIsNone(detalle.diferencia_final)
 
     def test_conciliacion_aplica_ajuste_y_restaura_stock(self):
         """

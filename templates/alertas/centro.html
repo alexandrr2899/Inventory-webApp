@@ -109,8 +109,8 @@
               </a>
               <div class="small text-muted">{{ pig.item.codigo }} · {{ pig.estado }}</div>
             </td>
-            <td class="text-end">{{ pig.stock|floatformat:"-2" }}</td>
-            <td class="text-end">{{ pig.consumo_30|floatformat:"-2" }}</td>
+            <td class="text-end">{{ pig.stock|floatformat:0 }}</td>
+            <td class="text-end">{{ pig.consumo_30|floatformat:0 }}</td>
             <td class="text-end">
               {% if pig.dias_cobertura is not None %}
                 {{ pig.dias_cobertura }} días
@@ -118,7 +118,7 @@
                 <span class="text-muted">Sin dato</span>
               {% endif %}
             </td>
-            <td class="text-end px-3">{{ pig.pedido|floatformat:"-2" }} {{ pig.item.unidad_medida }}</td>
+            <td class="text-end px-3">{{ pig.pedido|floatformat:0 }} {{ pig.item.unidad_medida }}</td>
           </tr>
           {% endfor %}
         </tbody>
