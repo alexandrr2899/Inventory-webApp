@@ -75,6 +75,16 @@ def factura_api_ingest(request):
     if getattr(archivo, 'size', 0) and archivo.size > _MAX_BYTES:
         return JsonResponse({'ok': False, 'error': 'archivo demasiado grande'}, status=413)
 
+    # Validar que sea realmente un PDF (extensión + cabecera mágica), igual que
+    # la subida manual. Evita procesar archivos arbitrarios en el endpoint sin
+    # sesión aunque el token sea válido.
+    if os.path.splitext(archivo.name)[1].lower() != '.pdf':
+        return JsonResponse({'ok': False, 'error': 'solo se aceptan archivos PDF'}, status=400)
+    cabecera = archivo.read(5)
+    archivo.seek(0)
+    if not cabecera.startswith(b'%PDF'):
+        return JsonResponse({'ok': False, 'error': 'el archivo no es un PDF válido'}, status=400)
+
     tipo = invoice_service.detectar_tipo(archivo.name)
     nombre_cli = filename_extractor.extraer_de_nombre(archivo.name).get('cliente_nombre', '')
     cliente = bulk_service.match_cliente(nombre_cli, solo_exacto=True)

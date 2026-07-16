@@ -40,6 +40,7 @@ from ..models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle, BackupJob,
 )
+from ..net import get_client_ip
 from ..forms import (
     ItemForm, CategoriaForm, UbicacionForm, MaquinaForm, ClienteForm,
     MovimientoEntradaForm, MovimientoSalidaForm, MovimientoTransferenciaForm,
@@ -100,11 +101,12 @@ def _json_safe(data):
 
 
 def _get_client_ip(request):
-    """Return real client IP, respecting X-Forwarded-For from Cloudflare Tunnel."""
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR', 'unknown')
+    """IP real del cliente (ver ``apps.core.net.get_client_ip``).
+
+    Alias mantenido para que el barrel (`from .common import *`) siga
+    exponiéndolo a los módulos de vistas que ya lo usan.
+    """
+    return get_client_ip(request)
 
 
 def _timed_view(name):

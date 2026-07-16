@@ -208,6 +208,13 @@ AXES_FAILURE_LIMIT = 5
 # Bloquear por 1 hora.
 AXES_COOLOFF_TIME = 1   # horas (django-axes interpreta int como horas)
 
+# IP real detrás de Cloudflare. Sin esto, django-axes usa REMOTE_ADDR, que
+# tras el túnel/gunicorn es la MISMA IP interna para todas las peticiones →
+# el bloqueo "por IP" se volvería global (5 fallos de cualquiera bloquean a
+# todos). Con CF-Connecting-IP cada visitante se cuenta por su IP real y no
+# falsificable. Cae a REMOTE_ADDR en local/tests (sin Cloudflare).
+AXES_IPWARE_META_PRECEDENCE_ORDER = ['HTTP_CF_CONNECTING_IP', 'REMOTE_ADDR']
+
 # Bloquear SOLO por IP — no por username ni combinación.
 # Con 'username' o ['ip_address', 'username'] axes cuenta intentos
 # por usuario: si alguien prueba un username inexistente N veces esa

@@ -9,6 +9,8 @@ from django.http import Http404, HttpResponseForbidden, HttpResponseServerError
 from django.template.loader import render_to_string
 from decouple import config
 
+from apps.core.net import get_client_ip as _get_client_ip
+
 # URL del panel admin leída del entorno — nunca exponer la ruta real en código.
 # En Portainer: ADMIN_URL=mi-ruta-secreta/  (sin / inicial, con / final)
 def _normalize_admin_url(value):
@@ -25,13 +27,6 @@ _ADMIN_URL = _normalize_admin_url(
 )
 
 security_log = logging.getLogger('security')
-
-
-def _get_client_ip(request):
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR', 'unknown')
 
 
 def _admin_not_found(request, *args, **kwargs):

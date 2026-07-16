@@ -37,6 +37,21 @@ class IngestTokenTests(TestCase):
         resp = self.client.post(self.url, {}, HTTP_X_API_KEY=TOKEN)
         self.assertEqual(resp.status_code, 400)
 
+    def test_rechaza_archivo_no_pdf_400(self):
+        # Extensión válida pero contenido que no es PDF → 400.
+        falso = SimpleUploadedFile('factura.pdf', b'esto no es un pdf',
+                                   content_type='application/pdf')
+        resp = self.client.post(self.url, {'archivo': falso}, HTTP_X_API_KEY=TOKEN)
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(DocumentoFactura.objects.count(), 0)
+
+    def test_rechaza_extension_no_pdf_400(self):
+        falso = SimpleUploadedFile('factura.txt', b'%PDF-1.4 pero .txt',
+                                   content_type='text/plain')
+        resp = self.client.post(self.url, {'archivo': falso}, HTTP_X_API_KEY=TOKEN)
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(DocumentoFactura.objects.count(), 0)
+
     def test_cliente_no_encontrado_crea_sin_identificar_para_revision(self):
         if not os.path.exists(_FACTURA):
             self.skipTest('PDF de muestra ausente')

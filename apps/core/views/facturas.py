@@ -209,7 +209,7 @@ def factura_editar(request, pk):
     # Mapa cliente→días de crédito para calcular el vencimiento en vivo en el form.
     dias_credito = {str(c.pk): c.dias_credito for c in Cliente.objects.all()}
     return render(request, 'facturas/form_editar.html', {
-        'form': form, 'doc': doc, 'dias_credito_json': json.dumps(dias_credito),
+        'form': form, 'doc': doc, 'dias_credito_json': _json_safe(dias_credito),
         'return_url': return_url,
     })
 

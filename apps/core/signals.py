@@ -5,6 +5,7 @@ from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from .models import AplicacionPago
+from .net import get_client_ip
 from .services.facturas import status_service
 
 
@@ -25,10 +26,7 @@ security_log = logging.getLogger('security')
 def _ip_from_request(request):
     if request is None:
         return 'N/A'
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR', 'N/A')
+    return get_client_ip(request)
 
 
 @receiver(user_login_failed)

@@ -148,13 +148,36 @@ class Cliente(models.Model):
 
     @property
     def saldo_a_favor(self):
-        from decimal import Decimal as _D
-        return sum((p.saldo_sin_aplicar for p in self.pagos.all()), _D('0.00'))
+        """Crédito no aplicado del cliente = Σ pagos − Σ aplicaciones.
+
+        Se resuelve en dos agregados en la BD (independiente del número de
+        pagos), evitando el N+1 de iterar `saldo_sin_aplicar` pago por pago.
+        """
+        _dec = models.DecimalField(max_digits=12, decimal_places=2)
+        total_pagos = self.pagos.aggregate(s=Coalesce(
+            models.Sum('monto'), models.Value(Decimal('0')), output_field=_dec))['s']
+        total_aplicado = AplicacionPago.objects.filter(pago__cliente=self).aggregate(
+            s=Coalesce(models.Sum('monto'), models.Value(Decimal('0')),
+                       output_field=_dec))['s']
+        return total_pagos - total_aplicado
 
     @property
     def total_adeudado(self):
+        """Saldo pendiente total = Σ monto_total − Σ aplicaciones, sobre docs no anulados.
+
+        Equivalente a sumar `saldo_pendiente` por documento, pero en dos
+        agregados en la BD en vez de un aggregate por documento (N+1).
+        """
+        _dec = models.DecimalField(max_digits=12, decimal_places=2)
         docs = self.documentos.exclude(estado_pago='anulada')
-        return sum((d.saldo_pendiente for d in docs), Decimal('0.00'))
+        total_docs = docs.aggregate(s=Coalesce(
+            models.Sum('monto_total'), models.Value(Decimal('0')), output_field=_dec))['s']
+        total_aplicado = AplicacionPago.objects.filter(
+            documento__cliente=self,
+        ).exclude(documento__estado_pago='anulada').aggregate(
+            s=Coalesce(models.Sum('monto'), models.Value(Decimal('0')),
+                       output_field=_dec))['s']
+        return total_docs - total_aplicado
 
 
 class BackupJob(models.Model):
