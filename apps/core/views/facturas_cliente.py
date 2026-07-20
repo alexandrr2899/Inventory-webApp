@@ -15,6 +15,10 @@ def _form_errors_json(form):
     }
 
 
+def _es_ajax(request):
+    return request.headers.get('x-requested-with') == 'XMLHttpRequest'
+
+
 @login_required
 @permission_required(_perm('gestionar_facturas'), raise_exception=True)
 @facturas_enabled
@@ -99,11 +103,16 @@ def cliente_abono_nuevo(request, pk):
                 comprobante=cd.get('comprobante'), notas=cd.get('notas', ''),
                 aplicaciones=aplicaciones if tiene_edicion else None,
             )
+            if _es_ajax(request):
+                return JsonResponse({'ok': True, 'saldo': str(cliente.saldo_a_favor)})
             messages.success(request, 'Abono registrado.')
             return redirect('cliente_salidas', pk=cliente.pk)
+        elif _es_ajax(request):
+            return JsonResponse({'ok': False, 'errors': _form_errors_json(form)}, status=400)
     else:
         form = AbonoClienteForm(initial={'fecha_pago': timezone.localdate()})
-    return render(request, 'facturas/form_abono.html', {
+    plantilla = 'facturas/_abono_fragment.html' if _es_ajax(request) else 'facturas/form_abono.html'
+    return render(request, plantilla, {
         'form': form, 'cliente': cliente,
         'pendientes': [{'doc': d, 'aplicado': None} for d in pendientes],
         'modo_edicion': False, 'pago': None,
@@ -163,14 +172,19 @@ def cliente_abono_editar(request, pk):
                 comprobante=cd.get('comprobante'), notas=cd.get('notas', ''),
                 aplicaciones=aplicaciones if tiene_edicion else None,
             )
+            if _es_ajax(request):
+                return JsonResponse({'ok': True, 'saldo': str(cliente.saldo_a_favor)})
             messages.success(request, 'Abono actualizado.')
             return redirect('cliente_salidas', pk=cliente.pk)
+        elif _es_ajax(request):
+            return JsonResponse({'ok': False, 'errors': _form_errors_json(form)}, status=400)
     else:
         form = AbonoClienteForm(initial={
             'fecha_pago': pago.fecha_pago, 'metodo_pago': pago.metodo_pago_id,
             'monto': pago.monto, 'referencia': pago.referencia, 'notas': pago.notas,
         })
-    return render(request, 'facturas/form_abono.html', {
+    plantilla = 'facturas/_abono_fragment.html' if _es_ajax(request) else 'facturas/form_abono.html'
+    return render(request, plantilla, {
         'form': form, 'cliente': cliente,
         'pendientes': [{'doc': d, 'aplicado': aplicado_por_doc.get(d.pk)} for d in docs],
         'modo_edicion': True, 'pago': pago,

@@ -1,0 +1,14 @@
+{% load facturas_extras %}
+<div class="modal-header">
+  <div>
+    <h5 class="modal-title mb-1"><i class="bi bi-cash-coin me-2"></i>{{ titulo }} · {{ cliente.nombre }}</h5>
+    <div class="small text-muted">
+      Debe: <strong class="text-danger">L {{ cliente.total_adeudado|moneda }}</strong>
+      · Saldo a favor: <strong class="text-success">L {{ cliente.saldo_a_favor|moneda }}</strong>
+    </div>
+  </div>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
+<div class="modal-body">
+  {% include "facturas/_form_abono.html" %}
+</div>
