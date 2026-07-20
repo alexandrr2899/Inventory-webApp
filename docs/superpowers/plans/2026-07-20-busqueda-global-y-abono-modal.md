@@ -103,6 +103,9 @@ class BuscarGlobalTests(TestCase):
 
     def test_sin_n_mas_1_en_clientes(self):
         def crear(n):
+            AplicacionPago.objects.all().delete()
+            Pago.objects.all().delete()
+            DocumentoFactura.objects.all().delete()
             Cliente.objects.all().delete()
             for i in range(n):
                 c = Cliente.objects.create(nombre=f'Clix {i}')

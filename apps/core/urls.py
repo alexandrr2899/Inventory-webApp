@@ -81,6 +81,7 @@ urlpatterns = [
     # API
     path('api/item/<int:pk>/info/', views.api_item_info, name='api_item_info'),
     path('api/categoria/nueva/', views.api_categoria_nueva, name='api_categoria_nueva'),
+    path('api/buscar/', views.buscar_global, name='buscar_global'),
 
     # ── Facturas ──────────────────────────────────────────────────────────────
     # La raíz del módulo es directamente la lista de documentos (con resumen).
