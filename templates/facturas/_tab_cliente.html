@@ -41,9 +41,9 @@
 {# Acciones del cliente #}
 <div class="d-flex align-items-center gap-2 mb-3">
   {% if perms.core.registrar_pago_factura %}
-  <a href="{% url 'cliente_abono_nuevo' cliente.pk %}" class="btn btn-sm btn-success">
+  <button type="button" class="btn btn-sm btn-success" data-abrir-abono="{{ cliente.pk }}">
     <i class="bi bi-cash-coin me-1"></i>Registrar abono
-  </a>
+  </button>
   {% endif %}
   <span class="text-muted small">Saldo a favor: <strong>L {{ cliente.saldo_a_favor }}</strong></span>
 </div>

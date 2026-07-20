@@ -128,6 +128,15 @@
 </div>
 {% endif %}
 
+{% if user.is_authenticated and perms.core.registrar_pago_factura %}
+<div class="modal fade" id="abonoModal" tabindex="-1" aria-hidden="true"
+     data-abono-base-url="{% url 'cliente_abono_nuevo' 0 %}">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" id="abonoModalContent"></div>
+  </div>
+</div>
+{% endif %}
+
 {% if user.is_authenticated %}
 
 <!-- ═══ MOBILE OFFCANVAS ══════════════════════════════════════════════════ -->
@@ -240,6 +249,9 @@
 <script src="{% static 'js/qr-scanner.js' %}"></script>
 {% if user.is_authenticated and perms.core.ver_facturas %}
 <script src="{% static 'js/buscador.js' %}"></script>
+{% endif %}
+{% if user.is_authenticated and perms.core.registrar_pago_factura %}
+<script src="{% static 'js/abono-modal.js' %}"></script>
 {% endif %}
 {% endif %}
 {% block extra_js %}{% endblock %}

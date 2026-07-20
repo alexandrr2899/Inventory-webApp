@@ -53,3 +53,11 @@ class AbonoModalTests(TestCase):
             'metodo_pago': self.met.pk, 'monto': '400',
         })
         self.assertEqual(resp.status_code, 302)
+
+    def test_tab_cliente_boton_abre_modal(self):
+        resp = self.client.get(reverse('cliente_facturas_fragment', args=[self.cli.pk]))
+        self.assertContains(resp, 'data-abrir-abono')
+
+    def test_base_incluye_contenedor_modal(self):
+        resp = self.client.get(reverse('dashboard'))
+        self.assertContains(resp, 'id="abonoModal"')
