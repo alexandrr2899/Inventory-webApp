@@ -131,6 +131,18 @@ def _stock_en_momento(item, ubicacion, fecha_hora):
     stock_obj = Stock.objects.filter(item=item, ubicacion=ubicacion).first()
     stock_actual = stock_obj.cantidad_actual if stock_obj else Decimal('0')
 
+    # El momento del conteo (fecha_hora) tiene precisión de MINUTO: el input
+    # datetime-local del formulario no captura segundos. En cambio, una salida
+    # registrada justo antes guarda fecha_movimiento con segundos (p. ej.
+    # 14:23:47). Comparar segundo a segundo haría que esa salida del MISMO
+    # minuto quedara "posterior" al conteo (14:23:00) y se revirtiera del stock
+    # teórico → el conteo se vería como si la salida no se hubiera aplicado.
+    #
+    # Por eso el umbral de "posterior al conteo" es el inicio del minuto
+    # SIGUIENTE: los movimientos del mismo minuto que el conteo cuentan como
+    # ocurridos hasta ese momento y NO se revierten.
+    umbral_posterior = fecha_hora.replace(second=0, microsecond=0) + timedelta(minutes=1)
+
     # Movimientos cuya fecha_movimiento es POSTERIOR al momento del conteo.
     # Estos ya están aplicados al stock actual pero no debían estarlo al conteo.
     post_movs = (
@@ -139,7 +151,7 @@ def _stock_en_momento(item, ubicacion, fecha_hora):
             item=item,
             movimiento__anulado=False,
             movimiento__eliminado=False,
-            movimiento__fecha_movimiento__gt=fecha_hora,
+            movimiento__fecha_movimiento__gte=umbral_posterior,
         )
         .filter(Q(ubicacion_destino=ubicacion) | Q(ubicacion_origen=ubicacion))
         .only('cantidad', 'ubicacion_origen_id', 'ubicacion_destino_id')

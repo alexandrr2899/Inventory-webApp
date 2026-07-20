@@ -357,6 +357,21 @@ class SalidaPendienteConciliacionTests(TestCase):
         stock_teorico = _stock_en_momento(self.item, self.ubicacion, ahora)
         self.assertEqual(stock_teorico, Decimal('-4'))
 
+    def test_stock_en_momento_incluye_salida_del_mismo_minuto(self):
+        """Regresión: salida y conteo en el mismo minuto.
+
+        El widget del conteo trunca la hora al minuto (14:23:00) mientras que la
+        salida guarda fecha_movimiento con segundos (14:23:47). La salida NO debe
+        revertirse: si no, el conteo se ve 'como si la salida no se aplicara'.
+        """
+        base = timezone.make_aware(datetime(2026, 5, 12, 14, 23, 0))
+        # Salida de 5 en el segundo 47 del MISMO minuto que el conteo → stock 16.
+        self._crear_salida(5, pendiente=False,
+                           fecha=base + timezone.timedelta(seconds=47))
+        # Conteo truncado al minuto, como lo envía el input datetime-local.
+        stock_teorico = _stock_en_momento(self.item, self.ubicacion, base)
+        self.assertEqual(stock_teorico, Decimal('16'))  # 21 - 5, salida incluida
+
     def test_conteo_nuevo_muestra_stock_negativo_si_pendiente(self):
         """Conteo nuevo debe leer Stock.cantidad_actual incluyendo el -4."""
         self._crear_salida(25, pendiente=True)
