@@ -87,6 +87,15 @@
         <i class="bi bi-moon-stars-fill"></i>
         <i class="bi bi-sun-fill"></i>
       </button>
+      {% if user.is_authenticated and perms.core.ver_facturas %}
+      <button type="button" id="btnBuscarGlobal" class="btn btn-sm btn-outline-light"
+              data-buscar-url="{% url 'buscar_global' %}"
+              title="Buscar cliente o factura" aria-label="Buscar cliente o factura">
+        <i class="bi bi-search"></i>
+        <span class="d-none d-lg-inline ms-1">Buscar</span>
+        <kbd class="d-none d-lg-inline ms-1">/</kbd>
+      </button>
+      {% endif %}
       {% if user.is_authenticated %}
         {% if perms.core.ver_inventario %}
         <button type="button" id="btnQrScan"
@@ -105,6 +114,19 @@
     </div>
   </div>
 </nav>
+
+{% if user.is_authenticated and perms.core.ver_facturas %}
+<div id="buscadorOverlay" class="buscador-overlay" hidden>
+  <div class="buscador-panel" role="dialog" aria-modal="true" aria-label="Buscar cliente o factura">
+    <div class="buscador-input-wrap">
+      <i class="bi bi-search"></i>
+      <input type="text" id="buscadorInput" placeholder="Buscar cliente o factura…" autocomplete="off" spellcheck="false">
+      <kbd>esc</kbd>
+    </div>
+    <div id="buscadorResultados" class="buscador-resultados" role="listbox"></div>
+  </div>
+</div>
+{% endif %}
 
 {% if user.is_authenticated %}
 
@@ -216,6 +238,9 @@
 {% if user.is_authenticated %}
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="{% static 'js/qr-scanner.js' %}"></script>
+{% if user.is_authenticated and perms.core.ver_facturas %}
+<script src="{% static 'js/buscador.js' %}"></script>
+{% endif %}
 {% endif %}
 {% block extra_js %}{% endblock %}
 <script>
