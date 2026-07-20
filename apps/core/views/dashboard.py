@@ -11,7 +11,11 @@ from .payloads import *  # noqa: F401,F403
 @_timed_view('dashboard')
 def dashboard(request):
     hoy = timezone.localdate()
-    cache_key = f'dashboard:data:{hoy.isoformat()}'
+    puede_ver_facturacion = (
+        getattr(settings, 'FACTURAS_MODULE_ENABLED', False)
+        and request.user.has_perm(_perm('ver_facturas'))
+    )
+    cache_key = f'dashboard:data:{hoy.isoformat()}:facturas:{int(puede_ver_facturacion)}'
     salidas_del_dia = _calcular_salidas_camiseta_del_dia(hoy)
     produccion_hoy = _calcular_produccion(hoy, salidas_parciales_hasta=timezone.now())
     produccion_hoy['salidas_del_dia'] = salidas_del_dia['total']
@@ -58,6 +62,52 @@ def dashboard(request):
         .order_by('-total')[:5]
     )
 
+    # Resumen operativo del mes actual. Producción reutiliza exactamente la
+    # misma lógica por tramos del reporte avanzado; salidas usa la fecha real
+    # del movimiento y solo líneas de productos terminados.
+    inicio_mes = hoy.replace(day=1)
+    tramos_mes = _calcular_tramos(inicio_mes, hoy)
+    produccion_mes = sum(
+        (tramo['produccion'] for tramo in tramos_mes),
+        Decimal('0'),
+    )
+    salidas_mes = (
+        DetalleMovimiento.objects
+        .filter(
+            movimiento__tipo_movimiento='salida',
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__date__range=[inicio_mes, hoy],
+            item__tipo='producto',
+        )
+        .aggregate(total=Sum('cantidad'))['total'] or Decimal('0')
+    )
+
+    facturacion_mes = None
+    if puede_ver_facturacion:
+        from ..models import DocumentoFactura
+
+        documentos_mes = (
+            DocumentoFactura.objects
+            .filter(fecha_documento__range=[inicio_mes, hoy])
+            .exclude(estado_pago='anulada')
+        )
+        facturacion_mes = {
+            tipo: {
+                'total': datos['total'] or Decimal('0'),
+                'documentos': datos['documentos'],
+            }
+            for tipo, datos in (
+                (row['tipo_documento'], row)
+                for row in documentos_mes.values('tipo_documento').annotate(
+                    total=Sum('monto_total'),
+                    documentos=Count('id'),
+                )
+            )
+        }
+        for tipo in ('factura', 'envio'):
+            facturacion_mes.setdefault(tipo, {'total': Decimal('0'), 'documentos': 0})
+
     total_bajo_stock = (
         Item.objects
         .filter(activo=True)
@@ -82,6 +132,13 @@ def dashboard(request):
         'produccion_hoy': produccion_hoy,
         'salidas_del_dia': salidas_del_dia,
         'repuestos_top': repuestos_top,
+        'resumen_mes': {
+            'inicio': inicio_mes,
+            'produccion': produccion_mes,
+            'tramos_produccion': len(tramos_mes),
+            'salidas': salidas_mes,
+            'facturacion': facturacion_mes,
+        },
         'hoy': hoy,
         'total_bajo_stock': total_bajo_stock,
         'total_pendientes_conciliacion': total_pendientes_conciliacion,

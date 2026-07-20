@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from .models import (
     BackupJob, Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
-    Item, Maquina, MovimientoInventario, Stock, Ubicacion,
+    DocumentoFactura, Item, Maquina, MovimientoInventario, Stock, Ubicacion,
 )
 from .views import _calcular_tramos, _payload_produccion_dia, _aplicar_efecto_detalle, _stock_en_momento
 
@@ -118,6 +118,59 @@ class VistasOperativasTests(TestCase):
         movimiento_html = html[idx - 600:idx]
         self.assertIn('Ajuste', movimiento_html)
         self.assertNotIn('Producción', movimiento_html)
+
+    @override_settings(FACTURAS_MODULE_ENABLED=True)
+    @patch('apps.core.views.dashboard._calcular_tramos')
+    def test_dashboard_resume_mes_actual_y_facturacion_por_tipo(self, calcular_tramos):
+        calcular_tramos.return_value = [
+            {'produccion': Decimal('120')},
+            {'produccion': Decimal('80')},
+        ]
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        cliente = Cliente.objects.create(nombre='Cliente mensual')
+        ubicacion = Stock.objects.get(item=self.item).ubicacion
+        salida = MovimientoInventario.objects.create(
+            tipo_movimiento='salida',
+            fecha_movimiento=timezone.now(),
+            usuario=self.user,
+        )
+        DetalleMovimiento.objects.create(
+            movimiento=salida,
+            item=self.item,
+            cantidad=Decimal('35'),
+            ubicacion_origen=ubicacion,
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            fecha_documento=timezone.localdate(),
+            monto_total=Decimal('1500'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='envio',
+            fecha_documento=timezone.localdate(),
+            monto_total=Decimal('725'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            fecha_documento=timezone.localdate(),
+            monto_total=Decimal('999'),
+            estado_pago='anulada',
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['resumen_mes']['produccion'], Decimal('200'))
+        self.assertEqual(response.context['resumen_mes']['salidas'], Decimal('35'))
+        facturacion = response.context['resumen_mes']['facturacion']
+        self.assertEqual(facturacion['factura']['total'], Decimal('1500'))
+        self.assertEqual(facturacion['envio']['total'], Decimal('725'))
+        self.assertContains(response, 'Facturado · Facturas')
+        self.assertContains(response, 'Facturado · Envíos')
 
     def test_inventario_responde_con_permiso(self):
         self.client.force_login(self.user)
