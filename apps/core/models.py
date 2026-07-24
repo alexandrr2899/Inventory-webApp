@@ -5,6 +5,8 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal
 
+from .textnorm import norm
+
 
 class Categoria(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
@@ -178,6 +180,35 @@ class Cliente(models.Model):
             s=Coalesce(models.Sum('monto'), models.Value(Decimal('0')),
                        output_field=_dec))['s']
         return total_docs - total_aplicado
+
+
+class ClienteAlias(models.Model):
+    """Otro nombre con el que un cliente aparece en los PDFs.
+
+    `alias_norm` es único en TODA la tabla, no por cliente: un alias no puede
+    apuntar a dos clientes, porque entonces el emparejado del nombre del archivo
+    dejaría de ser determinista.
+    """
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='aliases')
+    alias = models.CharField(max_length=200)
+    alias_norm = models.CharField(max_length=200, db_index=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Alias de cliente'
+        verbose_name_plural = 'Alias de cliente'
+        ordering = ['alias']
+        constraints = [
+            models.UniqueConstraint(fields=['alias_norm'], name='cliente_alias_norm_unico'),
+        ]
+
+    def __str__(self):
+        return f'{self.alias} → {self.cliente.nombre}'
+
+    def save(self, *args, **kwargs):
+        self.alias = (self.alias or '').strip()
+        self.alias_norm = norm(self.alias)
+        super().save(*args, **kwargs)
 
 
 class BackupJob(models.Model):

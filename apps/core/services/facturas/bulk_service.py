@@ -8,7 +8,6 @@ Flujo en dos pasos:
      usuario), crea los DocumentoFactura y limpia los temporales.
 """
 import os
-import unicodedata
 import uuid
 
 from django.conf import settings
@@ -18,6 +17,7 @@ from django.utils.text import get_valid_filename
 
 from apps.core.models import Cliente, CategoriaProducto
 from apps.core.forms import validar_upload, MAX_PDF_MB
+from apps.core.textnorm import norm as _norm
 from . import invoice_service, pdf_service, payment_service
 from .pdf_extractors import filename_extractor
 from .pdf_extractors.base_extractor import parse_decimal, parse_fecha
@@ -48,13 +48,6 @@ def _archivo_en_lote(batch_id, nombre):
     if os.path.dirname(ruta) != carpeta:
         raise ValueError('nombre de archivo inválido')
     return ruta
-
-
-def _norm(s):
-    """Normaliza para comparar: minúsculas, sin acentos, espacios colapsados."""
-    s = unicodedata.normalize('NFKD', s or '')
-    s = ''.join(c for c in s if not unicodedata.combining(c))
-    return ' '.join(s.lower().split())
 
 
 def match_cliente(nombre, solo_exacto=False):
