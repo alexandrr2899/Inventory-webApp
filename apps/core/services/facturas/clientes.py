@@ -4,6 +4,8 @@ Centraliza dos cosas que estaban dispersas: el helper del cliente ficticio (viv�
 dentro de una vista de la API, y ahora lo necesitan tres lugares) y el alta de
 alias, que tiene reglas propias y no debe replicarse en cada llamador.
 """
+from django.db import IntegrityError, transaction
+
 from apps.core.models import Cliente, ClienteAlias
 from apps.core.textnorm import norm  # noqa: F401  (reexportado para los llamadores)
 
@@ -54,7 +56,25 @@ def crear_alias(cliente, texto):
         return None, (f'«{texto}» es el nombre del cliente {choque.nombre}; '
                       'un alias así nunca se usaría.')
 
-    return ClienteAlias.objects.create(cliente=cliente, alias=texto), None
+    try:
+        # atomic anidado (savepoint): si el create() revienta por la carrera de
+        # abajo, solo se descarta este savepoint. Sin él, capturar el
+        # IntegrityError acá adentro dejaría envenenada la transacción externa
+        # de sincronizar_aliases (Django exige un savepoint para seguir
+        # consultando después de un error dentro de un atomic()).
+        with transaction.atomic():
+            return ClienteAlias.objects.create(cliente=cliente, alias=texto), None
+    except IntegrityError:
+        # Carrera: otro request creó el mismo alias_norm entre el filter() de
+        # arriba y este create(). En vez de reventar, releemos y resolvemos
+        # igual que si lo hubiéramos visto desde el principio.
+        existente = ClienteAlias.objects.filter(
+            alias_norm=objetivo).select_related('cliente').first()
+        if existente and existente.cliente_id == cliente.pk:
+            return existente, None
+        nombre_dueno = existente.cliente.nombre if existente else '(desconocido)'
+        return None, (f'«{texto}» ya está registrado como alias de '
+                      f'{nombre_dueno}; no se guardó.')
 
 
 def sincronizar_aliases(cliente, texto_multilinea):
@@ -73,11 +93,17 @@ def sincronizar_aliases(cliente, texto_multilinea):
         vistos.add(clave)
         lineas.append(linea)
 
-    cliente.aliases.exclude(alias_norm__in=vistos).delete()
+    # atomic: si algo inesperado explota entre el delete() y el final del loop,
+    # no queremos dejar al cliente con los alias a medio sincronizar. Los
+    # errores de línea (choques, etc.) no son excepciones, así que no disparan
+    # rollback: cada línea inválida sigue acumulándose en `errores` y el resto
+    # se sincroniza igual que antes.
+    with transaction.atomic():
+        cliente.aliases.exclude(alias_norm__in=vistos).delete()
 
-    errores = []
-    for linea in lineas:
-        _alias, error = crear_alias(cliente, linea)
-        if error:
-            errores.append(error)
+        errores = []
+        for linea in lineas:
+            _alias, error = crear_alias(cliente, linea)
+            if error:
+                errores.append(error)
     return errores

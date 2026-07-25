@@ -125,3 +125,29 @@ class SincronizarAliasesTests(TestCase):
         clientes.sincronizar_aliases(self.acme, 'ACME SRL')
         clientes.sincronizar_aliases(self.acme, '')
         self.assertEqual(self.acme.aliases.count(), 0)
+
+    def test_linea_igual_al_propio_nombre_se_ignora_junto_a_una_valida(self):
+        # El caso (c) de crear_alias (redundante con el propio nombre) también
+        # tiene que comportarse bien mezclado dentro de una sincronización, no
+        # solo llamado directo.
+        errores = clientes.sincronizar_aliases(self.acme, 'Acme Honduras\nACME SRL')
+        self.assertEqual(errores, [])
+        self.assertEqual(list(self.acme.aliases.values_list('alias', flat=True)), ['ACME SRL'])
+
+    def test_atomic_no_borra_alias_validos_preexistentes_si_hay_errores_parciales(self):
+        # Mismo escenario que test_junta_todos_los_errores_de_una_vez, pero acá
+        # verificamos el otro lado: el atomic no debe hacer que un error de
+        # línea (que no lanza excepción) revierta lo que sí se sincronizó bien.
+        clientes.sincronizar_aliases(self.acme, 'Acme HN')
+        preexistente = self.acme.aliases.get(alias='Acme HN')
+
+        otro = Cliente.objects.create(nombre='Acme Sur')
+        clientes.crear_alias(otro, 'ACME SRL')
+        Cliente.objects.create(nombre='Distribuidora Sur')
+
+        errores = clientes.sincronizar_aliases(
+            self.acme, 'Acme HN\nACME SRL\nDistribuidora Sur')
+        self.assertEqual(len(errores), 2)
+        self.assertEqual(list(self.acme.aliases.values_list('alias', flat=True)), ['Acme HN'])
+        # El alias válido preexistente sobrevivió intacto (misma pk).
+        self.assertEqual(self.acme.aliases.get().pk, preexistente.pk)
