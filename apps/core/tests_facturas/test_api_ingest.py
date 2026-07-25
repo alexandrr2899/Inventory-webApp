@@ -106,6 +106,27 @@ class IngestTokenTests(TestCase):
         self.assertTrue(r2.json().get('duplicado'))
         self.assertEqual(DocumentoFactura.objects.count(), 1)
 
+    def test_guarda_el_nombre_sugerido_en_su_propio_campo(self):
+        if not os.path.exists(_FACTURA):
+            self.skipTest('PDF de muestra ausente')
+        archivo = _factura_upload('Fact 9543 Cliente Inexistente.pdf')
+        resp = self.client.post(self.url, {'archivo': archivo}, HTTP_X_API_KEY=TOKEN)
+
+        self.assertEqual(resp.status_code, 201)
+        doc = DocumentoFactura.objects.get()
+        self.assertEqual(doc.cliente_sugerido, 'Cliente Inexistente')
+        # `notas` sigue existiendo tal cual, para humanos.
+        self.assertIn('Cliente Inexistente', doc.notas)
+
+    def test_documento_emparejado_no_lleva_cliente_sugerido(self):
+        if not os.path.exists(_FACTURA):
+            self.skipTest('PDF de muestra ausente')
+        resp = self.client.post(self.url, {'archivo': _factura_upload()},
+                                HTTP_X_API_KEY=TOKEN)
+
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(DocumentoFactura.objects.get().cliente_sugerido, '')
+
 
 @override_settings(FACTURAS_MODULE_ENABLED=True, FACTURAS_INGEST_TOKEN=TOKEN,
                    ALLOWED_HOSTS=['testserver', 'localhost'], MEDIA_ROOT=tempfile.mkdtemp())

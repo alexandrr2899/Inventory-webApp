@@ -105,12 +105,13 @@ def factura_api_ingest(request):
         datos=datos, texto_extraido=prev['texto_extraido'],
     )
     if requiere_revision:
+        doc.cliente_sugerido = (nombre_cli or '')[:200]
         doc.notas = (
             'Cliente no encontrado en ingesta automática.\n'
             f'Cliente sugerido por archivo: {nombre_cli or "(sin nombre detectado)"}\n'
             f'Archivo original: {archivo.name}'
         )
-        doc.save(update_fields=['notas'])
+        doc.save(update_fields=['cliente_sugerido', 'notas'])
     return JsonResponse({
         'ok': True, 'id': doc.pk, 'cliente': cliente.nombre,
         'tipo': doc.tipo_documento, 'numero': doc.numero_documento,

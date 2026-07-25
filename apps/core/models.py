@@ -658,6 +658,10 @@ class DocumentoFactura(models.Model):
     estado_pago = models.CharField(max_length=12, choices=ESTADO_PAGO_CHOICES, default='pendiente')
     notas = models.TextField(blank=True)
     subcliente = models.CharField(max_length=120, blank=True)
+    cliente_sugerido = models.CharField(
+        max_length=200, blank=True,
+        help_text='Nombre del cliente que venía en el archivo cuando la ingesta '
+                  'automática no pudo emparejarlo.')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
