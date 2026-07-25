@@ -21,7 +21,9 @@
 
           <label class="form-label" for="identificar-cliente">Cliente *</label>
           <div class="input-group mb-3">
-            <select id="identificar-cliente" name="cliente" class="form-select" required>
+            {# La clase cliente-select es la que usa cliente-inline.js para insertar
+               y seleccionar el cliente recién creado desde el modal "Nuevo". #}
+            <select id="identificar-cliente" name="cliente" class="form-select cliente-select" required>
               <option value="">— elegí un cliente —</option>
               {% for c in clientes %}
               {% if c.pk != sin_identificar_id %}
