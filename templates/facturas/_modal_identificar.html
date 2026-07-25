@@ -1,0 +1,182 @@
+{# Modal reutilizable de identificación. Los botones .btn-identificar lo abren con data-*. #}
+<div class="modal fade" id="modalIdentificar" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form id="form-identificar">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Identificar cliente</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="identificar-aviso" class="alert alert-danger d-none" role="alert"></div>
+
+          <div id="identificar-sugerido-box" class="alert alert-light border py-2 d-none">
+            <div class="text-muted small">El archivo decía</div>
+            <div class="fw-semibold" id="identificar-sugerido">—</div>
+          </div>
+          <div class="text-muted small mb-1" id="identificar-doc-info">—</div>
+          <a href="#" class="btn btn-sm btn-outline-secondary mb-3 d-none" id="identificar-pdf" target="_blank">
+            <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>Ver PDF
+          </a>
+
+          <label class="form-label" for="identificar-cliente">Cliente *</label>
+          <div class="input-group mb-3">
+            <select id="identificar-cliente" name="cliente" class="form-select" required>
+              <option value="">— elegí un cliente —</option>
+              {% for c in clientes %}
+              {% if c.pk != sin_identificar_id %}
+              <option value="{{ c.pk }}">{{ c.nombre }}</option>
+              {% endif %}
+              {% endfor %}
+            </select>
+            <button type="button" class="btn btn-outline-primary"
+                    data-cliente-inline data-target="identificar-cliente">
+              <i class="bi bi-plus-lg me-1"></i>Nuevo
+            </button>
+          </div>
+
+          <div class="form-check" id="identificar-alias-box">
+            <input class="form-check-input" type="checkbox" id="identificar-alias" checked>
+            <label class="form-check-label" for="identificar-alias">
+              Recordar <span class="fw-semibold" id="identificar-alias-nombre"></span> como alias
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="identificar-revisado">
+            <label class="form-check-label" for="identificar-revisado">
+              Marcar el documento como revisado
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning" id="identificar-submit">
+            <i class="bi bi-check-lg me-1"></i>Identificar
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modalEl = document.getElementById('modalIdentificar');
+  if (!modalEl || typeof bootstrap === 'undefined') return;
+  var modal = new bootstrap.Modal(modalEl);
+  var form = document.getElementById('form-identificar');
+  var select = document.getElementById('identificar-cliente');
+  var aliasBox = document.getElementById('identificar-alias-box');
+  var aliasCheck = document.getElementById('identificar-alias');
+  var revisadoCheck = document.getElementById('identificar-revisado');
+  var avisoBox = document.getElementById('identificar-aviso');
+  var submit = document.getElementById('identificar-submit');
+  var filaActual = null;
+  var urlActual = '';
+
+  function getCookie(name) {
+    var value = '; ' + document.cookie;
+    var parts = value.split('; ' + name + '=');
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+  }
+
+  function mostrarAviso(msg, tipo) {
+    avisoBox.className = 'alert alert-' + (tipo || 'danger');
+    avisoBox.textContent = msg;
+  }
+
+  function limpiarAviso() {
+    avisoBox.className = 'alert alert-danger d-none';
+    avisoBox.textContent = '';
+  }
+
+  document.querySelectorAll('.btn-identificar').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();  // la fila entera navega al detalle
+      filaActual = b.closest('tr');
+      urlActual = b.getAttribute('data-url');
+      limpiarAviso();
+      select.value = '';
+      revisadoCheck.checked = false;
+
+      var sugerido = b.getAttribute('data-sugerido') || '';
+      document.getElementById('identificar-sugerido').textContent = sugerido;
+      document.getElementById('identificar-sugerido-box').classList.toggle('d-none', !sugerido);
+      document.getElementById('identificar-doc-info').textContent = b.getAttribute('data-info') || '';
+      // Sin nombre en el archivo no hay nada que recordar.
+      aliasBox.classList.toggle('d-none', !sugerido);
+      aliasCheck.checked = !!sugerido;
+      document.getElementById('identificar-alias-nombre').textContent = sugerido ? '«' + sugerido + '»' : '';
+
+      var pdf = b.getAttribute('data-pdf') || '';
+      var linkPdf = document.getElementById('identificar-pdf');
+      linkPdf.href = pdf || '#';
+      linkPdf.classList.toggle('d-none', !pdf);
+
+      modal.show();
+    });
+  });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    limpiarAviso();
+    if (!select.value) {
+      mostrarAviso('Elegí un cliente.');
+      return;
+    }
+    submit.disabled = true;
+
+    var datos = new FormData();
+    datos.append('cliente', select.value);
+    if (aliasCheck.checked && !aliasBox.classList.contains('d-none')) datos.append('guardar_alias', '1');
+    if (revisadoCheck.checked) datos.append('marcar_revisado', '1');
+
+    fetch(urlActual, {
+      method: 'POST',
+      body: datos,
+      headers: {'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'XMLHttpRequest'},
+    }).then(function (r) {
+      return r.json().then(function (data) { return {status: r.status, data: data}; });
+    }).then(function (res) {
+      submit.disabled = false;
+      if (!res.data.ok) {
+        var errores = res.data.errors || {};
+        var msgs = Object.keys(errores).map(function (k) { return errores[k].join(' '); });
+        mostrarAviso(msgs.join(' ') || 'No se pudo identificar el documento.');
+        return;
+      }
+      aplicarResultado(res.data);
+    }).catch(function () {
+      submit.disabled = false;
+      mostrarAviso('No se pudo conectar. Intentá de nuevo.');
+    });
+  });
+
+  function aplicarResultado(data) {
+    if (filaActual) {
+      var celda = filaActual.querySelector('td:nth-child(2)');
+      if (celda) celda.textContent = data.cliente_nombre;
+      var boton = filaActual.querySelector('.btn-identificar');
+      if (boton) boton.remove();
+      if (data.revisada) {
+        filaActual.remove();
+        bajarContadorPorRevisar();
+      }
+    }
+    if (data.aviso) {
+      // El documento se identificó igual: el alias es un efecto secundario.
+      mostrarAviso(data.aviso, 'warning');
+      return;
+    }
+    modal.hide();
+  }
+
+  function bajarContadorPorRevisar() {
+    var badge = document.querySelector('#btn-por-revisar .badge');
+    if (!badge) return;
+    var n = (parseInt(badge.textContent, 10) || 1) - 1;
+    if (n > 0) { badge.textContent = n; } else { badge.remove(); }
+  }
+})();
+</script>

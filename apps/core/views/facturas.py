@@ -8,7 +8,7 @@ from django.views.decorators.clickjacking import xframe_options_sameorigin
 
 from ..models import DocumentoFactura, TarifaCliente, MetodoPago, CategoriaProducto
 from ..forms import DocumentoUploadForm, DocumentoEditarForm
-from ..services.facturas import invoice_service, status_service, payment_service
+from ..services.facturas import clientes, invoice_service, status_service, payment_service
 
 
 def _safe_return_url(request):
@@ -105,6 +105,9 @@ def facturas_lista(request):
         # `metodos_pago`; sin esto el <select> de método sale vacío al pagar desde la lista.
         'metodos_pago': MetodoPago.objects.filter(activo=True),
         'return_url': request.get_full_path(),
+        # Se resuelve una sola vez acá y el template compara por id. Una propiedad
+        # del modelo dispararía una consulta por fila.
+        'sin_identificar_id': clientes.cliente_sin_identificar().pk,
     }
     return render(request, 'facturas/lista.html', ctx)
 

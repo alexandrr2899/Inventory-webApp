@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.core.models import Cliente, DocumentoFactura, MetodoPago
-from apps.core.services.facturas import payment_service, estado_cuenta_service
+from apps.core.services.facturas import payment_service, estado_cuenta_service, clientes
 
 
 @override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])
@@ -23,6 +23,10 @@ class SinN1Tests(TestCase):
         self.client.force_login(self.user)
         self.cli = Cliente.objects.create(nombre='Cli')
         self.met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+        # La vista resuelve el cliente "Sin identificar" en cada request (get_or_create).
+        # Si no existe todavía, la primera llamada dispara un INSERT extra que
+        # desestabiliza el conteo de consultas entre la medición con 2 y con 7 docs.
+        clientes.cliente_sin_identificar()
 
     def _doc_con_pago(self, numero, monto='1000.00', pagar='400.00'):
         doc = DocumentoFactura.objects.create(
@@ -62,6 +66,31 @@ class SinN1Tests(TestCase):
         self.assertEqual(
             n_2, n_7,
             f'El estado de cuenta tiene N+1: {n_2} consultas con 2 docs vs {n_7} con 7.')
+
+    def test_facturas_lista_con_sin_identificar_no_escala_con_filas(self):
+        # El badge y el botón de identificar se resuelven contra un id que la vista
+        # calcula una sola vez; si alguien lo vuelve una propiedad del modelo, este
+        # test lo cacha.
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='gestionar_facturas'))
+        sin_id = clientes.cliente_sin_identificar()
+
+        def _doc_sin_identificar(numero):
+            DocumentoFactura.objects.create(
+                cliente=sin_id, tipo_documento='factura', numero_documento=numero,
+                fecha_documento=timezone.localdate(), monto_total=Decimal('100'),
+                cliente_sugerido=f'Cliente {numero}')
+
+        for i in range(2):
+            _doc_sin_identificar(f'S{i}')
+        n_2 = self._contar_consultas(reverse('facturas_lista'))
+        for i in range(5):
+            _doc_sin_identificar(f'T{i}')
+        n_7 = self._contar_consultas(reverse('facturas_lista'))
+        self.assertEqual(
+            n_2, n_7,
+            f'La lista con documentos sin identificar tiene N+1: {n_2} consultas '
+            f'con 2 docs vs {n_7} con 7.')
 
     def test_servicio_build_conteo_constante(self):
         """El servicio build no debe consultar por fila (annotate + prefetch)."""
