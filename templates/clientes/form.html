@@ -19,6 +19,14 @@
           {{ form.nombre }}
           {% if form.nombre.errors %}<div class="text-danger small">{{ form.nombre.errors }}</div>{% endif %}
         </div>
+        <div class="col-12">
+          <label class="form-label" for="{{ form.aliases.id_for_label }}">
+            <i class="bi bi-tags me-1"></i>Alias (uno por línea)
+          </label>
+          {{ form.aliases }}
+          <div class="form-text">{{ form.aliases.help_text }}</div>
+          {% if form.aliases.errors %}<div class="text-danger small">{{ form.aliases.errors }}</div>{% endif %}
+        </div>
         <div class="col-12 col-md-6">
           <label class="form-label">Teléfono</label>
           {{ form.telefono }}
