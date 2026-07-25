@@ -123,6 +123,13 @@ class FacturaIdentificarTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn('cliente', resp.json()['errors'])
 
+    def test_rechaza_cliente_no_numerico(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(self.url, {'cliente': 'abc'})
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('cliente', resp.json()['errors'])
+
     def test_requiere_permiso_gestionar_facturas(self):
         self.client.force_login(self.operador)
         resp = self._post()

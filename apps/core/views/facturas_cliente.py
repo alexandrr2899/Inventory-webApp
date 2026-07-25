@@ -225,7 +225,14 @@ def factura_identificar(request, pk):
             'errors': {'__all__': [f'Ya fue identificado como {doc.cliente.nombre}.']},
         }, status=409)
 
-    cliente = Cliente.objects.filter(pk=request.POST.get('cliente') or 0).first()
+    # Django castea el pk a int al evaluar el queryset: un valor no numérico
+    # (p. ej. 'abc') levantaría ValueError y reventaría como 500. Lo parseamos
+    # a mano para que un pk inválido caiga en el mismo 400 que un pk vacío.
+    cliente_id = request.POST.get('cliente') or ''
+    try:
+        cliente = Cliente.objects.filter(pk=int(cliente_id)).first()
+    except (TypeError, ValueError):
+        cliente = None
     if cliente is None:
         return JsonResponse(
             {'ok': False, 'errors': {'cliente': ['Elegí un cliente.']}}, status=400)
