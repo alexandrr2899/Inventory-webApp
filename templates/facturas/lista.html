@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% load facturas_extras %}
 {% block title %}Facturas{% endblock %}
 
@@ -222,7 +223,18 @@
             <span class="badge bg-primary-subtle text-primary-emphasis"><i class="bi bi-receipt me-1"></i>Factura</span>
             {% endif %}
           </td>
-          <td class="fw-semibold">{{ doc.cliente.nombre }}</td>
+          <td class="fw-semibold">
+            {% if doc.cliente_id == sin_identificar_id %}
+            <span class="badge bg-warning-subtle text-warning-emphasis">
+              <i class="bi bi-question-circle me-1"></i>Sin identificar
+            </span>
+            {% if doc.cliente_sugerido %}
+            <div class="small text-muted fw-normal">Del archivo: "{{ doc.cliente_sugerido }}"</div>
+            {% endif %}
+            {% else %}
+            {{ doc.cliente.nombre }}
+            {% endif %}
+          </td>
           <td class="text-muted small">{{ doc.numero_documento|default:"–" }}</td>
           <td>{% include "facturas/_producto.html" with doc=doc %}</td>
           <td class="text-end">{{ doc.total_libras|default:"—" }}</td>
@@ -244,6 +256,15 @@
               <a href="{% url 'factura_pdf' doc.pk %}" class="btn btn-sm btn-outline-secondary" target="_blank" title="PDF">
                 <i class="bi bi-file-earmark-pdf-fill text-danger"></i>
               </a>
+              {% endif %}
+              {% if perms.core.gestionar_facturas and doc.cliente_id == sin_identificar_id %}
+              <button type="button" class="btn btn-sm btn-outline-warning btn-identificar" title="Identificar cliente"
+                      data-url="{% url 'factura_identificar' doc.pk %}"
+                      data-sugerido="{{ doc.cliente_sugerido }}"
+                      data-info="{{ doc.get_tipo_documento_display }} {{ doc.numero_documento }} · {{ doc.monto_total|moneda }} · {{ doc.fecha_documento|date:'d/m/Y' }}"
+                      data-pdf="{% if doc.archivo_pdf %}{% url 'factura_pdf' doc.pk %}{% endif %}">
+                <i class="bi bi-person-plus"></i>
+              </button>
               {% endif %}
               {% if perms.core.registrar_pago_factura and doc.estado_pago != 'anulada' and doc.estado_pago != 'pagada' %}
               <button type="button" class="btn btn-sm btn-outline-success btn-pago" title="Registrar pago"
@@ -269,6 +290,9 @@
 
 {% block extra_js %}
 {% include "facturas/_modal_pago.html" %}
+{% include "facturas/_modal_identificar.html" %}
+{% include "facturas/_cliente_modal.html" %}
+<script src="{% static 'js/cliente-inline.js' %}"></script>
 <script>
 // Helper compartido: calcula {desde, hasta} (YYYY-MM-DD, hora local) para un preset.
 window.facturasRangoFechas = function (rango) {

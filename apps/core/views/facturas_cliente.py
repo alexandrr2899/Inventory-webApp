@@ -1,11 +1,14 @@
 """facturas_cliente.py — Fragmento AJAX de la tab Facturas en la vista de cliente."""
+import logging
 from decimal import Decimal, InvalidOperation
 
 from .common import *  # noqa: F401,F403
 
 from ..models import Cliente, DocumentoFactura, Pago
 from ..forms import AbonoClienteForm, ClienteInlineForm
-from ..services.facturas import payment_service
+from ..services.facturas import clientes, payment_service, status_service
+
+_log = logging.getLogger(__name__)
 
 
 def _form_errors_json(form):
@@ -203,3 +206,80 @@ def cliente_abono_borrar(request, pk):
     pago.delete()  # cascade borra aplicaciones; señales recalculan facturas
     messages.success(request, 'Abono eliminado.')
     return redirect('cliente_salidas', pk=cliente_pk)
+
+
+@login_required
+@permission_required(_perm('gestionar_facturas'), raise_exception=True)
+@facturas_enabled
+@require_POST
+def factura_identificar(request, pk):
+    """Asigna el cliente real a un documento que la ingesta dejó sin identificar.
+
+    Identificar el documento es la acción principal; guardar el alias es un efecto
+    secundario. Si el alias falla, el documento se identifica igual y el aviso
+    viaja en la respuesta: nunca se pierde la acción que importaba por culpa de la
+    que no.
+    """
+    doc = get_object_or_404(DocumentoFactura.objects.select_related('cliente'), pk=pk)
+    sin_identificar = clientes.cliente_sin_identificar()
+    if doc.cliente_id != sin_identificar.pk:
+        return JsonResponse({
+            'ok': False,
+            'errors': {'__all__': [f'Ya fue identificado como {doc.cliente.nombre}.']},
+        }, status=409)
+
+    # Django castea el pk a int al evaluar el queryset: un valor no numérico
+    # (p. ej. 'abc') levantaría ValueError y reventaría como 500. Lo parseamos
+    # a mano para que un pk inválido caiga en el mismo 400 que un pk vacío.
+    cliente_id = request.POST.get('cliente') or ''
+    try:
+        cliente = Cliente.objects.filter(pk=int(cliente_id)).first()
+    except (TypeError, ValueError):
+        cliente = None
+    if cliente is None:
+        return JsonResponse(
+            {'ok': False, 'errors': {'cliente': ['Elegí un cliente.']}}, status=400)
+    if cliente.pk == sin_identificar.pk:
+        return JsonResponse({
+            'ok': False,
+            'errors': {'cliente': ['Elegí un cliente real, no «Sin identificar».']},
+        }, status=400)
+
+    aviso = ''
+    if request.POST.get('guardar_alias') == '1' and doc.cliente_sugerido:
+        # El alias es un efecto secundario: cualquier falla (incluso una
+        # inesperada) degrada a un aviso, nunca hace fracasar la identificación.
+        try:
+            _alias, error = clientes.crear_alias(cliente, doc.cliente_sugerido)
+            aviso = error or ''
+        except Exception:
+            _log.exception('Fallo inesperado al crear alias para el cliente %s', cliente.pk)
+            aviso = 'No se pudo guardar el alias; el documento se identificó igual.'
+
+    doc.cliente = cliente
+    campos = ['cliente', 'updated_at']
+    # El documento entró bajo "Sin identificar" (0 días de crédito), así que suele
+    # llegar sin vencimiento. Se calcula con el mismo guardia que usa
+    # invoice_service: solo si está vacío, para no pisar una fecha del PDF ni una
+    # que puso una persona.
+    if not doc.fecha_vencimiento and doc.fecha_documento and cliente.dias_credito:
+        doc.fecha_vencimiento = doc.fecha_documento + timedelta(days=cliente.dias_credito)
+        campos.append('fecha_vencimiento')
+
+    revisada = request.POST.get('marcar_revisado') == '1'
+    if revisada:
+        doc.estado_revision = 'revisada'
+        campos.append('estado_revision')
+    doc.save(update_fields=campos)
+
+    # El documento cambió de cliente: puede corresponderle saldo a favor del real,
+    # y su estado de pago depende del vencimiento que acabamos de calcular.
+    payment_service.aplicar_saldo_a_favor(doc)
+    status_service.actualizar_estado_pago(doc)
+
+    return JsonResponse({
+        'ok': True,
+        'cliente_nombre': cliente.nombre,
+        'revisada': revisada,
+        'aviso': aviso,
+    })

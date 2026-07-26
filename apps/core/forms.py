@@ -1,3 +1,4 @@
+import logging
 import os
 
 from django import forms
@@ -9,6 +10,8 @@ from .models import (
     MovimientoInventario, Conteo, ConteoDetalle,
     DocumentoFactura, TarifaCliente, MetodoPago, CategoriaProducto,
 )
+
+_log = logging.getLogger(__name__)
 
 # Límites de subida de archivos (MB).
 MAX_PDF_MB = 25
@@ -90,6 +93,17 @@ class MaquinaForm(forms.ModelForm):
 
 
 class ClienteForm(forms.ModelForm):
+    aliases = forms.CharField(
+        required=False,
+        label='Alias (uno por línea)',
+        widget=forms.Textarea(attrs={
+            'class': 'form-control', 'rows': 3,
+            'placeholder': 'ACME S DE RL\nAcme HN',
+        }),
+        help_text='Otros nombres con los que este cliente aparece en los PDFs. '
+                  'Sirven para emparejar los documentos que entran automáticamente.',
+    )
+
     class Meta:
         model = Cliente
         fields = ['nombre', 'telefono', 'rtn', 'direccion', 'dias_credito', 'activo']
@@ -101,6 +115,62 @@ class ClienteForm(forms.ModelForm):
             'dias_credito': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'placeholder': '0 = contado'}),
             'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            self.initial['aliases'] = '\n'.join(
+                self.instance.aliases.values_list('alias', flat=True))
+
+    def clean_aliases(self):
+        """Rechaza los alias que chocan, juntando todos los problemas de una vez.
+
+        La validación es un ensayo de `sincronizar_aliases` sin escribir nada:
+        quien edita el textarea quiere ver de una todo lo que tiene que arreglar,
+        no descubrirlo de a un error por guardado.
+        """
+        from .models import Cliente as _Cliente, ClienteAlias
+        from .textnorm import norm
+
+        texto = self.cleaned_data.get('aliases', '') or ''
+        nombre = self.cleaned_data.get('nombre', '') or ''
+        errores, vistos = [], set()
+        for linea in texto.splitlines():
+            linea = linea.strip()
+            clave = norm(linea)
+            if not clave or clave in vistos or clave == norm(nombre):
+                continue
+            vistos.add(clave)
+
+            ajeno = ClienteAlias.objects.filter(alias_norm=clave).exclude(
+                cliente_id=self.instance.pk).select_related('cliente').first()
+            if ajeno:
+                errores.append(f'«{linea}» ya está registrado como alias de '
+                               f'{ajeno.cliente.nombre}.')
+                continue
+            choque = next((c for c in _Cliente.objects.exclude(pk=self.instance.pk)
+                           if norm(c.nombre) == clave), None)
+            if choque:
+                errores.append(f'«{linea}» es el nombre del cliente {choque.nombre}; '
+                               'un alias así nunca se usaría.')
+        if errores:
+            raise ValidationError(errores)
+        return texto
+
+    def save(self, commit=True):
+        from .services.facturas.clientes import sincronizar_aliases
+
+        cliente = super().save(commit=commit)
+        if commit:
+            errores = sincronizar_aliases(cliente, self.cleaned_data.get('aliases', ''))
+            if errores:
+                # `clean_aliases` ya rechazó todo esto; llegar acá significa que
+                # otra edición se metió en el medio. Se registra y se sigue: el
+                # cliente se guarda igual, como en el resto del módulo, donde el
+                # alias nunca hace fracasar la acción principal.
+                _log.warning('Alias no sincronizados para cliente %s: %s',
+                             cliente.pk, '; '.join(errores))
+        return cliente
 
 
 class ClienteInlineForm(forms.ModelForm):

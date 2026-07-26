@@ -6,7 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from apps.core.models import Cliente, DocumentoFactura, TarifaCliente
+from apps.core.models import Cliente, ClienteAlias, DocumentoFactura, TarifaCliente
 
 _SAMPLES = os.path.normpath(os.path.join(
     os.path.dirname(__file__), '..', '..', '..', 'docs', 'facturas', 'samples'))
@@ -79,6 +79,23 @@ class IngestTokenTests(TestCase):
         self.assertEqual(data['numero'], '9543')
         self.assertEqual(DocumentoFactura.objects.count(), 1)
 
+    def test_alias_empareja_en_la_ingesta_sin_pasar_por_sin_identificar(self):
+        if not os.path.exists(_FACTURA):
+            self.skipTest('PDF de muestra ausente')
+        zaga = Cliente.objects.get(nombre='Inversiones Zaga')
+        ClienteAlias.objects.create(cliente=zaga, alias='Comercial Zaga')
+
+        archivo = _factura_upload('Fact 9543 Comercial Zaga.pdf')
+        resp = self.client.post(self.url, {'archivo': archivo}, HTTP_X_API_KEY=TOKEN)
+
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertFalse(data['requiere_revision'])
+        self.assertEqual(data['cliente'], 'Inversiones Zaga')
+        self.assertEqual(DocumentoFactura.objects.get().cliente, zaga)
+        self.assertFalse(
+            Cliente.objects.filter(nombre='Sin identificar').exists())
+
     def test_dedup_no_crea_dos_veces(self):
         if not os.path.exists(_FACTURA):
             self.skipTest('PDF de muestra ausente')
@@ -88,6 +105,27 @@ class IngestTokenTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertTrue(r2.json().get('duplicado'))
         self.assertEqual(DocumentoFactura.objects.count(), 1)
+
+    def test_guarda_el_nombre_sugerido_en_su_propio_campo(self):
+        if not os.path.exists(_FACTURA):
+            self.skipTest('PDF de muestra ausente')
+        archivo = _factura_upload('Fact 9543 Cliente Inexistente.pdf')
+        resp = self.client.post(self.url, {'archivo': archivo}, HTTP_X_API_KEY=TOKEN)
+
+        self.assertEqual(resp.status_code, 201)
+        doc = DocumentoFactura.objects.get()
+        self.assertEqual(doc.cliente_sugerido, 'Cliente Inexistente')
+        # `notas` sigue existiendo tal cual, para humanos.
+        self.assertIn('Cliente Inexistente', doc.notas)
+
+    def test_documento_emparejado_no_lleva_cliente_sugerido(self):
+        if not os.path.exists(_FACTURA):
+            self.skipTest('PDF de muestra ausente')
+        resp = self.client.post(self.url, {'archivo': _factura_upload()},
+                                HTTP_X_API_KEY=TOKEN)
+
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(DocumentoFactura.objects.get().cliente_sugerido, '')
 
 
 @override_settings(FACTURAS_MODULE_ENABLED=True, FACTURAS_INGEST_TOKEN=TOKEN,

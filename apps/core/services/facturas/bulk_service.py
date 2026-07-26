@@ -8,7 +8,6 @@ Flujo en dos pasos:
      usuario), crea los DocumentoFactura y limpia los temporales.
 """
 import os
-import unicodedata
 import uuid
 
 from django.conf import settings
@@ -16,8 +15,9 @@ from django.core.files import File
 from django.core.exceptions import ValidationError
 from django.utils.text import get_valid_filename
 
-from apps.core.models import Cliente, CategoriaProducto
+from apps.core.models import Cliente, CategoriaProducto, ClienteAlias
 from apps.core.forms import validar_upload, MAX_PDF_MB
+from apps.core.textnorm import norm as _norm
 from . import invoice_service, pdf_service, payment_service
 from .pdf_extractors import filename_extractor
 from .pdf_extractors.base_extractor import parse_decimal, parse_fecha
@@ -50,32 +50,36 @@ def _archivo_en_lote(batch_id, nombre):
     return ruta
 
 
-def _norm(s):
-    """Normaliza para comparar: minúsculas, sin acentos, espacios colapsados."""
-    s = unicodedata.normalize('NFKD', s or '')
-    s = ''.join(c for c in s if not unicodedata.combining(c))
-    return ' '.join(s.lower().split())
-
-
 def match_cliente(nombre, solo_exacto=False):
     """Empareja un nombre (del archivo) a un Cliente existente; None si no hay match.
 
-    Comparación insensible a mayúsculas y acentos. Con ``solo_exacto=True`` solo
-    acepta igualdad exacta normalizada (sin el fallback de 'contiene'); se usa en
-    la ingesta automática, donde no hay revisión humana para corregir un mal match.
+    Orden: 1) nombre exacto normalizado, 2) alias exacto normalizado,
+    3) 'contiene' en cualquier dirección (solo si no `solo_exacto`).
+
+    El alias va después del nombre real para que nunca pueda tapar a un cliente
+    existente, y antes del 'contiene' porque un alias es una afirmación explícita
+    del usuario mientras que el 'contiene' es una corazonada. Como el paso 2 es
+    igualdad exacta, es tan confiable como el 1: por eso la ingesta automática
+    (`solo_exacto=True`, sin revisión humana que corrija un mal match) también
+    empareja por alias.
     """
     objetivo = _norm(nombre)
     if not objetivo:
         return None
-    clientes = list(Cliente.objects.all())
-    # 1) Igualdad exacta normalizada.
-    for c in clientes:
+    clientes_todos = list(Cliente.objects.all())
+    # 1) Igualdad exacta normalizada del nombre.
+    for c in clientes_todos:
         if _norm(c.nombre) == objetivo:
             return c
+    # 2) Alias exacto. Una consulta indexada, no todos los alias en memoria.
+    alias = ClienteAlias.objects.filter(
+        alias_norm=objetivo).select_related('cliente').first()
+    if alias:
+        return alias.cliente
     if solo_exacto:
         return None
-    # 2) 'Contiene' en cualquier dirección; preferir el nombre de cliente más largo.
-    matches = [c for c in clientes
+    # 3) 'Contiene' en cualquier dirección; preferir el nombre de cliente más largo.
+    matches = [c for c in clientes_todos
                if _norm(c.nombre) and (_norm(c.nombre) in objetivo or objetivo in _norm(c.nombre))]
     if matches:
         return max(matches, key=lambda c: len(c.nombre))

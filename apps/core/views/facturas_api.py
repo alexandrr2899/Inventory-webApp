@@ -9,8 +9,8 @@ from .common import *  # noqa: F401,F403
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 
-from ..models import Cliente, DocumentoFactura
-from ..services.facturas import bulk_service, invoice_service
+from ..models import DocumentoFactura
+from ..services.facturas import bulk_service, clientes, invoice_service
 from ..services.facturas.pdf_extractors import filename_extractor
 
 
@@ -39,17 +39,6 @@ def _ingest_registrar_fallo(ip):
     except ValueError:
         # La clave no existía (o expiró): iniciar la ventana.
         cache.set(key, 1, _INGEST_VENTANA_SEG)
-
-
-def _cliente_sin_identificar():
-    cliente, _created = Cliente.objects.get_or_create(
-        nombre='Sin identificar',
-        defaults={'activo': True},
-    )
-    if not cliente.activo:
-        cliente.activo = True
-        cliente.save(update_fields=['activo'])
-    return cliente
 
 
 @csrf_exempt
@@ -90,7 +79,7 @@ def factura_api_ingest(request):
     cliente = bulk_service.match_cliente(nombre_cli, solo_exacto=True)
     requiere_revision = cliente is None
     if requiere_revision:
-        cliente = _cliente_sin_identificar()
+        cliente = clientes.cliente_sin_identificar()
 
     archivo.seek(0)
     try:
@@ -116,12 +105,13 @@ def factura_api_ingest(request):
         datos=datos, texto_extraido=prev['texto_extraido'],
     )
     if requiere_revision:
+        doc.cliente_sugerido = (nombre_cli or '')[:200]
         doc.notas = (
             'Cliente no encontrado en ingesta automática.\n'
             f'Cliente sugerido por archivo: {nombre_cli or "(sin nombre detectado)"}\n'
             f'Archivo original: {archivo.name}'
         )
-        doc.save(update_fields=['notas'])
+        doc.save(update_fields=['cliente_sugerido', 'notas'])
     return JsonResponse({
         'ok': True, 'id': doc.pk, 'cliente': cliente.nombre,
         'tipo': doc.tipo_documento, 'numero': doc.numero_documento,
