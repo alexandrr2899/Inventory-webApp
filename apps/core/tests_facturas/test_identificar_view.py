@@ -1,4 +1,5 @@
 from datetime import date
+from unittest import mock
 
 from django.contrib.auth.models import Permission, User
 from django.test import TestCase, override_settings
@@ -98,6 +99,21 @@ class FacturaIdentificarTests(TestCase):
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.cliente, self.acme)
         self.assertEqual(ClienteAlias.objects.count(), 1)
+
+    def test_falla_inesperada_del_alias_igual_identifica(self):
+        # Regla de robustez: una excepción inesperada al crear el alias degrada a
+        # un aviso; la identificación (la acción principal) nunca se pierde.
+        self.client.force_login(self.admin)
+        with mock.patch(
+                'apps.core.services.facturas.clientes.crear_alias',
+                side_effect=RuntimeError('boom')):
+            resp = self._post(guardar_alias='1')
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()['ok'])
+        self.assertIn('no se pudo guardar el alias', resp.json()['aviso'].lower())
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.cliente, self.acme)
 
     def test_documento_ya_identificado_devuelve_409(self):
         self.doc.cliente = self.acme

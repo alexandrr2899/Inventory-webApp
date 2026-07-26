@@ -1,4 +1,5 @@
 """facturas_cliente.py — Fragmento AJAX de la tab Facturas en la vista de cliente."""
+import logging
 from decimal import Decimal, InvalidOperation
 
 from .common import *  # noqa: F401,F403
@@ -6,6 +7,8 @@ from .common import *  # noqa: F401,F403
 from ..models import Cliente, DocumentoFactura, Pago
 from ..forms import AbonoClienteForm, ClienteInlineForm
 from ..services.facturas import clientes, payment_service, status_service
+
+_log = logging.getLogger(__name__)
 
 
 def _form_errors_json(form):
@@ -244,8 +247,14 @@ def factura_identificar(request, pk):
 
     aviso = ''
     if request.POST.get('guardar_alias') == '1' and doc.cliente_sugerido:
-        _alias, error = clientes.crear_alias(cliente, doc.cliente_sugerido)
-        aviso = error or ''
+        # El alias es un efecto secundario: cualquier falla (incluso una
+        # inesperada) degrada a un aviso, nunca hace fracasar la identificación.
+        try:
+            _alias, error = clientes.crear_alias(cliente, doc.cliente_sugerido)
+            aviso = error or ''
+        except Exception:
+            _log.exception('Fallo inesperado al crear alias para el cliente %s', cliente.pk)
+            aviso = 'No se pudo guardar el alias; el documento se identificó igual.'
 
     doc.cliente = cliente
     campos = ['cliente', 'updated_at']
