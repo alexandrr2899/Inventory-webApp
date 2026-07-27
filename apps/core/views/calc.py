@@ -22,8 +22,10 @@ def _calcular_produccion(fecha, salidas_parciales_hasta=None):
     Reglas:
     - Solo usa conteos con tipo_conteo='camiseta'.
     - Usa .first()/.last() ordenados por fecha_hora_conteo (nunca .get()).
-    - Salidas: solo movimientos activos (no anulados, no eliminados) dentro
-      del rango horario exacto entre los dos conteos involucrados.
+    - Salidas: solo movimientos activos (no anulados, no eliminados) en el
+      intervalo inicio < fecha_movimiento <= cierre. El cierre es inclusivo
+      porque los formularios guardan conteos y movimientos con precisión de
+      minuto y la conciliación también considera movimientos <= al conteo.
     - Si falta algún conteo no lanza error — informa qué falta.
     """
     from datetime import timedelta as _td
@@ -63,7 +65,7 @@ def _calcular_produccion(fecha, salidas_parciales_hasta=None):
     def _salidas_entre(t_inicio, t_fin):
         """
         Suma de DetalleMovimiento de salidas activas cuya fecha_movimiento
-        cae estrictamente entre t_inicio y t_fin.
+        cumple t_inicio < fecha_movimiento <= t_fin.
         Solo ítems tipo 'producto'.
         """
         if not t_inicio or not t_fin or t_inicio >= t_fin:
@@ -74,8 +76,8 @@ def _calcular_produccion(fecha, salidas_parciales_hasta=None):
                 movimiento__tipo_movimiento='salida',
                 movimiento__anulado=False,
                 movimiento__eliminado=False,
-                movimiento__fecha_movimiento__gte=t_inicio,
-                movimiento__fecha_movimiento__lt=t_fin,
+                movimiento__fecha_movimiento__gt=t_inicio,
+                movimiento__fecha_movimiento__lte=t_fin,
             )
             .filter(_filtro_detalle_camiseta())
             .aggregate(t=Sum('cantidad'))['t'] or Decimal('0')
@@ -250,10 +252,10 @@ def _calcular_produccion_rango(fecha_inicio, fecha_fin):
         return detalles_x_conteo.get(conteo_pk, {})
 
     def _salidas_items_entre(t0, t1):
-        """Dict {item_pk: qty} para salidas con t0 < fecha_movimiento < t1."""
+        """Dict {item_pk: qty} para salidas con t0 < fecha_movimiento <= t1."""
         r: dict = {}
         for t, pk, qty in salidas_prod:
-            if t0 < t < t1:
+            if t0 < t <= t1:
                 r[pk] = r.get(pk, Decimal('0')) + qty
         return r
 
@@ -380,7 +382,7 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
             movimiento__anulado=False,
             movimiento__eliminado=False,
             movimiento__fecha_movimiento__gt=t_min,
-            movimiento__fecha_movimiento__lt=t_max,
+            movimiento__fecha_movimiento__lte=t_max,
             item__tipo='producto',
         )
         .select_related('movimiento')
@@ -395,7 +397,7 @@ def _calcular_tramos(fecha_inicio, fecha_fin):
     def _salidas_entre(t0, t1):
         r: dict = {}
         for t, pk, qty in salidas_list:
-            if t0 < t < t1:
+            if t0 < t <= t1:
                 r[pk] = r.get(pk, Decimal('0')) + qty
         return r
 

@@ -118,7 +118,7 @@ def reporte_produccion(request):
                 movimiento__anulado=False,
                 movimiento__eliminado=False,
                 movimiento__fecha_movimiento__gt=produccion['hora_manana'],
-                movimiento__fecha_movimiento__lt=produccion['hora_tarde'],
+                movimiento__fecha_movimiento__lte=produccion['hora_tarde'],
                 item__tipo='producto',
             )
             .select_related('item', 'cliente', 'movimiento')
@@ -135,7 +135,7 @@ def reporte_produccion(request):
                 movimiento__anulado=False,
                 movimiento__eliminado=False,
                 movimiento__fecha_movimiento__gt=produccion['hora_tarde'],
-                movimiento__fecha_movimiento__lt=produccion['hora_manana_sig'],
+                movimiento__fecha_movimiento__lte=produccion['hora_manana_sig'],
                 item__tipo='producto',
             )
             .select_related('item', 'cliente', 'movimiento')

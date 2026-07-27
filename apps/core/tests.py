@@ -15,7 +15,14 @@ from .models import (
     BackupJob, Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
     DocumentoFactura, Item, Maquina, MovimientoInventario, Stock, Ubicacion,
 )
-from .views import _calcular_tramos, _payload_produccion_dia, _aplicar_efecto_detalle, _stock_en_momento
+from .views import (
+    _aplicar_efecto_detalle,
+    _calcular_produccion,
+    _calcular_produccion_rango,
+    _calcular_tramos,
+    _payload_produccion_dia,
+    _stock_en_momento,
+)
 
 
 @override_settings(ALLOWED_HOSTS=['testserver', 'localhost'])
@@ -328,6 +335,90 @@ class VistasOperativasTests(TestCase):
         self.assertEqual(noche['fecha_asignada'], date(2026, 5, 12))
         self.assertIn('22:59', noche['label_rango'])
         self.assertIn('16:25', noche['label_rango'])
+
+    def test_salida_en_mismo_minuto_del_conteo_final_pertenece_al_turno_dia(self):
+        """Un datetime-local no guarda segundos: el cierre debe incluir su minuto."""
+        def aware(year, month, day, hour, minute):
+            return timezone.make_aware(datetime(year, month, day, hour, minute))
+
+        ubicacion = Stock.objects.get(item=self.item).ubicacion
+        fecha_operativa = date(2026, 7, 27)
+        conteo_manana = Conteo.objects.create(
+            fecha=fecha_operativa,
+            turno='manana',
+            tipo_conteo='camiseta',
+            fecha_hora_conteo=aware(2026, 7, 27, 10, 40),
+            usuario=self.user,
+        )
+        conteo_tarde = Conteo.objects.create(
+            fecha=fecha_operativa,
+            turno='tarde',
+            tipo_conteo='camiseta',
+            fecha_hora_conteo=aware(2026, 7, 27, 17, 1),
+            usuario=self.user,
+        )
+        conteo_manana_sig = Conteo.objects.create(
+            fecha=date(2026, 7, 28),
+            turno='manana',
+            tipo_conteo='camiseta',
+            fecha_hora_conteo=aware(2026, 7, 28, 10, 40),
+            usuario=self.user,
+        )
+        for conteo, cantidad in (
+            (conteo_manana, Decimal('476')),
+            (conteo_tarde, Decimal('311')),
+            (conteo_manana_sig, Decimal('311')),
+        ):
+            ConteoDetalle.objects.create(
+                conteo=conteo,
+                item=self.item,
+                ubicacion=ubicacion,
+                cantidad_contada=cantidad,
+                cantidad_sistema_al_conteo=Decimal('0'),
+            )
+
+        movimientos = []
+        for hora, minuto, cantidad in (
+            (15, 41, Decimal('95')),
+            (17, 1, Decimal('90')),
+        ):
+            movimiento = MovimientoInventario.objects.create(
+                tipo_movimiento='salida',
+                tipo_salida='producto_terminado',
+                fecha_movimiento=aware(2026, 7, 27, hora, minuto),
+                usuario=self.user,
+            )
+            DetalleMovimiento.objects.create(
+                movimiento=movimiento,
+                item=self.item,
+                cantidad=cantidad,
+                ubicacion_origen=ubicacion,
+            )
+            movimientos.append(movimiento)
+
+        produccion = _calcular_produccion(fecha_operativa)
+        rango = _calcular_produccion_rango(fecha_operativa, fecha_operativa)[fecha_operativa]
+        tramos = _calcular_tramos(fecha_operativa, fecha_operativa)
+        tramo_dia = next(t for t in tramos if t['tipo'] == 'dia')
+        tramo_noche = next(t for t in tramos if t['tipo'] == 'noche')
+        self.client.force_login(self.user)
+        reporte = self.client.get(
+            reverse('reporte_produccion'),
+            {'fecha': fecha_operativa.isoformat()},
+        )
+
+        self.assertEqual(produccion['salidas_dia'], Decimal('185'))
+        self.assertEqual(produccion['produccion_dia'], Decimal('20'))
+        self.assertEqual(produccion['salidas_noche'], Decimal('0'))
+        self.assertEqual(rango['prod_dia'], Decimal('20'))
+        self.assertEqual(rango['prod_noche'], Decimal('0'))
+        self.assertEqual(tramo_dia['salidas'], Decimal('185'))
+        self.assertEqual(tramo_noche['salidas'], Decimal('0'))
+        self.assertCountEqual(
+            reporte.context['salidas_detalle_dia'].values_list('movimiento_id', flat=True),
+            [movimiento.pk for movimiento in movimientos],
+        )
+        self.assertFalse(reporte.context['salidas_detalle_noche'].exists())
 
     def test_cliente_salidas_usa_fecha_movimiento_y_detalles(self):
         cliente = Cliente.objects.create(nombre='Renato', activo=True)
