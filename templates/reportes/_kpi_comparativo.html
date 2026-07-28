@@ -1,0 +1,31 @@
+{% load facturas_extras %}
+<div class="card h-100 border-{{ color }} border-opacity-25">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start mb-3">
+      <div>
+        <div class="text-muted small">{{ titulo }}</div>
+        <div class="fs-3 fw-bold text-{{ color }} kpi-value">
+          {% if moneda %}L {{ metrica.actual|moneda }}{% else %}{{ metrica.actual|floatformat:0 }} <small class="fs-6">{{ unidad }}</small>{% endif %}
+        </div>
+        {% if detalle_actual is not None %}
+        <div class="text-muted mt-1" style="font-size:.72rem;">
+          {{ detalle_actual }} {{ detalle_label }}
+        </div>
+        {% endif %}
+      </div>
+      <i class="bi {{ icono }} text-{{ color }} fs-3"></i>
+    </div>
+    <div class="comparison-box p-2 d-flex justify-content-between align-items-center gap-2">
+      <div>
+        <div class="text-muted" style="font-size:.68rem;">Período anterior</div>
+        <div class="fw-semibold small">
+          {% if moneda %}L {{ metrica.anterior|moneda }}{% else %}{{ metrica.anterior|floatformat:0 }} {{ unidad }}{% endif %}
+        </div>
+        {% if detalle_anterior is not None %}
+        <div class="text-muted" style="font-size:.65rem;">{{ detalle_anterior }} {{ detalle_label }}</div>
+        {% endif %}
+      </div>
+      {% include "reportes/_variacion.html" with metrica=metrica %}
+    </div>
+  </div>
+</div>

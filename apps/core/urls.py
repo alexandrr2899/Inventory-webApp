@@ -61,6 +61,7 @@ urlpatterns = [
     path('clientes/<int:pk>/toggle/', views.cliente_toggle_activo, name='cliente_toggle_activo'),
 
     # Reportes
+    path('reportes/rendimiento-mensual/', views.reporte_rendimiento_mensual, name='reporte_rendimiento_mensual'),
     path('reportes/stock-bajo/', views.reporte_stock_bajo, name='reporte_stock_bajo'),
     path('reportes/produccion/', views.reporte_produccion, name='reporte_produccion'),
     path('reportes/pigmentos/', views.reporte_consumo_pigmentos, name='reporte_consumo_pigmentos'),

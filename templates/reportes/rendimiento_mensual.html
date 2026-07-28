@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% load facturas_extras %}
+{% block title %}Rendimiento por período{% endblock %}
+
+{% block extra_head %}
+<style>
+  .kpi-value { line-height:1.05; }
+  .comparison-box { background:var(--app-surface-2); border-radius:.6rem; }
+  .comparison-arrow { font-size:1.15rem; }
+  .period-switch .btn { min-width:6.5rem; }
+  .period-nav .btn { min-width:2.5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header"
+     style="background:linear-gradient(135deg,#0d6efd,#198754);">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div>
+    <h1><i class="bi bi-speedometer2 me-2"></i>Rendimiento por período</h1>
+    <small class="opacity-75">
+      {{ inicio_actual|date:"d/m/Y" }}–{{ fin_actual|date:"d/m/Y" }}
+      vs. {{ inicio_anterior|date:"d/m/Y" }}–{{ fin_anterior|date:"d/m/Y" }}
+    </small>
+    </div>
+    <div class="text-end">
+      <div class="small opacity-75">Período seleccionado</div>
+      <div class="fs-5 fw-bold">{{ periodo_actual_titulo }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+      <div>
+        <div class="fw-bold"><i class="bi bi-calendar-range me-2 text-primary"></i>Período a analizar</div>
+        <div class="text-muted small">Elegí cómo querés agrupar el rendimiento.</div>
+      </div>
+      <div class="btn-group period-switch flex-wrap" role="group" aria-label="Tipo de período">
+        <a href="?periodo=mes"
+           class="btn btn-sm {% if tipo_periodo == 'mes' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+          <i class="bi bi-calendar3 me-1"></i>Mes
+        </a>
+        <a href="?periodo=trimestre"
+           class="btn btn-sm {% if tipo_periodo == 'trimestre' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+          <i class="bi bi-calendar2-range me-1"></i>Trimestre
+        </a>
+        <a href="?periodo=semestre"
+           class="btn btn-sm {% if tipo_periodo == 'semestre' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+          <i class="bi bi-calendar-week me-1"></i>Semestre
+        </a>
+        <a href="?periodo=anio"
+           class="btn btn-sm {% if tipo_periodo == 'anio' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+          <i class="bi bi-calendar4 me-1"></i>Año
+        </a>
+      </div>
+    </div>
+
+    <form method="get" class="row g-2 align-items-end">
+      <input type="hidden" name="periodo" value="{{ tipo_periodo }}">
+      {% if tipo_periodo == "mes" %}
+      <div class="col-12 col-sm-5 col-lg-3">
+        <label for="mes" class="form-label">Mes</label>
+        <input id="mes" type="month" name="mes" class="form-control"
+               value="{{ mes_seleccionado|date:'Y-m' }}">
+      </div>
+      {% elif tipo_periodo == "trimestre" %}
+      <div class="col-6 col-sm-3 col-lg-2">
+        <label for="trimestre" class="form-label">Trimestre</label>
+        <select id="trimestre" name="trimestre" class="form-select">
+          <option value="1" {% if trimestre_seleccionado == 1 %}selected{% endif %}>T1 · Ene–Mar</option>
+          <option value="2" {% if trimestre_seleccionado == 2 %}selected{% endif %}>T2 · Abr–Jun</option>
+          <option value="3" {% if trimestre_seleccionado == 3 %}selected{% endif %}>T3 · Jul–Sep</option>
+          <option value="4" {% if trimestre_seleccionado == 4 %}selected{% endif %}>T4 · Oct–Dic</option>
+        </select>
+      </div>
+      <div class="col-6 col-sm-3 col-lg-2">
+        <label for="anio-trimestre" class="form-label">Año</label>
+        <input id="anio-trimestre" type="number" name="anio" min="2000"
+               class="form-control" value="{{ anio_seleccionado }}">
+      </div>
+      {% elif tipo_periodo == "semestre" %}
+      <div class="col-6 col-sm-3 col-lg-2">
+        <label for="semestre" class="form-label">Semestre</label>
+        <select id="semestre" name="semestre" class="form-select">
+          <option value="1" {% if semestre_seleccionado == 1 %}selected{% endif %}>S1 · Ene–Jun</option>
+          <option value="2" {% if semestre_seleccionado == 2 %}selected{% endif %}>S2 · Jul–Dic</option>
+        </select>
+      </div>
+      <div class="col-6 col-sm-3 col-lg-2">
+        <label for="anio-semestre" class="form-label">Año</label>
+        <input id="anio-semestre" type="number" name="anio" min="2000"
+               class="form-control" value="{{ anio_seleccionado }}">
+      </div>
+      {% else %}
+      <div class="col-12 col-sm-4 col-lg-2">
+        <label for="anio" class="form-label">Año</label>
+        <input id="anio" type="number" name="anio" min="2000"
+               class="form-control" value="{{ anio_seleccionado }}">
+      </div>
+      {% endif %}
+      <div class="col-12 col-sm-auto">
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-bar-chart-line me-1"></i>Analizar período
+        </button>
+      </div>
+    </form>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 pt-3 border-top">
+      <div class="btn-group period-nav" aria-label="Navegar períodos">
+        <a href="?{{ query_anterior }}" class="btn btn-outline-secondary" title="Período anterior">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+        <a href="?{{ query_actual }}" class="btn btn-outline-secondary">Período actual</a>
+        {% if query_siguiente %}
+        <a href="?{{ query_siguiente }}" class="btn btn-outline-secondary" title="Período siguiente">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+        {% else %}
+        <button class="btn btn-outline-secondary" type="button" disabled title="Ya estás en el período actual">
+          <i class="bi bi-chevron-right"></i>
+        </button>
+        {% endif %}
+      </div>
+      <div class="text-muted small">
+        Comparando <strong>{{ periodo_actual_titulo }}</strong> con
+        <strong>{{ periodo_anterior_titulo }}</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="alert alert-primary bg-primary bg-opacity-10 border-primary border-opacity-25 py-2 small">
+  <i class="bi bi-info-circle-fill me-1"></i>
+  Si el período todavía está en curso, la comparación usa el mismo número de días del período anterior.
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-6 col-xl-3">
+    {% include "reportes/_kpi_comparativo.html" with titulo="Producción" metrica=produccion unidad="und." icono="bi-box-seam-fill" color="success" moneda=False detalle_actual=produccion.tramos_actual detalle_anterior=produccion.tramos_anterior detalle_label="tramos" %}
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    {% include "reportes/_kpi_comparativo.html" with titulo="Salidas PT" metrica=salidas unidad="und." icono="bi-truck" color="danger" moneda=False %}
+  </div>
+  {% if facturacion %}
+  <div class="col-12 col-md-6 col-xl-3">
+    {% include "reportes/_kpi_comparativo.html" with titulo="Facturas" metrica=facturacion.factura icono="bi-receipt-cutoff" color="primary" moneda=True detalle_actual=facturacion.factura.documentos_actual detalle_anterior=facturacion.factura.documentos_anterior detalle_label="documentos" %}
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    {% include "reportes/_kpi_comparativo.html" with titulo="Envíos" metrica=facturacion.envio icono="bi-file-earmark-text-fill" color="info" moneda=True detalle_actual=facturacion.envio.documentos_actual detalle_anterior=facturacion.envio.documentos_anterior detalle_label="documentos" %}
+  </div>
+  {% endif %}
+</div>
+
+{% if not puede_ver_facturacion %}
+<div class="alert alert-secondary">
+  <i class="bi bi-lock-fill me-2"></i>
+  La comparación de facturación requiere que el módulo esté habilitado y permiso para ver facturas.
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header bg-white fw-bold">
+    <i class="bi bi-table me-2 text-primary"></i>Resumen comparativo
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Indicador</th>
+          <th class="text-end">{{ periodo_actual_titulo }}</th>
+          <th class="text-end">{{ periodo_anterior_titulo }}</th>
+          <th class="text-end">Cambio</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><i class="bi bi-box-seam-fill text-success me-2"></i>Producción</td>
+          <td class="text-end fw-semibold">{{ produccion.actual|floatformat:0 }}</td>
+          <td class="text-end">{{ produccion.anterior|floatformat:0 }}</td>
+          <td class="text-end">{% include "reportes/_variacion.html" with metrica=produccion %}</td>
+        </tr>
+        <tr>
+          <td><i class="bi bi-truck text-danger me-2"></i>Salidas PT</td>
+          <td class="text-end fw-semibold">{{ salidas.actual|floatformat:0 }}</td>
+          <td class="text-end">{{ salidas.anterior|floatformat:0 }}</td>
+          <td class="text-end">{% include "reportes/_variacion.html" with metrica=salidas %}</td>
+        </tr>
+        {% if facturacion %}
+        <tr>
+          <td><i class="bi bi-receipt-cutoff text-primary me-2"></i>Facturas</td>
+          <td class="text-end fw-semibold">L {{ facturacion.factura.actual|moneda }}</td>
+          <td class="text-end">L {{ facturacion.factura.anterior|moneda }}</td>
+          <td class="text-end">{% include "reportes/_variacion.html" with metrica=facturacion.factura %}</td>
+        </tr>
+        <tr>
+          <td><i class="bi bi-file-earmark-text-fill text-info me-2"></i>Envíos</td>
+          <td class="text-end fw-semibold">L {{ facturacion.envio.actual|moneda }}</td>
+          <td class="text-end">L {{ facturacion.envio.anterior|moneda }}</td>
+          <td class="text-end">{% include "reportes/_variacion.html" with metrica=facturacion.envio %}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

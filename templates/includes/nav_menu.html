@@ -96,6 +96,9 @@
     <i class="bi bi-bell-fill text-warning"></i> Alertas
   </a>
   {% endif %}
+  <a href="{% url 'reporte_rendimiento_mensual' %}" class="nav-link {% if un == 'reporte_rendimiento_mensual' %}active{% endif %}">
+    <i class="bi bi-speedometer2 text-primary"></i> Rendimiento
+  </a>
   <a href="{% url 'reporte_stock_bajo' %}" class="nav-link {% if un == 'reporte_stock_bajo' %}active{% endif %}">
     <i class="bi bi-exclamation-triangle-fill text-warning"></i> Stock bajo
   </a>

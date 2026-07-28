@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -178,6 +178,90 @@ class VistasOperativasTests(TestCase):
         self.assertEqual(facturacion['envio']['total'], Decimal('725'))
         self.assertContains(response, 'Facturado · Facturas')
         self.assertContains(response, 'Facturado · Envíos')
+
+    @override_settings(FACTURAS_MODULE_ENABLED=True)
+    @patch('apps.core.views.reportes._calcular_tramos')
+    def test_reporte_rendimiento_compara_mismo_corte_y_excluye_anuladas(self, calcular_tramos):
+        hoy = timezone.localdate()
+        inicio_actual = hoy.replace(day=1)
+        fin_mes_anterior = inicio_actual - timedelta(days=1)
+        inicio_anterior = fin_mes_anterior.replace(day=1)
+        fin_anterior = min(
+            fin_mes_anterior,
+            inicio_anterior + timedelta(days=hoy.day - 1),
+        )
+
+        def tramos_por_periodo(inicio, fin):
+            total = Decimal('300') if inicio == inicio_actual else Decimal('200')
+            return [{'produccion': total}]
+
+        calcular_tramos.side_effect = tramos_por_periodo
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        cliente = Cliente.objects.create(nombre='Cliente comparativo')
+
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            fecha_documento=hoy,
+            monto_total=Decimal('1500'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            fecha_documento=fin_anterior,
+            monto_total=Decimal('1000'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            fecha_documento=hoy,
+            monto_total=Decimal('900'),
+            estado_pago='anulada',
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporte_rendimiento_mensual'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['fin_actual'], hoy)
+        self.assertEqual(response.context['fin_anterior'], fin_anterior)
+        self.assertEqual(response.context['produccion']['variacion'], Decimal('50.0'))
+        factura = response.context['facturacion']['factura']
+        self.assertEqual(factura['actual'], Decimal('1500'))
+        self.assertEqual(factura['anterior'], Decimal('1000'))
+        self.assertEqual(factura['variacion'], Decimal('50.0'))
+        self.assertContains(response, 'Rendimiento por período')
+        self.assertContains(response, 'Período anterior')
+
+    @override_settings(FACTURAS_MODULE_ENABLED=True)
+    @patch('apps.core.views.reportes._calcular_tramos', return_value=[])
+    def test_reporte_rendimiento_oculta_facturacion_sin_permiso(self, calcular_tramos):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporte_rendimiento_mensual'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context['facturacion'])
+        self.assertContains(response, 'requiere que el módulo esté habilitado')
+
+    @patch('apps.core.views.reportes._calcular_tramos', return_value=[])
+    def test_reporte_rendimiento_permite_comparar_trimestres(self, calcular_tramos):
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporte_rendimiento_mensual'),
+            {'periodo': 'trimestre', 'anio': '2026', 'trimestre': '2'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['tipo_periodo'], 'trimestre')
+        self.assertEqual(response.context['inicio_actual'], date(2026, 4, 1))
+        self.assertEqual(response.context['fin_actual'], date(2026, 6, 30))
+        self.assertEqual(response.context['inicio_anterior'], date(2026, 1, 1))
+        self.assertEqual(response.context['fin_anterior'], date(2026, 3, 31))
+        self.assertEqual(response.context['periodo_actual_titulo'], 'T2 2026')
+        self.assertContains(response, 'T2 · Abr–Jun')
+        self.assertContains(response, 'Período actual')
 
     def test_inventario_responde_con_permiso(self):
         self.client.force_login(self.user)

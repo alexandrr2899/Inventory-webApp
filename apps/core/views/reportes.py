@@ -9,6 +9,229 @@ from .payloads import *  # noqa: F401,F403
 
 # ─── REPORTES ─────────────────────────────────────────────────────────────────
 
+def _sumar_meses(fecha, cantidad):
+    """Suma meses conservando el primer día, sin dependencias externas."""
+    indice = fecha.year * 12 + fecha.month - 1 + cantidad
+    return date(indice // 12, indice % 12 + 1, 1)
+
+
+def _parametros_periodo(tipo, inicio):
+    """Query string canónico para enlazar un período."""
+    if tipo == 'mes':
+        return f'periodo=mes&mes={inicio:%Y-%m}'
+    if tipo == 'trimestre':
+        return f'periodo=trimestre&anio={inicio.year}&trimestre={(inicio.month - 1) // 3 + 1}'
+    if tipo == 'semestre':
+        return f'periodo=semestre&anio={inicio.year}&semestre={1 if inicio.month == 1 else 2}'
+    return f'periodo=anio&anio={inicio.year}'
+
+
+def _comparar_periodos(actual, anterior):
+    """Construye la variación de un KPI sin dividir entre cero."""
+    actual = actual or Decimal('0')
+    anterior = anterior or Decimal('0')
+    diferencia = actual - anterior
+
+    if anterior == 0:
+        variacion = None
+        tendencia = 'nuevo' if actual > 0 else 'igual'
+    else:
+        variacion = (diferencia / anterior * Decimal('100')).quantize(Decimal('0.1'))
+        tendencia = 'sube' if diferencia > 0 else 'baja' if diferencia < 0 else 'igual'
+
+    return {
+        'actual': actual,
+        'anterior': anterior,
+        'diferencia': diferencia,
+        'variacion': variacion,
+        'tendencia': tendencia,
+    }
+
+
+def _totales_facturacion(fecha_inicio, fecha_fin):
+    """Totales y cantidad de documentos activos por tipo."""
+    from ..models import DocumentoFactura
+
+    totales = {
+        'factura': {'total': Decimal('0'), 'documentos': 0},
+        'envio': {'total': Decimal('0'), 'documentos': 0},
+    }
+    filas = (
+        DocumentoFactura.objects
+        .filter(fecha_documento__range=[fecha_inicio, fecha_fin])
+        .exclude(estado_pago='anulada')
+        .values('tipo_documento')
+        .annotate(total=Sum('monto_total'), documentos=Count('id'))
+    )
+    for fila in filas:
+        if fila['tipo_documento'] in totales:
+            totales[fila['tipo_documento']] = {
+                'total': fila['total'] or Decimal('0'),
+                'documentos': fila['documentos'],
+            }
+    return totales
+
+
+@login_required
+@permission_required(_perm('ver_reportes'), raise_exception=True)
+@_timed_view('reporte_rendimiento_mensual')
+def reporte_rendimiento_mensual(request):
+    """
+    Compara mes, trimestre, semestre o año contra el período anterior.
+
+    El período vigente llega hasta hoy; uno histórico llega hasta su último día.
+    La comparación anterior usa la misma cantidad de días transcurridos.
+    """
+    hoy = timezone.localdate()
+    tipo_periodo = request.GET.get('periodo', 'mes')
+    if tipo_periodo not in ('mes', 'trimestre', 'semestre', 'anio'):
+        tipo_periodo = 'mes'
+
+    def _entero(nombre, predeterminado, minimo, maximo):
+        try:
+            valor = int(request.GET.get(nombre, predeterminado))
+        except (TypeError, ValueError):
+            valor = predeterminado
+        return min(max(valor, minimo), maximo)
+
+    if tipo_periodo == 'mes':
+        try:
+            inicio_actual = date.fromisoformat(f"{request.GET.get('mes', '')}-01")
+        except ValueError:
+            inicio_actual = hoy.replace(day=1)
+        meses_periodo = 1
+    elif tipo_periodo == 'trimestre':
+        anio = _entero('anio', hoy.year, 2000, hoy.year)
+        trimestre = _entero('trimestre', (hoy.month - 1) // 3 + 1, 1, 4)
+        inicio_actual = date(anio, (trimestre - 1) * 3 + 1, 1)
+        meses_periodo = 3
+    elif tipo_periodo == 'semestre':
+        anio = _entero('anio', hoy.year, 2000, hoy.year)
+        semestre = _entero('semestre', 1 if hoy.month <= 6 else 2, 1, 2)
+        inicio_actual = date(anio, 1 if semestre == 1 else 7, 1)
+        meses_periodo = 6
+    else:
+        anio = _entero('anio', hoy.year, 2000, hoy.year)
+        inicio_actual = date(anio, 1, 1)
+        meses_periodo = 12
+
+    if tipo_periodo == 'mes' and inicio_actual.year < 2000:
+        inicio_actual = hoy.replace(day=1)
+
+    if tipo_periodo == 'mes':
+        inicio_periodo_vigente = hoy.replace(day=1)
+    elif tipo_periodo == 'trimestre':
+        inicio_periodo_vigente = date(hoy.year, ((hoy.month - 1) // 3) * 3 + 1, 1)
+    elif tipo_periodo == 'semestre':
+        inicio_periodo_vigente = date(hoy.year, 1 if hoy.month <= 6 else 7, 1)
+    else:
+        inicio_periodo_vigente = date(hoy.year, 1, 1)
+
+    if inicio_actual > inicio_periodo_vigente:
+        inicio_actual = inicio_periodo_vigente
+
+    siguiente_actual = _sumar_meses(inicio_actual, meses_periodo)
+    fin_actual = hoy if inicio_actual == inicio_periodo_vigente else siguiente_actual - timedelta(days=1)
+
+    inicio_anterior = _sumar_meses(inicio_actual, -meses_periodo)
+    fin_periodo_anterior = inicio_actual - timedelta(days=1)
+    dias_transcurridos = (fin_actual - inicio_actual).days
+    fin_anterior = min(
+        fin_periodo_anterior,
+        inicio_anterior + timedelta(days=dias_transcurridos),
+    )
+
+    anterior_navegacion = inicio_anterior
+    siguiente_navegacion = _sumar_meses(inicio_actual, meses_periodo)
+    puede_avanzar = siguiente_navegacion <= inicio_periodo_vigente
+
+    nombres_meses = (
+        '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    )
+
+    def _titulo_periodo(inicio):
+        if tipo_periodo == 'mes':
+            return f'{nombres_meses[inicio.month]} {inicio.year}'
+        if tipo_periodo == 'trimestre':
+            return f'T{(inicio.month - 1) // 3 + 1} {inicio.year}'
+        if tipo_periodo == 'semestre':
+            return f'S{1 if inicio.month == 1 else 2} {inicio.year}'
+        return str(inicio.year)
+
+    tramos_actual = _calcular_tramos(inicio_actual, fin_actual)
+    tramos_anterior = _calcular_tramos(inicio_anterior, fin_anterior)
+    produccion = _comparar_periodos(
+        sum((t['produccion'] for t in tramos_actual), Decimal('0')),
+        sum((t['produccion'] for t in tramos_anterior), Decimal('0')),
+    )
+    produccion.update({
+        'tramos_actual': len(tramos_actual),
+        'tramos_anterior': len(tramos_anterior),
+    })
+
+    def _salidas(inicio, fin):
+        return (
+            DetalleMovimiento.objects
+            .filter(
+                movimiento__tipo_movimiento='salida',
+                movimiento__anulado=False,
+                movimiento__eliminado=False,
+                movimiento__fecha_movimiento__date__range=[inicio, fin],
+                item__tipo='producto',
+            )
+            .aggregate(total=Sum('cantidad'))['total'] or Decimal('0')
+        )
+
+    salidas = _comparar_periodos(
+        _salidas(inicio_actual, fin_actual),
+        _salidas(inicio_anterior, fin_anterior),
+    )
+
+    puede_ver_facturacion = (
+        getattr(settings, 'FACTURAS_MODULE_ENABLED', False)
+        and request.user.has_perm(_perm('ver_facturas'))
+    )
+    facturacion = None
+    if puede_ver_facturacion:
+        actual = _totales_facturacion(inicio_actual, fin_actual)
+        anterior = _totales_facturacion(inicio_anterior, fin_anterior)
+        facturacion = {}
+        for tipo in ('factura', 'envio'):
+            facturacion[tipo] = _comparar_periodos(
+                actual[tipo]['total'],
+                anterior[tipo]['total'],
+            )
+            facturacion[tipo].update({
+                'documentos_actual': actual[tipo]['documentos'],
+                'documentos_anterior': anterior[tipo]['documentos'],
+            })
+
+    return render(request, 'reportes/rendimiento_mensual.html', {
+        'tipo_periodo': tipo_periodo,
+        'periodo_actual_titulo': _titulo_periodo(inicio_actual),
+        'periodo_anterior_titulo': _titulo_periodo(inicio_anterior),
+        'mes_seleccionado': inicio_actual,
+        'anio_seleccionado': inicio_actual.year,
+        'trimestre_seleccionado': (inicio_actual.month - 1) // 3 + 1,
+        'semestre_seleccionado': 1 if inicio_actual.month == 1 else 2,
+        'inicio_actual': inicio_actual,
+        'fin_actual': fin_actual,
+        'inicio_anterior': inicio_anterior,
+        'fin_anterior': fin_anterior,
+        'query_anterior': _parametros_periodo(tipo_periodo, anterior_navegacion),
+        'query_siguiente': (
+            _parametros_periodo(tipo_periodo, siguiente_navegacion)
+            if puede_avanzar else None
+        ),
+        'query_actual': _parametros_periodo(tipo_periodo, inicio_periodo_vigente),
+        'produccion': produccion,
+        'salidas': salidas,
+        'facturacion': facturacion,
+        'puede_ver_facturacion': puede_ver_facturacion,
+    })
+
+
 @login_required
 @permission_required(_perm('ver_reportes'), raise_exception=True)
 @_timed_view('reporte_stock_bajo')
