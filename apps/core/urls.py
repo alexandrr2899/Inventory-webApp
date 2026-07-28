@@ -113,6 +113,7 @@ urlpatterns = [
     path('facturas/metodos-pago/', views.metodo_pago_lista, name='metodo_pago_lista'),
     path('facturas/metodos-pago/nuevo/', views.metodo_pago_crear, name='metodo_pago_crear'),
     path('facturas/metodos-pago/<int:pk>/editar/', views.metodo_pago_editar, name='metodo_pago_editar'),
+    path('facturas/metodos-pago/<int:pk>/movimientos/', views.metodo_pago_movimientos, name='metodo_pago_movimientos'),
     path('facturas/metodos-pago/<int:pk>/toggle/', views.metodo_pago_toggle_activo, name='metodo_pago_toggle_activo'),
     path('facturas/categorias/', views.categoria_producto_lista, name='categoria_producto_lista'),
     path('facturas/categorias/nueva/', views.categoria_producto_crear, name='categoria_producto_crear'),
