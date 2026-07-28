@@ -51,6 +51,19 @@ class VistasOperativasTests(TestCase):
         response = self.client.get(reverse('dashboard'))
         self.assertEqual(response.status_code, 200)
 
+    def test_navegacion_simplifica_reportes_sin_eliminar_rutas(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dashboard'))
+        html = response.content.decode()
+
+        self.assertEqual(html.count(f'href="{reverse("reporte_produccion")}"'), 0)
+        self.assertEqual(html.count(f'href="{reverse("reporte_produccion_avanzado")}"'), 2)
+        self.assertNotIn('Producción rango', html)
+        self.assertEqual(reverse('reporte_stock_bajo'), '/reportes/stock-bajo/')
+        self.assertEqual(reverse('reporte_produccion'), '/reportes/produccion/')
+        self.assertEqual(reverse('alertas_centro'), '/alertas/')
+
     def test_dashboard_ultimos_movimientos_muestra_cliente_de_salida(self):
         cliente = Cliente.objects.create(nombre='Renato')
         ubicacion = Stock.objects.get(item=self.item).ubicacion

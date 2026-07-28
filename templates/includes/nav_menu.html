@@ -5,6 +5,11 @@
   <i class="bi bi-speedometer2"></i> Dashboard
 </a>
 {% if perms.core.ver_inventario %}
+<a href="{% url 'alertas_centro' %}" class="nav-link {% if un == 'alertas_centro' %}active{% endif %}">
+  <i class="bi bi-bell-fill text-warning"></i> Alertas
+</a>
+{% endif %}
+{% if perms.core.ver_inventario %}
 <a href="{% url 'inventario_lista' %}" class="nav-link {% if 'inventario' in un %}active{% endif %}">
   <i class="bi bi-box-fill"></i> Inventario
 </a>
@@ -85,28 +90,17 @@
 <a class="nav-link nav-group-toggle d-flex justify-content-between align-items-center"
    data-bs-toggle="collapse" href="#navReportes-{{ mid }}" role="button"
    aria-controls="navReportes-{{ mid }}"
-   aria-expanded="{% if 'reporte' in un or un == 'alertas_centro' %}true{% else %}false{% endif %}">
+   aria-expanded="{% if 'reporte' in un %}true{% else %}false{% endif %}">
   <span><i class="bi bi-bar-chart-line-fill"></i> Reportes</span>
   <i class="bi bi-chevron-down small chevron"></i>
 </a>
-<div class="collapse nav-group-sub {% if 'reporte' in un or un == 'alertas_centro' %}show{% endif %}"
+<div class="collapse nav-group-sub {% if 'reporte' in un %}show{% endif %}"
      id="navReportes-{{ mid }}">
-  {% if perms.core.ver_inventario %}
-  <a href="{% url 'alertas_centro' %}" class="nav-link {% if un == 'alertas_centro' %}active{% endif %}">
-    <i class="bi bi-bell-fill text-warning"></i> Alertas
-  </a>
-  {% endif %}
   <a href="{% url 'reporte_rendimiento_mensual' %}" class="nav-link {% if un == 'reporte_rendimiento_mensual' %}active{% endif %}">
     <i class="bi bi-speedometer2 text-primary"></i> Rendimiento
   </a>
-  <a href="{% url 'reporte_stock_bajo' %}" class="nav-link {% if un == 'reporte_stock_bajo' %}active{% endif %}">
-    <i class="bi bi-exclamation-triangle-fill text-warning"></i> Stock bajo
-  </a>
-  <a href="{% url 'reporte_produccion' %}" class="nav-link {% if un == 'reporte_produccion' %}active{% endif %}">
-    <i class="bi bi-graph-up-arrow"></i> Producción día
-  </a>
   <a href="{% url 'reporte_produccion_avanzado' %}" class="nav-link {% if un == 'reporte_produccion_avanzado' %}active{% endif %}">
-    <i class="bi bi-bar-chart-line-fill text-success"></i> Producción rango
+    <i class="bi bi-bar-chart-line-fill text-success"></i> Producción
   </a>
   <a href="{% url 'reporte_consumo_pigmentos' %}" class="nav-link {% if un == 'reporte_consumo_pigmentos' %}active{% endif %}">
     <i class="bi bi-droplet-half text-info"></i> Pigmentos

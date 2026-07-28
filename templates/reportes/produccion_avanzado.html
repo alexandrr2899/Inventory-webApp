@@ -174,7 +174,11 @@
         <tr {% if t.tipo == 'extendido' %}class="tramo-extendido"{% endif %}>
           {% if forloop.first %}
           <td rowspan="{{ g.tramos|length }}" class="fw-semibold align-middle">
-            {{ g.label }}
+            <div>{{ g.label }}</div>
+            <a href="{% url 'reporte_produccion' %}?fecha={{ t.fecha_asignada|date:'Y-m-d' }}"
+               class="small fw-normal text-decoration-none">
+              <i class="bi bi-search me-1"></i>Ver detalle
+            </a>
           </td>
           {% endif %}
           <td>
@@ -305,6 +309,12 @@
         <div>
           <div class="fw-bold">{{ g.label }}</div>
           <div class="text-muted small">{{ g.num_tramos }} tramo{{ g.num_tramos|pluralize }}</div>
+          {% if agrupar_por == 'dia' %}
+          <a href="{% url 'reporte_produccion' %}?fecha={{ g.key|date:'Y-m-d' }}"
+             class="small text-decoration-none">
+            <i class="bi bi-search me-1"></i>Ver detalle del día
+          </a>
+          {% endif %}
         </div>
         <span class="badge
           {% if g.diferencia > 0 %}bg-success
