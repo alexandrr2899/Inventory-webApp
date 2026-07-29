@@ -72,6 +72,36 @@ def _totales_facturacion(fecha_inicio, fecha_fin):
     return totales
 
 
+def _facturacion_por_categoria(fecha_inicio, fecha_fin):
+    """Monto y documentos por tipo de documento y categoría de producto."""
+    from ..models import DocumentoFactura
+
+    filas = (
+        DocumentoFactura.objects
+        .filter(fecha_documento__range=[fecha_inicio, fecha_fin])
+        .exclude(estado_pago='anulada')
+        .values(
+            'tipo_documento',
+            'categoria_id',
+            'categoria__nombre',
+            'categoria__orden',
+        )
+        .annotate(total=Sum('monto_total'), documentos=Count('id'))
+    )
+    return {
+        (fila['tipo_documento'], fila['categoria_id']): {
+            'tipo_documento': fila['tipo_documento'],
+            'categoria_id': fila['categoria_id'],
+            'categoria': fila['categoria__nombre'] or 'Sin categoría',
+            'categoria_orden': fila['categoria__orden'] or 0,
+            'total': fila['total'] or Decimal('0'),
+            'documentos': fila['documentos'],
+        }
+        for fila in filas
+        if fila['tipo_documento'] in ('factura', 'envio')
+    }
+
+
 @login_required
 @permission_required(_perm('ver_reportes'), raise_exception=True)
 @_timed_view('reporte_rendimiento_mensual')
@@ -193,6 +223,7 @@ def reporte_rendimiento_mensual(request):
         and request.user.has_perm(_perm('ver_facturas'))
     )
     facturacion = None
+    facturacion_por_categoria = []
     if puede_ver_facturacion:
         actual = _totales_facturacion(inicio_actual, fin_actual)
         anterior = _totales_facturacion(inicio_anterior, fin_anterior)
@@ -206,6 +237,40 @@ def reporte_rendimiento_mensual(request):
                 'documentos_actual': actual[tipo]['documentos'],
                 'documentos_anterior': anterior[tipo]['documentos'],
             })
+
+        categorias_actual = _facturacion_por_categoria(inicio_actual, fin_actual)
+        categorias_anterior = _facturacion_por_categoria(inicio_anterior, fin_anterior)
+        claves = categorias_actual.keys() | categorias_anterior.keys()
+
+        def _orden_categoria(clave):
+            datos = categorias_actual.get(clave) or categorias_anterior[clave]
+            return (
+                0 if clave[0] == 'factura' else 1,
+                datos['categoria_id'] is None,
+                datos['categoria_orden'],
+                datos['categoria'].casefold(),
+            )
+
+        for clave in sorted(claves, key=_orden_categoria):
+            datos_actual = categorias_actual.get(clave)
+            datos_anterior = categorias_anterior.get(clave)
+            referencia = datos_actual or datos_anterior
+            metrica = _comparar_periodos(
+                datos_actual['total'] if datos_actual else Decimal('0'),
+                datos_anterior['total'] if datos_anterior else Decimal('0'),
+            )
+            metrica.update({
+                'tipo_documento': referencia['tipo_documento'],
+                'tipo_label': (
+                    'Factura' if referencia['tipo_documento'] == 'factura'
+                    else 'Envío'
+                ),
+                'categoria_id': referencia['categoria_id'],
+                'categoria': referencia['categoria'],
+                'documentos_actual': datos_actual['documentos'] if datos_actual else 0,
+                'documentos_anterior': datos_anterior['documentos'] if datos_anterior else 0,
+            })
+            facturacion_por_categoria.append(metrica)
 
     return render(request, 'reportes/rendimiento_mensual.html', {
         'tipo_periodo': tipo_periodo,
@@ -228,6 +293,7 @@ def reporte_rendimiento_mensual(request):
         'produccion': produccion,
         'salidas': salidas,
         'facturacion': facturacion,
+        'facturacion_por_categoria': facturacion_por_categoria,
         'puede_ver_facturacion': puede_ver_facturacion,
     })
 

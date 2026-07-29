@@ -12,8 +12,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
-    BackupJob, Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
-    DocumentoFactura, Item, Maquina, MovimientoInventario, Stock, Ubicacion,
+    BackupJob, Categoria, CategoriaProducto, Cliente, Conteo, ConteoDetalle,
+    DetalleMovimiento, DocumentoFactura, Item, Maquina, MovimientoInventario,
+    Stock, Ubicacion,
 )
 from .views import (
     _aplicar_efecto_detalle,
@@ -256,6 +257,69 @@ class VistasOperativasTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context['facturacion'])
         self.assertContains(response, 'requiere que el módulo esté habilitado')
+
+    @override_settings(FACTURAS_MODULE_ENABLED=True)
+    @patch('apps.core.views.reportes._calcular_tramos', return_value=[])
+    def test_reporte_rendimiento_desglosa_facturas_y_envios_por_categoria(
+            self, calcular_tramos):
+        hoy = timezone.localdate()
+        inicio_actual = hoy.replace(day=1)
+        fin_mes_anterior = inicio_actual - timedelta(days=1)
+        inicio_mes_anterior = fin_mes_anterior.replace(day=1)
+        fecha_comparable_anterior = inicio_mes_anterior + timedelta(days=hoy.day - 1)
+        categoria = CategoriaProducto.objects.create(nombre='Bolsa Camiseta')
+        cliente = Cliente.objects.create(nombre='Cliente por categoría')
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            categoria=categoria,
+            fecha_documento=hoy,
+            monto_total=Decimal('1200'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='envio',
+            categoria=categoria,
+            fecha_documento=hoy,
+            monto_total=Decimal('300'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            categoria=categoria,
+            fecha_documento=fecha_comparable_anterior,
+            monto_total=Decimal('800'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='envio',
+            fecha_documento=hoy,
+            monto_total=Decimal('125'),
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporte_rendimiento_mensual'))
+
+        self.assertEqual(response.status_code, 200)
+        filas = response.context['facturacion_por_categoria']
+        self.assertEqual(
+            [(f['tipo_documento'], f['categoria']) for f in filas],
+            [
+                ('factura', 'Bolsa Camiseta'),
+                ('envio', 'Bolsa Camiseta'),
+                ('envio', 'Sin categoría'),
+            ],
+        )
+        factura_camiseta = filas[0]
+        self.assertEqual(factura_camiseta['actual'], Decimal('1200'))
+        self.assertEqual(factura_camiseta['anterior'], Decimal('800'))
+        self.assertEqual(factura_camiseta['documentos_actual'], 1)
+        self.assertEqual(factura_camiseta['variacion'], Decimal('50.0'))
+        self.assertContains(response, 'Facturación por tipo y categoría')
+        self.assertContains(response, 'Bolsa Camiseta')
+        self.assertContains(response, 'Sin categoría')
 
     @patch('apps.core.views.reportes._calcular_tramos', return_value=[])
     def test_reporte_rendimiento_permite_comparar_trimestres(self, calcular_tramos):
