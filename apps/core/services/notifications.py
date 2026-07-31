@@ -182,6 +182,8 @@ def notify_stock(item, movimiento: str = '', usuario: str = ''):
                 item.nombre, stock_total,
             )
             payload = generar_resumen_pigmentos()
+            payload['movimiento'] = movimiento
+            payload['usuario'] = usuario
             send_event('pigmentos_resumen', payload)
         return
 

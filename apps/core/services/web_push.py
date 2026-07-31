@@ -26,6 +26,7 @@ EVENT_CATEGORIES = {
     'inventario_pigmentos_actual': 'inventario',
     'reporte_stock_bajo': 'inventario',
     'production_created': 'operaciones',
+    'conteo_creado': 'operaciones',
     'count_difference': 'operaciones',
     'reporte_produccion_dia': 'operaciones',
     'reporte_salidas_dia': 'operaciones',
@@ -119,13 +120,31 @@ def event_notification(event_type, payload):
         title = 'Producción registrada'
         body = f'{p.get("cantidad", "")} de {p.get("item", "producto")} · {p.get("ubicacion", "")}'.strip(' ·')
         url = reverse('produccion_nueva')
+    elif event_type == 'conteo_creado':
+        title = f'Conteo registrado · {p.get("tipo_conteo", "Conteo")}'
+        cantidad = int(p.get('items_contados', 0) or 0)
+        items_label = 'ítem' if cantidad == 1 else 'ítems'
+        body = (
+            f'{cantidad} {items_label} · {p.get("turno", "")} '
+            f'· {p.get("usuario", "")}'
+        ).strip(' ·')
+        url = reverse('conteo_conciliar', args=[p['conteo_id']])
+        tag = f'conteo-{p.get("conteo_id")}-creado'
     elif event_type == 'count_difference':
-        title = 'Diferencia de conteo'
-        body = p.get('item') or f'{p.get("ajustes_aplicados", 0)} ajuste(s) aplicado(s)'
+        cantidad = int(p.get('ajustes_aplicados', 1) or 1)
+        ajustes_label = 'ajuste aplicado' if cantidad == 1 else 'ajustes aplicados'
+        title = f'Ajustes de conteo #{p.get("conteo_id", "")}'.rstrip('#')
+        contexto = ' · '.join(filter(None, [
+            p.get('tipo_conteo'), p.get('turno'), p.get('usuario'),
+        ]))
+        body = f'{cantidad} {ajustes_label}'
+        if contexto:
+            body = f'{body} · {contexto}'
         if p.get('conteo_id'):
             url = reverse('conteo_detalle', args=[p['conteo_id']])
         else:
             url = reverse('conteo_lista')
+        tag = f'conteo-{p.get("conteo_id", "")}-ajustes'
     elif event_type in ('reporte_produccion_dia', 'reporte_salidas_dia'):
         title = p.get('titulo') or (
             'Producción del día' if event_type == 'reporte_produccion_dia'
@@ -186,8 +205,28 @@ def enqueue_web_push(event_type, payload):
     if not web_push_configured() or event_type not in EVENT_CATEGORIES:
         return False
     try:
-        from ..tasks import fanout_web_push, flush_security_web_push
+        from ..tasks import (
+            fanout_web_push, flush_count_web_push, flush_security_web_push,
+        )
         payload = json.loads(json.dumps(payload or {}, default=str))
+
+        # El reporte automático posterior a la conciliación sigue llegando a
+        # n8n/Telegram. En Web Push se omite porque el resumen de ajustes ya
+        # representa la misma acción y evita dos avisos consecutivos.
+        if (
+            payload.get('origen') == 'conciliacion_automatica'
+            and event_type in ('inventario_camiseta_actual', 'reporte_produccion_dia')
+        ):
+            return True
+
+        # Los cambios de stock producidos por una conciliación se consultan en
+        # el detalle enlazado desde el resumen del conteo. Los otros canales
+        # conservan estas alertas, pero Web Push no muestra una por cada ítem.
+        if (
+            payload.get('movimiento') == 'ajuste'
+            and event_type in ('stock_zero', 'stock_low', 'pigmentos_resumen')
+        ):
+            return True
 
         if event_type in SECURITY_EVENTS:
             count_key = f'webpush:security:{event_type}:count'
@@ -200,6 +239,22 @@ def enqueue_web_push(event_type, payload):
             cache.set(payload_key, payload, timeout=600)
             if cache.add(lock_key, True, timeout=360):
                 flush_security_web_push.apply_async(args=[event_type], countdown=300)
+        elif event_type == 'count_difference' and payload.get('conteo_id'):
+            conteo_id = int(payload['conteo_id'])
+            count_key = f'webpush:conteo:{conteo_id}:ajustes'
+            payload_key = f'webpush:conteo:{conteo_id}:payload'
+            lock_key = f'webpush:conteo:{conteo_id}:scheduled'
+            try:
+                incremento = max(int(payload.get('ajustes_aplicados', 1) or 1), 1)
+            except (TypeError, ValueError):
+                incremento = 1
+            try:
+                cache.incr(count_key, incremento)
+            except ValueError:
+                cache.set(count_key, incremento, timeout=600)
+            cache.set(payload_key, payload, timeout=600)
+            if cache.add(lock_key, True, timeout=90):
+                flush_count_web_push.apply_async(args=[conteo_id], countdown=30)
         else:
             fanout_web_push.delay(event_type, payload)
         return True

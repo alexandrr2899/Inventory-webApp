@@ -432,6 +432,13 @@ def conteo_nuevo(request):
             return _render_error(form)
 
         label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(conteo.tipo_conteo, conteo.tipo_conteo)
+        send_event('conteo_creado', {
+            'conteo_id': conteo.pk,
+            'tipo_conteo': label_tipo,
+            'turno': conteo.get_turno_display(),
+            'items_contados': len(filas),
+            'usuario': request.user.get_full_name() or request.user.username,
+        })
         messages.success(
             request,
             f'Conteo {label_tipo} - {conteo.get_turno_display()} registrado con {len(filas)} ítem(s). '
@@ -633,6 +640,9 @@ def conteo_ajustar_detalle(request, pk, det_pk):
     send_event('count_difference', {
         'conteo_id': conteo.pk, 'item': detalle.item.nombre, 'codigo': detalle.item.codigo,
         'diferencia': str(detalle.diferencia_final), 'ubicacion': detalle.ubicacion.nombre,
+        'ajustes_aplicados': 1,
+        'tipo_conteo': conteo.get_tipo_conteo_display(),
+        'turno': conteo.get_turno_display(),
         'usuario': request.user.username,
     })
     notify_stock(detalle.item, movimiento='ajuste', usuario=request.user.username)
@@ -689,6 +699,8 @@ def conteo_ajustar_todos(request, pk):
 
     send_event('count_difference', {
         'conteo_id': conteo.pk, 'ajustes_aplicados': count,
+        'tipo_conteo': conteo.get_tipo_conteo_display(),
+        'turno': conteo.get_turno_display(),
         'usuario': request.user.username,
     })
     messages.success(request, f'{count} ajuste(s) aplicado(s) exitosamente.')

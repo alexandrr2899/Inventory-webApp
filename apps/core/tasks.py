@@ -95,6 +95,23 @@ def flush_security_web_push(event_type):
     return fanout_web_push(event_type, payload)
 
 
+@shared_task
+def flush_count_web_push(conteo_id):
+    """Agrupa los ajustes aplicados al mismo conteo en una sola notificación."""
+    count_key = f'webpush:conteo:{conteo_id}:ajustes'
+    payload_key = f'webpush:conteo:{conteo_id}:payload'
+    lock_key = f'webpush:conteo:{conteo_id}:scheduled'
+    count = int(cache.get(count_key, 0) or 0)
+    payload = cache.get(payload_key, {}) or {}
+    cache.delete_many([count_key, payload_key, lock_key])
+    if count <= 0:
+        return 0
+    payload = dict(payload)
+    payload['conteo_id'] = conteo_id
+    payload['ajustes_aplicados'] = count
+    return fanout_web_push('count_difference', payload)
+
+
 def _reserve_scheduled_event(key, event_type):
     try:
         with transaction.atomic():

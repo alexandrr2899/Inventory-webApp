@@ -5,17 +5,22 @@ from unittest.mock import patch
 
 from celery.exceptions import Retry
 from django.contrib.auth.models import Group, Permission, User
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
-    Cliente, DocumentoFactura, MetodoPago, WebPushPreference, WebPushScheduledEvent,
-    WebPushSubscription,
+    Categoria, Cliente, Conteo, DocumentoFactura, Item, MetodoPago, Stock,
+    Ubicacion, WebPushPreference, WebPushScheduledEvent, WebPushSubscription,
 )
 from .services.notifications import send_event
-from .services.web_push import event_notification, user_can_receive_category
-from .tasks import deliver_web_push, notify_overdue_invoices
+from .services.web_push import (
+    enqueue_web_push, event_notification, user_can_receive_category,
+)
+from .tasks import (
+    deliver_web_push, flush_count_web_push, notify_overdue_invoices,
+)
 
 
 PUSH_SETTINGS = override_settings(
@@ -177,6 +182,96 @@ class EventCompatibilityTests(TestCase):
         )
         self.assertEqual(
             notification['url'], f'{reverse("facturas_lista")}?estado=vencida')
+
+    def test_conteo_creado_tiene_resumen_y_destino(self):
+        notification = event_notification('conteo_creado', {
+            'conteo_id': 15, 'tipo_conteo': 'Camiseta', 'turno': 'Mañana',
+            'items_contados': 8, 'usuario': 'Ana',
+        })
+        self.assertEqual(notification['title'], 'Conteo registrado · Camiseta')
+        self.assertEqual(notification['body'], '8 ítems · Mañana · Ana')
+        self.assertEqual(notification['url'], reverse('conteo_conciliar', args=[15]))
+
+
+@PUSH_SETTINGS
+class CountPushAggregationTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    @patch('apps.core.tasks.flush_count_web_push.apply_async')
+    def test_agrupa_ajustes_del_mismo_conteo_en_una_tarea(self, apply_async):
+        base = {
+            'conteo_id': 7, 'tipo_conteo': 'Camiseta',
+            'turno': 'Mañana', 'usuario': 'operador',
+        }
+        self.assertTrue(enqueue_web_push(
+            'count_difference', {**base, 'ajustes_aplicados': 1}))
+        self.assertTrue(enqueue_web_push(
+            'count_difference', {**base, 'ajustes_aplicados': 3}))
+
+        apply_async.assert_called_once_with(args=[7], countdown=30)
+        with patch('apps.core.tasks.fanout_web_push', return_value=1) as fanout:
+            self.assertEqual(flush_count_web_push(7), 1)
+        fanout.assert_called_once_with('count_difference', {
+            **base, 'ajustes_aplicados': 4,
+        })
+
+    @patch('apps.core.tasks.fanout_web_push.delay')
+    def test_reporte_automatico_no_duplica_el_push_del_conteo(self, delay):
+        self.assertTrue(enqueue_web_push('inventario_camiseta_actual', {
+            'origen': 'conciliacion_automatica', 'conteo_id': 7,
+        }))
+        delay.assert_not_called()
+
+    @patch('apps.core.tasks.fanout_web_push.delay')
+    def test_alerta_stock_de_ajuste_no_duplica_el_push_del_conteo(self, delay):
+        self.assertTrue(enqueue_web_push('stock_low', {
+            'item': 'Bolsa Camiseta', 'movimiento': 'ajuste',
+        }))
+        delay.assert_not_called()
+
+
+class CountViewEventTests(TestCase):
+    def setUp(self):
+        categoria = Categoria.objects.create(nombre='Camiseta')
+        self.item = Item.objects.create(
+            codigo='B-1', nombre='Bolsa Camiseta', tipo='producto',
+            categoria=categoria, unidad_medida='fardos',
+        )
+        self.ubicacion = Ubicacion.objects.create(
+            nombre='Bodega', tipo='bodega')
+        Stock.objects.create(
+            item=self.item, ubicacion=self.ubicacion,
+            cantidad_actual=Decimal('10'),
+        )
+        self.user = User.objects.create_user('contador')
+        self.user.user_permissions.add(Permission.objects.get(
+            content_type__app_label='core', codename='registrar_conteo'))
+        self.client.force_login(self.user)
+
+    @patch('apps.core.views.conteos.send_event')
+    def test_conteo_nuevo_emite_un_solo_resumen(self, send_event_mock):
+        now = timezone.localtime().strftime('%Y-%m-%dT%H:%M')
+        response = self.client.post(reverse('conteo_nuevo'), {
+            'fecha': timezone.localdate().isoformat(),
+            'turno': 'manana',
+            'tipo_conteo': 'camiseta',
+            'fecha_hora_conteo': now,
+            'observaciones': '',
+            'item[]': [str(self.item.pk)],
+            'ubicacion[]': [str(self.ubicacion.pk)],
+            'cantidad_contada[]': ['12'],
+        })
+
+        self.assertEqual(response.status_code, 302)
+        conteo = Conteo.objects.get()
+        send_event_mock.assert_called_once_with('conteo_creado', {
+            'conteo_id': conteo.pk,
+            'tipo_conteo': 'Camiseta',
+            'turno': 'Mañana',
+            'items_contados': 1,
+            'usuario': 'contador',
+        })
 
 
 class PaymentEventTests(TestCase):
