@@ -6,6 +6,11 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('alertas/', views.alertas_centro, name='alertas_centro'),
     path('notificaciones/', views.notificaciones_panel, name='notificaciones_panel'),
+    path('api/web-push/config/', views.web_push_config, name='web_push_config'),
+    path('api/web-push/subscribe/', views.web_push_subscribe, name='web_push_subscribe'),
+    path('api/web-push/unsubscribe/', views.web_push_unsubscribe, name='web_push_unsubscribe'),
+    path('api/web-push/preferences/', views.web_push_preferences, name='web_push_preferences'),
+    path('api/web-push/test/', views.web_push_test, name='web_push_test'),
     path('backups/', views.backups_panel, name='backups_panel'),
     path('backups/descargar/<str:filename>/', views.backup_descargar, name='backup_descargar'),
 

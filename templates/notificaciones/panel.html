@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Notificaciones{% endblock %}
 
 {% block extra_head %}
@@ -20,7 +21,7 @@
 <div class="page-header d-flex justify-content-between align-items-center">
   <div>
     <h1><i class="bi bi-send-fill me-2"></i>Notificaciones</h1>
-    <small class="opacity-75">Envíos manuales por webhook/n8n</small>
+    <small class="opacity-75">Telegram y avisos en tus dispositivos</small>
   </div>
   <a href="{% url 'alertas_centro' %}" class="btn btn-light btn-sm fw-semibold">
     <i class="bi bi-bell-fill me-1"></i>Alertas
@@ -36,6 +37,74 @@
   </div>
 </div>
 {% endif %}
+
+<div id="webPushPanel" class="card border-0 shadow-sm mb-3"
+     data-public-key="{{ vapid_public_key }}"
+     data-subscribe-url="{% url 'web_push_subscribe' %}"
+     data-unsubscribe-url="{% url 'web_push_unsubscribe' %}"
+     data-preferences-url="{% url 'web_push_preferences' %}"
+     data-test-url="{% url 'web_push_test' %}">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+      <div>
+        <h2 class="h5 mb-1"><i class="bi bi-bell-fill text-primary me-2"></i>Web Push</h2>
+        <p class="text-muted small mb-0">Recibí alertas aunque la aplicación esté cerrada.</p>
+      </div>
+      <span id="pushStatus" class="badge text-bg-secondary">Comprobando…</span>
+    </div>
+
+    {% if not web_push_configurado %}
+    <div class="alert alert-warning mb-0">
+      Faltan las claves VAPID en la configuración del servidor.
+    </div>
+    {% else %}
+    <div id="pushInstallHint" class="alert alert-info d-none">
+      En iPhone, primero abrí esta página en Safari y elegí
+      <strong>Compartir → Agregar a pantalla de inicio</strong>.
+    </div>
+    <div id="pushMessage" class="alert d-none" role="status"></div>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <button type="button" id="pushActivate" class="btn btn-primary">
+        <i class="bi bi-bell me-1"></i>Activar en este dispositivo
+      </button>
+      <button type="button" id="pushTest" class="btn btn-outline-success d-none">
+        Probar notificación
+      </button>
+      <button type="button" id="pushDeactivate" class="btn btn-outline-danger d-none">
+        Desactivar dispositivo
+      </button>
+    </div>
+    <form id="pushPreferences" class="row g-2">
+      {% csrf_token %}
+      <div class="col-12 col-md-6 col-lg"><div class="form-check form-switch">
+        <input class="form-check-input push-pref" type="checkbox" id="push-inventario"
+               data-field="inventario" {% if push_preference.inventario %}checked{% endif %}>
+        <label class="form-check-label" for="push-inventario">Inventario</label>
+      </div></div>
+      <div class="col-12 col-md-6 col-lg"><div class="form-check form-switch">
+        <input class="form-check-input push-pref" type="checkbox" id="push-operaciones"
+               data-field="operaciones" {% if push_preference.operaciones %}checked{% endif %}>
+        <label class="form-check-label" for="push-operaciones">Operaciones y reportes</label>
+      </div></div>
+      <div class="col-12 col-md-6 col-lg"><div class="form-check form-switch">
+        <input class="form-check-input push-pref" type="checkbox" id="push-facturas"
+               data-field="facturas" {% if push_preference.facturas %}checked{% endif %}>
+        <label class="form-check-label" for="push-facturas">Facturas y cobros</label>
+      </div></div>
+      <div class="col-12 col-md-6 col-lg"><div class="form-check form-switch">
+        <input class="form-check-input push-pref" type="checkbox" id="push-backups"
+               data-field="backups" {% if push_preference.backups %}checked{% endif %}>
+        <label class="form-check-label" for="push-backups">Backups</label>
+      </div></div>
+      <div class="col-12 col-md-6 col-lg"><div class="form-check form-switch">
+        <input class="form-check-input push-pref" type="checkbox" id="push-seguridad"
+               data-field="seguridad" {% if push_preference.seguridad %}checked{% endif %}>
+        <label class="form-check-label" for="push-seguridad">Seguridad</label>
+      </div></div>
+    </form>
+    {% endif %}
+  </div>
+</div>
 
 <div class="row g-3">
   {% for reporte in reportes %}
@@ -63,4 +132,10 @@
   </div>
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if web_push_configurado %}
+<script src="{% static 'js/web-push.js' %}"></script>
+{% endif %}
 {% endblock %}

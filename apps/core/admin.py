@@ -3,7 +3,8 @@ from .models import (
     Categoria, Item, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, DetalleMovimiento, Conteo, ConteoDetalle, BackupJob,
     DocumentoFactura, TarifaCliente, MetodoPago, Pago, AplicacionPago,
-    CategoriaProducto,
+    CategoriaProducto, WebPushSubscription, WebPushPreference,
+    WebPushScheduledEvent,
 )
 
 admin.site.site_header = "Transformadora de Empaques"
@@ -152,3 +153,30 @@ class PagoAdmin(admin.ModelAdmin):
     list_display = ('cliente', 'fecha_pago', 'metodo_pago', 'monto')
     list_filter = ('metodo_pago', 'fecha_pago')
     inlines = [AplicacionPagoInline]
+
+
+@admin.register(WebPushSubscription)
+class WebPushSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'updated_at', 'last_success_at', 'last_error')
+    search_fields = ('user__username', 'endpoint', 'user_agent')
+    readonly_fields = (
+        'user', 'endpoint', 'p256dh', 'auth', 'user_agent',
+        'created_at', 'updated_at', 'last_success_at', 'last_error',
+    )
+
+
+@admin.register(WebPushPreference)
+class WebPushPreferenceAdmin(admin.ModelAdmin):
+    list_display = (
+        'user', 'inventario', 'operaciones', 'facturas',
+        'backups', 'seguridad', 'updated_at',
+    )
+    search_fields = ('user__username',)
+
+
+@admin.register(WebPushScheduledEvent)
+class WebPushScheduledEventAdmin(admin.ModelAdmin):
+    list_display = ('key', 'event_type', 'created_at')
+    list_filter = ('event_type',)
+    search_fields = ('key',)
+    readonly_fields = ('key', 'event_type', 'created_at')

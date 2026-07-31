@@ -802,3 +802,59 @@ class AplicacionPago(models.Model):
 
     def __str__(self):
         return f'L {self.monto} → {self.documento}'
+
+
+class WebPushSubscription(models.Model):
+    """Suscripción Push de un navegador/dispositivo asociada a un usuario."""
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='web_push_subscriptions')
+    endpoint = models.TextField(unique=True)
+    p256dh = models.TextField()
+    auth = models.TextField()
+    user_agent = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        verbose_name = 'Suscripción Web Push'
+        verbose_name_plural = 'Suscripciones Web Push'
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f'Web Push · {self.user.username}'
+
+
+class WebPushPreference(models.Model):
+    """Categorías Web Push habilitadas por un usuario elegible."""
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name='web_push_preference')
+    inventario = models.BooleanField(default=True)
+    operaciones = models.BooleanField(default=True)
+    facturas = models.BooleanField(default=True)
+    backups = models.BooleanField(default=True)
+    seguridad = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Preferencia Web Push'
+        verbose_name_plural = 'Preferencias Web Push'
+
+    def __str__(self):
+        return f'Preferencias Web Push · {self.user.username}'
+
+
+class WebPushScheduledEvent(models.Model):
+    """Clave persistente para no repetir avisos Web Push programados."""
+    key = models.CharField(max_length=180, unique=True)
+    event_type = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Evento Web Push programado'
+        verbose_name_plural = 'Eventos Web Push programados'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.key

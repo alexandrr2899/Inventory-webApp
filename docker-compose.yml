@@ -84,9 +84,75 @@ services:
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-300}
       N8N_WEBHOOK_URL:      ${N8N_WEBHOOK_URL:-}
+      VAPID_PUBLIC_KEY:     ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY:    ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT:        ${VAPID_SUBJECT:-}
       FACTURAS_INGEST_TOKEN: ${FACTURAS_INGEST_TOKEN:-}
       ADMIN_URL:            ${ADMIN_URL:-gestion-interna/}
       REDIS_URL:            ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL:     ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Web Push: tareas en segundo plano ─────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    entrypoint: []
+    command: ["celery", "-A", "config", "worker", "--loglevel=INFO", "--concurrency=2"]
+    volumes:
+      - media_files:/app/media
+    environment:
+      SECRET_KEY:           ${SECRET_KEY}
+      DEBUG:                ${DEBUG:-False}
+      ALLOWED_HOSTS:        ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DB_HOST:              db
+      DB_NAME:              ${DB_NAME:-bolsas_inventario}
+      DB_USER:              ${DB_USER:-bolsas_user}
+      DB_PASSWORD:          ${DB_PASSWORD}
+      DB_PORT:              ${DB_PORT:-5432}
+      REDIS_URL:            ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL:     ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      VAPID_PUBLIC_KEY:     ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY:    ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT:        ${VAPID_SUBJECT:-}
+      N8N_WEBHOOK_URL:      ${N8N_WEBHOOK_URL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Web Push: horario de facturas vencidas ────────────────────────────────
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    entrypoint: []
+    command: ["celery", "-A", "config", "beat", "--loglevel=INFO"]
+    environment:
+      SECRET_KEY:           ${SECRET_KEY}
+      DEBUG:                ${DEBUG:-False}
+      ALLOWED_HOSTS:        ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DB_HOST:              db
+      DB_NAME:              ${DB_NAME:-bolsas_inventario}
+      DB_USER:              ${DB_USER:-bolsas_user}
+      DB_PASSWORD:          ${DB_PASSWORD}
+      DB_PORT:              ${DB_PORT:-5432}
+      REDIS_URL:            ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL:     ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      VAPID_PUBLIC_KEY:     ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY:    ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT:        ${VAPID_SUBJECT:-}
     depends_on:
       db:
         condition: service_healthy

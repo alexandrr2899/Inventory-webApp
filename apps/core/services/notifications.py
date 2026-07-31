@@ -58,8 +58,7 @@ def send_event(event_type: str, payload: dict) -> bool:
     - Si N8N_WEBHOOK_URL está vacío, retorna False inmediatamente.
     """
     url = getattr(settings, 'N8N_WEBHOOK_URL', None)
-    if not url:
-        return False
+    webhook_ok = False
 
     body = {
         'event_type': event_type,
@@ -68,20 +67,29 @@ def send_event(event_type: str, payload: dict) -> bool:
         'payload': payload,
     }
 
+    if url:
+        try:
+            resp = requests.post(url, json=body, timeout=5)
+            resp.raise_for_status()
+            webhook_ok = True
+            event_log.info('[EVENT] %s enviado — status %s', event_type, resp.status_code)
+        except requests.exceptions.ConnectionError:
+            event_log.warning('[EVENT] %s — no se pudo conectar a %s', event_type, url)
+        except requests.exceptions.Timeout:
+            event_log.warning('[EVENT] %s — timeout (>5 s)', event_type)
+        except requests.exceptions.HTTPError as exc:
+            event_log.warning('[EVENT] %s — HTTP error: %s', event_type, exc)
+        except Exception as exc:  # pragma: no cover
+            event_log.warning('[EVENT] %s — error inesperado: %s', event_type, exc)
+
+    # Canal independiente: una falla al encolar Web Push no altera jamás el
+    # resultado histórico del webhook (usado por Telegram/n8n).
     try:
-        resp = requests.post(url, json=body, timeout=5)
-        resp.raise_for_status()
-        event_log.info('[EVENT] %s enviado — status %s', event_type, resp.status_code)
-        return True
-    except requests.exceptions.ConnectionError:
-        event_log.warning('[EVENT] %s — no se pudo conectar a %s', event_type, url)
-    except requests.exceptions.Timeout:
-        event_log.warning('[EVENT] %s — timeout (>5 s)', event_type)
-    except requests.exceptions.HTTPError as exc:
-        event_log.warning('[EVENT] %s — HTTP error: %s', event_type, exc)
-    except Exception as exc:  # pragma: no cover
-        event_log.warning('[EVENT] %s — error inesperado: %s', event_type, exc)
-    return False
+        from .web_push import enqueue_web_push
+        enqueue_web_push(event_type, payload)
+    except Exception as exc:  # pragma: no cover - defensa de integración
+        event_log.warning('[WEBPUSH] error aislado al despachar %s: %s', event_type, exc)
+    return webhook_ok
 
 
 # Alias de compatibilidad para código anterior que llamaba send_n8n_event
@@ -152,6 +160,7 @@ def notify_stock(item, movimiento: str = '', usuario: str = ''):
     ubicacion_nombre = stock_ub.ubicacion.nombre if stock_ub else 'Sin ubicación'
 
     base_payload = {
+        'item_id':          item.pk,
         'item':             item.nombre,
         'codigo':           item.codigo,
         'tipo':             item.tipo,

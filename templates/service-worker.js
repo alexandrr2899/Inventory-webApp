@@ -6,9 +6,9 @@
    - CDN externo         → Cache First  (Bootstrap, icons — versionados por URL)
    ═══════════════════════════════════════════════════════════════════════ */
 
-const CACHE_APP    = 'bolsas-app-v5';
-const CACHE_STATIC = 'bolsas-static-v5';
-const CACHE_CDN    = 'bolsas-cdn-v5';
+const CACHE_APP    = 'bolsas-app-v6';
+const CACHE_STATIC = 'bolsas-static-v6';
+const CACHE_CDN    = 'bolsas-cdn-v6';
 
 // Assets CDN que se cachean al instalar
 const PRECACHE_CDN = [
@@ -60,6 +60,46 @@ self.addEventListener('activate', event => {
     )
   );
   self.clients.claim();
+});
+
+// ─── WEB PUSH ────────────────────────────────────────────────────────────────
+self.addEventListener('push', event => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (_) {
+    data = {
+      title: 'Transformadora de Empaques',
+      body: event.data ? event.data.text() : '',
+    };
+  }
+  event.waitUntil(self.registration.showNotification(
+    data.title || 'Transformadora de Empaques',
+    {
+      body: data.body || '',
+      icon: data.icon || '/static/icons/icon-192.png',
+      badge: data.badge || '/static/icons/icon-192.png',
+      tag: data.tag || data.event_type || 'transformadora',
+      renotify: false,
+      data: { url: data.url || '/' },
+    }
+  ));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = new URL(
+    (event.notification.data && event.notification.data.url) || '/',
+    self.location.origin
+  ).href;
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windows => {
+      for (const client of windows) {
+        if (client.url === target && 'focus' in client) return client.focus();
+      }
+      return clients.openWindow ? clients.openWindow(target) : undefined;
+    })
+  );
 });
 
 // ─── FETCH ────────────────────────────────────────────────────────────────────

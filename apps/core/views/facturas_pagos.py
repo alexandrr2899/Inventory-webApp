@@ -15,13 +15,24 @@ def factura_pago_nuevo(request, pk):
         form = PagoFacturaForm(request.POST, request.FILES)
         if form.is_valid():
             cd = form.cleaned_data
-            payment_service.registrar_abono(
+            pago = payment_service.registrar_abono(
                 doc.cliente,
                 fecha_pago=cd['fecha_pago'], metodo_pago=cd['metodo_pago'],
                 monto=cd['monto'], referencia=cd.get('referencia', ''),
                 comprobante=cd.get('comprobante'), notas=cd.get('notas', ''),
                 aplicaciones=[(doc, cd['monto'])],
             )
+            _send_event_later('pago_factura_creado', {
+                'pago_id': pago.pk,
+                'documento_id': doc.pk,
+                'numero_documento': doc.numero_documento,
+                'cliente_id': doc.cliente_id,
+                'cliente': doc.cliente.nombre,
+                'monto': str(pago.monto),
+                'metodo_pago': pago.metodo_pago.nombre,
+                'referencia': pago.referencia,
+                'registrado_por': request.user.username,
+            })
             messages.success(request, 'Pago registrado.')
             return redirect('factura_detalle', pk=doc.pk)
     else:

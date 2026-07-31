@@ -107,7 +107,8 @@
         <span class="text-white-50 d-none d-md-inline small">
           {{ user.get_full_name|default:user.username }}
         </span>
-        <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light" title="Cerrar sesión">
+        <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light push-logout"
+           data-push-unsubscribe-url="{% url 'web_push_unsubscribe' %}" title="Cerrar sesión">
           <i class="bi bi-box-arrow-right"></i>
         </a>
       {% endif %}
@@ -160,7 +161,8 @@
       {% include "includes/nav_menu.html" with menu_id="mobile" %}
     </nav>
     <div class="border-top mt-2 pt-2 pb-3 px-3">
-      <a href="{% url 'logout' %}" class="btn btn-outline-danger btn-sm w-100">
+      <a href="{% url 'logout' %}" class="btn btn-outline-danger btn-sm w-100 push-logout"
+         data-push-unsubscribe-url="{% url 'web_push_unsubscribe' %}">
         <i class="bi bi-box-arrow-right me-2"></i>Cerrar sesión
       </a>
     </div>
@@ -252,6 +254,9 @@
 {% endif %}
 {% if user.is_authenticated and perms.core.registrar_pago_factura %}
 <script src="{% static 'js/abono-modal.js' %}"></script>
+{% endif %}
+{% if user.is_authenticated %}
+<script src="{% static 'js/push-logout.js' %}"></script>
 {% endif %}
 {% endif %}
 {% block extra_js %}{% endblock %}

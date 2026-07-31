@@ -4,6 +4,7 @@ Todas las variables sensibles se leen del entorno (Portainer / .env).
 """
 
 from pathlib import Path
+from celery.schedules import crontab
 from decouple import config, UndefinedValueError
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -194,6 +195,28 @@ MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
 
 # Webhook de n8n para alertas de stock (dejar vacío para deshabilitar).
 N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')
+
+# Web Push es un canal independiente del webhook. Las tres variables deben
+# existir para habilitarlo; vacías mantienen toda la funcionalidad anterior.
+VAPID_PUBLIC_KEY = config('VAPID_PUBLIC_KEY', default='')
+VAPID_PRIVATE_KEY = config('VAPID_PRIVATE_KEY', default='')
+VAPID_SUBJECT = config('VAPID_SUBJECT', default='')
+
+# Celery comparte el Redis existente, pero usa una base lógica separada por
+# defecto para no mezclar tareas con claves de caché.
+CELERY_BROKER_URL = config(
+    'CELERY_BROKER_URL', default='redis://redis:6379/1')
+CELERY_RESULT_BACKEND = config(
+    'CELERY_RESULT_BACKEND', default='redis://redis:6379/2')
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 60
+CELERY_BEAT_SCHEDULE = {
+    'facturas-vencidas-diario-8am': {
+        'task': 'apps.core.tasks.notify_overdue_invoices',
+        'schedule': crontab(hour=8, minute=0),
+    },
+}
 
 # ─── BRUTE-FORCE PROTECTION (django-axes) ────────────────────────────────────
 

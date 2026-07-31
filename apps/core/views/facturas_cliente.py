@@ -100,12 +100,31 @@ def cliente_abono_nuevo(request, pk):
         if form.is_valid():
             cd = form.cleaned_data
             aplicaciones, tiene_edicion = _leer_reparto(request, pendientes)
-            payment_service.registrar_abono(
+            pago = payment_service.registrar_abono(
                 cliente, fecha_pago=cd['fecha_pago'], metodo_pago=cd['metodo_pago'],
                 monto=cd['monto'], referencia=cd.get('referencia', ''),
                 comprobante=cd.get('comprobante'), notas=cd.get('notas', ''),
                 aplicaciones=aplicaciones if tiene_edicion else None,
             )
+            _send_event_later('abono_cliente_creado', {
+                'pago_id': pago.pk,
+                'cliente_id': cliente.pk,
+                'cliente': cliente.nombre,
+                'monto': str(pago.monto),
+                'monto_aplicado': str(pago.monto_aplicado),
+                'saldo_sin_aplicar': str(pago.saldo_sin_aplicar),
+                'metodo_pago': pago.metodo_pago.nombre,
+                'referencia': pago.referencia,
+                'registrado_por': request.user.username,
+                'aplicaciones': [
+                    {
+                        'documento_id': apl.documento_id,
+                        'numero_documento': apl.documento.numero_documento,
+                        'monto': str(apl.monto),
+                    }
+                    for apl in pago.aplicaciones.select_related('documento')
+                ],
+            })
             if _es_ajax(request):
                 return JsonResponse({'ok': True, 'saldo': str(cliente.saldo_a_favor)})
             messages.success(request, 'Abono registrado.')

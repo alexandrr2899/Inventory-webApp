@@ -110,6 +110,20 @@ docker compose exec web python manage.py setup_groups
 
 No hay usuario por defecto por seguridad.
 
+### Web Push
+
+Web Push es opcional e independiente de Telegram/n8n. Generá una sola vez las
+claves VAPID:
+
+```bash
+docker compose run --rm --entrypoint python web manage.py generar_vapid
+```
+
+Copiá `VAPID_PRIVATE_KEY`, `VAPID_PUBLIC_KEY` y `VAPID_SUBJECT` al entorno de
+Portainer. Conservá el mismo par entre despliegues; cambiarlo obliga a volver a
+suscribir todos los dispositivos. Los servicios `worker` y `beat` entregan los
+avisos y revisan facturas vencidas diariamente a las 8:00 a. m.
+
 ### 5. Comandos utiles
 
 ```bash
