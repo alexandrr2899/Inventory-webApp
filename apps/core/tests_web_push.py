@@ -166,6 +166,18 @@ class EventCompatibilityTests(TestCase):
         self.assertIn('ACME', notification['body'])
         self.assertEqual(notification['url'], reverse('factura_detalle', args=[12]))
 
+    def test_resumen_vencidas_incluye_documentos_clientes_y_saldo(self):
+        notification = event_notification('resumen_facturas_vencidas', {
+            'fecha': '2026-07-31', 'cantidad': 3, 'clientes': 2,
+            'saldo_total': '1250.50',
+        })
+        self.assertEqual(
+            notification['body'],
+            '3 documentos de 2 clientes · saldo L 1,250.50',
+        )
+        self.assertEqual(
+            notification['url'], f'{reverse("facturas_lista")}?estado=vencida')
+
 
 class PaymentEventTests(TestCase):
     def setUp(self):
@@ -231,13 +243,37 @@ class OverdueTaskTests(TestCase):
         )
 
     @patch('apps.core.tasks.fanout_web_push.delay')
-    def test_individual_y_resumen_se_deduplican(self, delay):
+    def test_envia_solo_un_resumen_diario_y_lo_deduplica(self, delay):
+        segundo_cliente = Cliente.objects.create(nombre='Otro cliente vencido')
+        DocumentoFactura.objects.create(
+            cliente=segundo_cliente, tipo_documento='factura',
+            numero_documento='F-3',
+            fecha_documento=self.today - timedelta(days=30),
+            fecha_vencimiento=self.today - timedelta(days=5),
+            monto_total=Decimal('250.00'), estado_pago='pendiente',
+        )
         first = notify_overdue_invoices()
         second = notify_overdue_invoices()
-        self.assertEqual(first['individuales'], 1)
+        self.assertEqual(first['individuales'], 0)
         self.assertTrue(first['resumen'])
         self.assertEqual(second['individuales'], 0)
         self.assertFalse(second['resumen'])
-        self.assertEqual(delay.call_count, 2)
-        self.assertTrue(WebPushScheduledEvent.objects.filter(
-            key=f'factura_vencida:{self.overdue.pk}').exists())
+        delay.assert_called_once_with('resumen_facturas_vencidas', {
+            'fecha': self.today.isoformat(),
+            'cantidad': 2,
+            'clientes': 2,
+            'saldo_total': '350.00',
+        })
+        self.assertFalse(WebPushScheduledEvent.objects.filter(
+            event_type='factura_vencida').exists())
+
+    @patch('apps.core.tasks.fanout_web_push.delay')
+    def test_no_notifica_si_no_hay_documentos_vencidos(self, delay):
+        self.overdue.estado_pago = 'pagada'
+        self.overdue.save(update_fields=['estado_pago'])
+
+        result = notify_overdue_invoices()
+
+        self.assertEqual(result, {'individuales': 0, 'resumen': False})
+        delay.assert_not_called()
+        self.assertFalse(WebPushScheduledEvent.objects.exists())

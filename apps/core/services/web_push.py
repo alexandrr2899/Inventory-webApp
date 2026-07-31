@@ -158,7 +158,14 @@ def event_notification(event_type, payload):
         tag = f'factura-vencida-{p.get("documento_id")}'
     elif event_type == 'resumen_facturas_vencidas':
         title = 'Resumen de facturas vencidas'
-        body = f'{p.get("cantidad", 0)} documento(s) · saldo {_money(p.get("saldo_total"))}'
+        cantidad = int(p.get('cantidad', 0) or 0)
+        clientes = int(p.get('clientes', 0) or 0)
+        documentos_label = 'documento' if cantidad == 1 else 'documentos'
+        clientes_label = 'cliente' if clientes == 1 else 'clientes'
+        body = (
+            f'{cantidad} {documentos_label} de {clientes} {clientes_label} '
+            f'· saldo {_money(p.get("saldo_total"))}'
+        )
         url = f'{reverse("facturas_lista")}?estado=vencida'
         tag = f'facturas-vencidas-{p.get("fecha", "")}'
 

@@ -106,7 +106,7 @@ def _reserve_scheduled_event(key, event_type):
 
 @shared_task
 def notify_overdue_invoices():
-    """Avisa nuevas vencidas y envía el resumen diario, una vez por clave."""
+    """Envía un único resumen diario de documentos vencidos, una vez por fecha."""
     if not web_push_configured():
         return {'individuales': 0, 'resumen': False}
     today = timezone.localdate()
@@ -117,19 +117,10 @@ def notify_overdue_invoices():
         )
     )
     overdue = [doc for doc in qs if doc.saldo_pendiente > 0]
-    sent = 0
-    for doc in overdue:
-        key = f'factura_vencida:{doc.pk}'
-        if not _reserve_scheduled_event(key, 'factura_vencida'):
-            continue
-        fanout_web_push.delay('factura_vencida', {
-            'documento_id': doc.pk,
-            'numero_documento': doc.numero_documento,
-            'cliente': doc.cliente.nombre,
-            'saldo': str(doc.saldo_pendiente),
-            'fecha_vencimiento': doc.fecha_vencimiento.isoformat(),
-        })
-        sent += 1
+
+    # No generar ruido (ni consumir la clave diaria) cuando no hay deuda vencida.
+    if not overdue:
+        return {'individuales': 0, 'resumen': False}
 
     summary_key = f'resumen_facturas_vencidas:{today.isoformat()}'
     summary_sent = _reserve_scheduled_event(
@@ -139,6 +130,7 @@ def notify_overdue_invoices():
         fanout_web_push.delay('resumen_facturas_vencidas', {
             'fecha': today.isoformat(),
             'cantidad': len(overdue),
+            'clientes': len({doc.cliente_id for doc in overdue}),
             'saldo_total': str(total),
         })
-    return {'individuales': sent, 'resumen': summary_sent}
+    return {'individuales': 0, 'resumen': summary_sent}
