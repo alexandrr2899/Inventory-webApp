@@ -1,5 +1,7 @@
 {% if metrica.tendencia == "nuevo" %}
   <span class="badge bg-primary-subtle text-primary-emphasis">Nuevo</span>
+{% elif metrica.tendencia == "sin_base" %}
+  <span class="badge bg-secondary-subtle text-secondary-emphasis">Sin base comparable</span>
 {% elif metrica.tendencia == "sube" %}
   <span class="badge bg-success-subtle text-success-emphasis">
     <i class="bi bi-arrow-up-right"></i> +{{ metrica.variacion|floatformat:1 }}%

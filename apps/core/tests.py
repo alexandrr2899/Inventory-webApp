@@ -195,7 +195,8 @@ class VistasOperativasTests(TestCase):
 
     @override_settings(FACTURAS_MODULE_ENABLED=True)
     @patch('apps.core.views.reportes._calcular_tramos')
-    def test_reporte_rendimiento_compara_mismo_corte_y_excluye_anuladas(self, calcular_tramos):
+    def test_reporte_rendimiento_compara_mismo_corte_y_excluye_anuladas(
+            self, calcular_tramos):
         hoy = timezone.localdate()
         inicio_actual = hoy.replace(day=1)
         fin_mes_anterior = inicio_actual - timedelta(days=1)
@@ -321,6 +322,39 @@ class VistasOperativasTests(TestCase):
         self.assertContains(response, 'Bolsa Camiseta')
         self.assertContains(response, 'Sin categoría')
 
+    @override_settings(FACTURAS_MODULE_ENABLED=True)
+    @patch('apps.core.views.reportes.timezone.localdate', return_value=date(2026, 8, 4))
+    @patch('apps.core.views.reportes._calcular_tramos', return_value=[])
+    def test_reporte_rendimiento_no_marca_nueva_categoria_con_actividad_previa(
+            self, calcular_tramos, localdate):
+        categoria = CategoriaProducto.objects.create(nombre='Lisa')
+        cliente = Cliente.objects.create(nombre='Cliente base comparable')
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            categoria=categoria,
+            fecha_documento=date(2026, 7, 20),
+            monto_total=Decimal('5000'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            categoria=categoria,
+            fecha_documento=date(2026, 8, 2),
+            monto_total=Decimal('1200'),
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporte_rendimiento_mensual'))
+
+        self.assertEqual(response.status_code, 200)
+        lisa = response.context['facturacion_por_categoria'][0]
+        self.assertEqual(lisa['actual'], Decimal('1200'))
+        self.assertEqual(lisa['anterior'], Decimal('0'))
+        self.assertEqual(lisa['tendencia'], 'sin_base')
+        self.assertContains(response, 'Sin base comparable')
+
     @patch('apps.core.views.reportes._calcular_tramos', return_value=[])
     def test_reporte_rendimiento_permite_comparar_trimestres(self, calcular_tramos):
         self.client.force_login(self.user)
@@ -339,6 +373,40 @@ class VistasOperativasTests(TestCase):
         self.assertEqual(response.context['periodo_actual_titulo'], 'T2 2026')
         self.assertContains(response, 'T2 · Abr–Jun')
         self.assertContains(response, 'Período actual')
+
+    @override_settings(FACTURAS_MODULE_ENABLED=True)
+    @patch('apps.core.views.reportes._calcular_tramos', return_value=[])
+    def test_reporte_rendimiento_compara_meses_historicos_completos(
+            self, calcular_tramos):
+        self.user.user_permissions.add(Permission.objects.get(codename='ver_facturas'))
+        cliente = Cliente.objects.create(nombre='Cliente cierre mensual')
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            fecha_documento=date(2026, 3, 31),
+            monto_total=Decimal('700'),
+        )
+        DocumentoFactura.objects.create(
+            cliente=cliente,
+            tipo_documento='factura',
+            fecha_documento=date(2026, 4, 30),
+            monto_total=Decimal('500'),
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse('reporte_rendimiento_mensual'),
+            {'periodo': 'mes', 'mes': '2026-04'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['inicio_actual'], date(2026, 4, 1))
+        self.assertEqual(response.context['fin_actual'], date(2026, 4, 30))
+        self.assertEqual(response.context['inicio_anterior'], date(2026, 3, 1))
+        self.assertEqual(response.context['fin_anterior'], date(2026, 3, 31))
+        factura = response.context['facturacion']['factura']
+        self.assertEqual(factura['actual'], Decimal('500'))
+        self.assertEqual(factura['anterior'], Decimal('700'))
 
     def test_inventario_responde_con_permiso(self):
         self.client.force_login(self.user)

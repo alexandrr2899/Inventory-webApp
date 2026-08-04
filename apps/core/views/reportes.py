@@ -110,7 +110,8 @@ def reporte_rendimiento_mensual(request):
     Compara mes, trimestre, semestre o año contra el período anterior.
 
     El período vigente llega hasta hoy; uno histórico llega hasta su último día.
-    La comparación anterior usa la misma cantidad de días transcurridos.
+    Para un período vigente, la comparación anterior usa la misma cantidad de
+    días transcurridos. Los períodos históricos se comparan completos.
     """
     hoy = timezone.localdate()
     tipo_periodo = request.GET.get('periodo', 'mes')
@@ -165,11 +166,14 @@ def reporte_rendimiento_mensual(request):
 
     inicio_anterior = _sumar_meses(inicio_actual, -meses_periodo)
     fin_periodo_anterior = inicio_actual - timedelta(days=1)
-    dias_transcurridos = (fin_actual - inicio_actual).days
-    fin_anterior = min(
-        fin_periodo_anterior,
-        inicio_anterior + timedelta(days=dias_transcurridos),
-    )
+    if inicio_actual == inicio_periodo_vigente:
+        dias_transcurridos = (fin_actual - inicio_actual).days
+        fin_anterior = min(
+            fin_periodo_anterior,
+            inicio_anterior + timedelta(days=dias_transcurridos),
+        )
+    else:
+        fin_anterior = fin_periodo_anterior
 
     anterior_navegacion = inicio_anterior
     siguiente_navegacion = _sumar_meses(inicio_actual, meses_periodo)
@@ -240,6 +244,12 @@ def reporte_rendimiento_mensual(request):
 
         categorias_actual = _facturacion_por_categoria(inicio_actual, fin_actual)
         categorias_anterior = _facturacion_por_categoria(inicio_anterior, fin_anterior)
+        categorias_anterior_completo = categorias_anterior
+        if fin_anterior < fin_periodo_anterior:
+            categorias_anterior_completo = _facturacion_por_categoria(
+                inicio_anterior,
+                fin_periodo_anterior,
+            )
         claves = categorias_actual.keys() | categorias_anterior.keys()
 
         def _orden_categoria(clave):
@@ -259,6 +269,13 @@ def reporte_rendimiento_mensual(request):
                 datos_actual['total'] if datos_actual else Decimal('0'),
                 datos_anterior['total'] if datos_anterior else Decimal('0'),
             )
+            if (
+                metrica['tendencia'] == 'nuevo'
+                and clave in categorias_anterior_completo
+            ):
+                # La categoría no es nueva: ya tuvo actividad durante el
+                # período anterior, solo que fuera del corte comparable.
+                metrica['tendencia'] = 'sin_base'
             metrica.update({
                 'tipo_documento': referencia['tipo_documento'],
                 'tipo_label': (
