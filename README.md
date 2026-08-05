@@ -22,8 +22,9 @@ WhiteNoise, openpyxl, django-axes y Docker Compose.
 | **Reportes** | Stock bajo, produccion, produccion avanzada y consumo de pigmentos |
 | **Importacion Excel** | Descarga de plantilla e importacion masiva de items |
 | **Usuarios y permisos** | Roles Administrador, Supervisor y Operador con permisos por modulo |
-| **Backups** | Backup PostgreSQL manual desde Docker o desde panel web, descarga y registro de trabajos |
-| **Notificaciones** | Envio opcional de eventos/reportes a n8n mediante `N8N_WEBHOOK_URL` |
+| **Backups** | Backup PostgreSQL automatico diario, manual desde Docker o panel web, verificacion de integridad, descarga y registro de trabajos |
+| **Notificaciones** | Envio opcional de eventos/reportes a n8n mediante `N8N_WEBHOOK_URL`, Web Push (VAPID) y alertas programadas (facturas vencidas, cobertura de pigmentos) |
+| **Salud** | Sonda `/healthz` (sin autenticacion) usada por los healthchecks de Docker en `web`, `worker` y `beat` |
 
 ---
 
@@ -241,16 +242,45 @@ Si el codigo ya existe, el item se actualiza. Si no existe, se crea.
 
 ## Backups PostgreSQL
 
-El proyecto tiene dos formas de ejecutar backups:
+El proyecto tiene tres formas de ejecutar backups:
 
-1. Servicio Docker `backup`.
-2. Panel web `/backups/` para usuarios con permiso `gestionar_backups`.
+1. **Automatico diario** — tarea Celery `scheduled_backup`, ejecutada por el
+   worker a la hora de `BACKUP_SCHEDULE_HOUR:BACKUP_SCHEDULE_MINUTE` (2:30 AM
+   por defecto). No requiere intervencion humana.
+2. Servicio Docker `backup` (manual).
+3. Panel web `/backups/` para usuarios con permiso `gestionar_backups`.
 
-Ambos generan archivos SQL plano comprimidos:
+Los tres generan archivos SQL plano comprimidos:
 
 ```text
 <BACKUP_DIR>/postgres/inventario_YYYYMMDD_HHMM.sql.gz
 ```
+
+Todo backup se verifica con `gzip -t` antes de marcarse como exitoso: un
+archivo truncado o corrupto se registra como `BackupJob` fallido y dispara el
+evento `backup_fallido`, en vez de dar falsa confianza.
+
+### Copia fuera del host (importante)
+
+`BACKUP_DIR` vive en el **mismo disco** que la base de datos. Si se pierde el
+equipo, se pierden la base y todos sus respaldos a la vez. Para evitarlo,
+configura `BACKUP_POST_HOOK` con la ruta de un script (accesible dentro del
+contenedor `worker`) que reciba el `.sql.gz` recien creado como primer
+argumento y lo copie a otro lado:
+
+```env
+BACKUP_POST_HOOK=/scripts/subir_backup.sh
+```
+
+```bash
+#!/bin/sh
+# scripts/subir_backup.sh — recibe la ruta del backup como $1
+set -eu
+rclone copy "$1" remoto:inventario-backups/
+```
+
+El hook se ejecuta despues de verificar la integridad. Si falla, se registra
+en el log pero el backup local sigue siendo valido.
 
 ### Configurar ubicacion persistente
 
@@ -310,6 +340,7 @@ Si `N8N_WEBHOOK_URL` esta definido, la app envia eventos estructurados por HTTP:
 
 - stock bajo o en cero
 - resumen de pigmentos
+- cobertura de pigmentos (proyeccion de dias restantes)
 - movimientos
 - backups exitosos o fallidos
 - reportes manuales
@@ -324,6 +355,18 @@ Panel manual:
 ```
 
 Requiere superusuario, grupo Administrador o grupo Supervisor.
+
+### Tareas programadas (Celery beat)
+
+| Tarea | Horario | Que hace |
+|---|---|---|
+| `notify_pigment_coverage` | 07:00 diario | Avisa que pigmentos se agotan antes de poder reponerlos, usando el consumo de los ultimos 30 dias. Solo notifica si hay pigmentos en estado critico (<3 dias) o bajo (<=7 dias); una sola vez por dia |
+| `notify_overdue_invoices` | 08:00 diario | Resumen unico de documentos vencidos con saldo |
+| `scheduled_backup` | 02:30 diario | Backup automatico de PostgreSQL (ver seccion Backups) |
+
+Los horarios de backup se configuran con `BACKUP_SCHEDULE_HOUR` /
+`BACKUP_SCHEDULE_MINUTE`. Las tareas se reintentan hasta 3 veces con backoff y
+usan `acks_late`, asi que un worker que muere a mitad no pierde el trabajo.
 
 ---
 

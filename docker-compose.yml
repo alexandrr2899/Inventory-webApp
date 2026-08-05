@@ -97,6 +97,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # `restart: always` solo reacciona a que el proceso muera. Un gunicorn vivo
+    # pero sin acceso a la base sigue aceptando conexiones y devolviendo 500:
+    # esta sonda lo detecta y fuerza el reinicio.
+    # NOTA: requiere que 'localhost' siga en ALLOWED_HOSTS, o Django responde
+    # 400 (DisallowedHost) a la sonda.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # ── Web Push: tareas en segundo plano ─────────────────────────────────────
   worker:
@@ -108,6 +119,9 @@ services:
     command: ["celery", "-A", "config", "worker", "--loglevel=INFO", "--concurrency=2"]
     volumes:
       - media_files:/app/media
+      # El worker ejecuta scheduled_backup, así que necesita el mismo destino
+      # de backups que el contenedor web.
+      - ${BACKUP_DIR:-./backups}:/backups
     environment:
       SECRET_KEY:           ${SECRET_KEY}
       DEBUG:                ${DEBUG:-False}
@@ -117,6 +131,20 @@ services:
       DB_USER:              ${DB_USER:-bolsas_user}
       DB_PASSWORD:          ${DB_PASSWORD}
       DB_PORT:              ${DB_PORT:-5432}
+      # pg_dump usa las POSTGRES_* (ver scripts/backup_postgres.sh).
+      POSTGRES_HOST:        ${POSTGRES_HOST:-db}
+      POSTGRES_PORT:        ${DB_PORT:-5432}
+      POSTGRES_DB:          ${DB_NAME:-bolsas_inventario}
+      POSTGRES_USER:        ${DB_USER:-bolsas_user}
+      POSTGRES_PASSWORD:    ${DB_PASSWORD}
+      BACKUP_DIR:           /backups
+      BACKUP_ROOT:          /backups/postgres
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-300}
+      # Opcional: script que copia el backup fuera del host (recibe la ruta
+      # del .sql.gz como argumento). Sin esto el respaldo vive en el mismo
+      # disco que la base de datos.
+      BACKUP_POST_HOOK:     ${BACKUP_POST_HOOK:-}
       REDIS_URL:            ${REDIS_URL:-redis://redis:6379/0}
       CELERY_BROKER_URL:     ${CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
@@ -129,6 +157,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Un worker colgado deja de consumir la cola sin morir: `inspect ping`
+    # confirma que responde, no solo que el proceso existe.
+    healthcheck:
+      test: ["CMD", "celery", "-A", "config", "inspect", "ping", "-t", "10"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 45s
 
   # ── Web Push: horario de facturas vencidas ────────────────────────────────
   beat:
@@ -137,7 +173,8 @@ services:
       dockerfile: Dockerfile
     restart: always
     entrypoint: []
-    command: ["celery", "-A", "config", "beat", "--loglevel=INFO"]
+    command: ["celery", "-A", "config", "beat", "--loglevel=INFO",
+              "--schedule=/tmp/celerybeat-schedule"]
     environment:
       SECRET_KEY:           ${SECRET_KEY}
       DEBUG:                ${DEBUG:-False}
@@ -158,6 +195,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # beat no atiende consultas, así que no hay a qué hacerle ping: se verifica
+    # que siga escribiendo su archivo de agenda. Si dejó de latir, el archivo
+    # se congela y la sonda falla aunque el proceso siga vivo — que es
+    # exactamente el modo de falla que dejaría sin backups ni alertas diarias.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/celerybeat-schedule') < 600 else 1)"]
+      interval: 120s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
 
 volumes:
   postgres_data:

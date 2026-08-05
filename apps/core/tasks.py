@@ -1,6 +1,7 @@
-"""Tareas Celery para entrega Web Push y facturas vencidas."""
+"""Tareas Celery: Web Push, facturas vencidas, backup programado y pigmentos."""
 import json
 import logging
+from datetime import timedelta
 from decimal import Decimal
 
 from celery import shared_task
@@ -18,8 +19,22 @@ from .services.web_push import (
 
 log = logging.getLogger('events')
 
+# Reintentos por defecto para tareas disparadas por beat o por eventos: sin
+# esto, un hipo transitorio de DB o Redis descarta la tarea en silencio y la
+# alerta simplemente nunca llega. `acks_late` hace que una tarea interrumpida
+# por un worker caído se vuelva a encolar en lugar de perderse; los duplicados
+# que eso pueda causar los colapsa el `tag` de la notificación en el navegador.
+RETRY_KWARGS = {
+    'autoretry_for': (Exception,),
+    'max_retries': 3,
+    'retry_backoff': 30,
+    'retry_backoff_max': 300,
+    'retry_jitter': True,
+    'acks_late': True,
+}
 
-@shared_task
+
+@shared_task(**RETRY_KWARGS)
 def fanout_web_push(event_type, payload):
     notification = event_notification(event_type, payload)
     if not notification or not web_push_configured():
@@ -77,7 +92,7 @@ def deliver_web_push(self, subscription_id, notification):
     return True
 
 
-@shared_task
+@shared_task(**RETRY_KWARGS)
 def flush_security_web_push(event_type):
     count_key = f'webpush:security:{event_type}:count'
     payload_key = f'webpush:security:{event_type}:payload'
@@ -95,7 +110,7 @@ def flush_security_web_push(event_type):
     return fanout_web_push(event_type, payload)
 
 
-@shared_task
+@shared_task(**RETRY_KWARGS)
 def flush_count_web_push(conteo_id):
     """Agrupa los ajustes aplicados al mismo conteo en una sola notificación."""
     count_key = f'webpush:conteo:{conteo_id}:ajustes'
@@ -121,7 +136,7 @@ def _reserve_scheduled_event(key, event_type):
         return False
 
 
-@shared_task
+@shared_task(**RETRY_KWARGS)
 def notify_overdue_invoices():
     """Envía un único resumen diario de documentos vencidos, una vez por fecha."""
     if not web_push_configured():
@@ -151,3 +166,64 @@ def notify_overdue_invoices():
             'saldo_total': str(total),
         })
     return {'individuales': 0, 'resumen': summary_sent}
+
+
+@shared_task(**RETRY_KWARGS)
+def notify_pigment_coverage(dias_analisis=30, dias_objetivo=14):
+    """
+    Avisa qué pigmentos se van a acabar antes de `dias_objetivo`.
+
+    El reporte de consumo ya proyectaba los días de cobertura, pero solo
+    cuando alguien lo abría a mano. Esto lo vuelve proactivo: una vez por día,
+    y solo si hay pigmentos en estado crítico o bajo.
+    """
+    from .services.notifications import send_event
+    from .services.pigmentos import calcular_cobertura, payload_cobertura
+
+    hoy = timezone.localdate()
+    fecha_inicio = hoy - timedelta(days=dias_analisis)
+
+    resultados, _ = calcular_cobertura(
+        fecha_inicio, hoy, dias_objetivo=dias_objetivo)
+    payload = payload_cobertura(resultados, fecha_inicio, hoy, dias_objetivo)
+
+    # Sin pigmentos en riesgo no se consume la clave diaria: si el stock cae
+    # más tarde ese mismo día, la alerta todavía puede salir.
+    if not payload['pigmentos']:
+        return {'enviado': False, 'en_riesgo': 0}
+
+    if not _reserve_scheduled_event(
+        f'cobertura_pigmentos:{hoy.isoformat()}', 'pigmentos_cobertura'
+    ):
+        return {'enviado': False, 'en_riesgo': len(payload['pigmentos'])}
+
+    log.info(
+        '[EVENT] pigmentos_cobertura criticos=%s bajos=%s',
+        payload['total_criticos'], payload['total_bajos'],
+    )
+    send_event('pigmentos_cobertura', payload)
+    return {'enviado': True, 'en_riesgo': len(payload['pigmentos'])}
+
+
+# El límite global (CELERY_TASK_TIME_LIMIT=60s) mataría un pg_dump a mitad y
+# dejaría un .sql.gz truncado. El script ya se autolimita con
+# BACKUP_TIMEOUT_SECONDS (300s por defecto); este techo queda por encima.
+@shared_task(time_limit=1800, soft_time_limit=1500, **RETRY_KWARGS)
+def scheduled_backup():
+    """
+    Backup automático de PostgreSQL.
+
+    Hasta ahora el backup solo existía si un humano entraba al panel y hacía
+    clic; sin esto, un descuido de una semana equivale a una semana sin
+    respaldo. `ejecutar_backup` nunca levanta excepción — reporta el fallo por
+    el evento `backup_fallido` — así que devolvemos el estado sin reintentar
+    un pg_dump completo.
+    """
+    from .services.backups import ejecutar_backup
+
+    resultado = ejecutar_backup(usuario=None, origen='programado')
+    return {
+        'ok': resultado['ok'],
+        'archivo': resultado['backup']['relative_path'] if resultado['backup'] else '',
+        'mensaje': resultado['mensaje'],
+    }

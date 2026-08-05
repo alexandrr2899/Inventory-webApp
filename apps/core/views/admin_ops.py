@@ -2,46 +2,17 @@
 from .common import *  # noqa: F401,F403
 from .stock import *   # noqa: F401,F403
 
+from ..services.backups import (
+    backup_root as _backup_root,
+    ejecutar_backup,
+    listar_backups as _listar_backups,
+)
+
 
 def _puede_gestionar_backups(user):
     return user.is_authenticated and (
         user.is_superuser or user.has_perm(_perm('gestionar_backups'))
     )
-
-
-def _backup_root():
-    root_env = os.environ.get('BACKUP_ROOT')
-    if root_env:
-        return Path(root_env).resolve()
-    base_dir = Path(os.environ.get('BACKUP_DIR', settings.BASE_DIR / 'backups'))
-    return (base_dir / 'postgres').resolve()
-
-
-def _format_size(size):
-    if size >= 1024 * 1024:
-        return f'{size / (1024 * 1024):.1f} MB'
-    if size >= 1024:
-        return f'{size / 1024:.1f} KB'
-    return f'{size} B'
-
-
-def _listar_backups():
-    root = _backup_root()
-    if not root.exists():
-        return []
-
-    backups = []
-    for path in sorted(root.glob('*.sql.gz'), key=lambda p: p.stat().st_mtime, reverse=True):
-        stat = path.stat()
-        backups.append({
-            'filename': path.name,
-            'relative_path': f'postgres/{path.name}',
-            'created_at': timezone.localtime(dt_datetime.fromtimestamp(stat.st_mtime, tz=timezone.get_current_timezone())),
-            'size': stat.st_size,
-            'size_label': _format_size(stat.st_size),
-            'estado': 'disponible' if stat.st_size > 0 else 'vacío',
-        })
-    return backups
 
 
 def _safe_backup_file(filename):
@@ -60,102 +31,24 @@ def _safe_backup_file(filename):
     return path
 
 
-def _backup_env(root):
-    env = os.environ.copy()
-    env.update({
-        'POSTGRES_HOST': env.get('POSTGRES_HOST') or env.get('DB_HOST') or 'db',
-        'POSTGRES_PORT': env.get('POSTGRES_PORT') or env.get('DB_PORT') or '5432',
-        'POSTGRES_DB': env.get('POSTGRES_DB') or env.get('DB_NAME') or 'bolsas_inventario',
-        'POSTGRES_USER': env.get('POSTGRES_USER') or env.get('DB_USER') or 'bolsas_user',
-        'POSTGRES_PASSWORD': env.get('POSTGRES_PASSWORD') or env.get('DB_PASSWORD') or '',
-        'BACKUP_ROOT': str(root),
-        'BACKUP_RETENTION_DAYS': env.get('BACKUP_RETENTION_DAYS', '14'),
-    })
-    return env
-
-
 @login_required
 @_timed_view('backups_panel')
 def backups_panel(request):
     if not _puede_gestionar_backups(request.user):
         raise PermissionDenied
 
-    root = _backup_root()
-
     if request.method == 'POST':
-        job = BackupJob.objects.create(usuario=request.user)
-        script_path = (Path(settings.BASE_DIR) / 'scripts' / 'backup_postgres.sh').resolve()
-        timeout = int(os.environ.get('BACKUP_TIMEOUT_SECONDS', '300'))
-        before = {b['filename'] for b in _listar_backups()}
-
-        try:
-            if not script_path.exists():
-                raise FileNotFoundError('Script de backup no encontrado.')
-
-            root.mkdir(parents=True, exist_ok=True)
-            result = subprocess.run(
-                ['sh', str(script_path)],
-                cwd=str(settings.BASE_DIR),
-                env=_backup_env(root),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
+        resultado = ejecutar_backup(usuario=request.user, origen='manual')
+        if resultado['ok']:
+            messages.success(
+                request,
+                f'Backup creado correctamente: {resultado["backup"]["filename"]}.',
             )
-
-            after = _listar_backups()
-            newest = next((b for b in after if b['filename'] not in before), after[0] if after else None)
-
-            if result.returncode == 0 and newest and newest['size'] > 0:
-                job.estado = 'exitoso'
-                job.archivo = newest['relative_path']
-                job.tamano = newest['size']
-                messages.success(request, f'Backup creado correctamente: {newest["filename"]}.')
-                event_log.info('[EVENT] backup_exitoso user=%s archivo=%s', request.user.username, newest['relative_path'])
-                send_event('backup_exitoso', {
-                    'archivo': newest['relative_path'],
-                    'tamano': newest['size'],
-                    'usuario': request.user.username,
-                    'fecha': timezone.localtime().strftime('%Y-%m-%d'),
-                    'hora': timezone.localtime().strftime('%H:%M:%S'),
-                })
-            else:
-                job.estado = 'fallido'
-                job.mensaje_error = 'El backup no se pudo completar. Revisar logs del servidor.'
-                event_log.error(
-                    'backup_failed user=%s returncode=%s stdout=%s stderr=%s',
-                    request.user.username,
-                    result.returncode,
-                    result.stdout[-2000:],
-                    result.stderr[-2000:],
-                )
-                messages.error(request, 'No se pudo crear el backup. Revisá los logs del servidor.')
-                send_event('backup_fallido', {
-                    'usuario': request.user.username,
-                    'mensaje': 'El proceso de backup finalizó con error.',
-                })
-        except subprocess.TimeoutExpired:
-            job.estado = 'fallido'
-            job.mensaje_error = 'El backup excedió el tiempo máximo permitido.'
-            event_log.error('backup_timeout user=%s timeout=%s', request.user.username, timeout)
-            messages.error(request, 'El backup excedió el tiempo máximo permitido.')
-            send_event('backup_fallido', {
-                'usuario': request.user.username,
-                'mensaje': 'El backup excedió el tiempo máximo permitido.',
-            })
-        except Exception as exc:
-            job.estado = 'fallido'
-            job.mensaje_error = 'No se pudo iniciar el backup.'
-            event_log.exception('backup_exception user=%s error=%s', request.user.username, exc)
-            messages.error(request, 'No se pudo iniciar el backup. Revisá los logs del servidor.')
-            send_event('backup_fallido', {
-                'usuario': request.user.username,
-                'mensaje': 'No se pudo iniciar el backup.',
-            })
-        finally:
-            job.fecha_fin = timezone.now()
-            job.save(update_fields=['fecha_fin', 'estado', 'archivo', 'tamano', 'mensaje_error'])
-
+        else:
+            messages.error(
+                request,
+                resultado['mensaje'] or 'No se pudo crear el backup. Revisá los logs del servidor.',
+            )
         return redirect('backups_panel')
 
     return render(request, 'backups/panel.html', {

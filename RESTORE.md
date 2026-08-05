@@ -118,7 +118,8 @@ Local:
 gunzip -c ./backups/postgres/inventario_YYYYMMDD_HHMM.sql.gz | \
   docker compose exec -T db psql \
     -U "${DB_USER:-bolsas_user}" \
-    -d "${DB_NAME:-bolsas_inventario}"
+    -d "${DB_NAME:-bolsas_inventario}" \
+    -v ON_ERROR_STOP=1
 ```
 
 Raspberry/Portainer:
@@ -127,10 +128,49 @@ Raspberry/Portainer:
 gunzip -c /apps/inventario/backups/postgres/inventario_YYYYMMDD_HHMM.sql.gz | \
   docker compose exec -T db psql \
     -U "${DB_USER:-bolsas_user}" \
-    -d "${DB_NAME:-bolsas_inventario}"
+    -d "${DB_NAME:-bolsas_inventario}" \
+    -v ON_ERROR_STOP=1
 ```
 
 Reemplaza `inventario_YYYYMMDD_HHMM.sql.gz` por el archivo real.
+
+`-v ON_ERROR_STOP=1` aborta al primer error en vez de seguir adelante y
+dejarte una base a medio restaurar que *parece* haber funcionado. Si el
+comando termina con codigo distinto de 0, la restauracion NO se completo.
+
+---
+
+## 5b. Ensayo de restauracion (hacerlo periodicamente)
+
+Un backup que nunca se restauro es una suposicion, no un respaldo. Este
+ensayo restaura sobre una base descartable sin tocar produccion:
+
+```bash
+# 1. Crear base scratch
+docker compose exec -T db psql -U "${DB_USER:-bolsas_user}" -d postgres \
+  -c "DROP DATABASE IF EXISTS restore_drill;" \
+  -c "CREATE DATABASE restore_drill;"
+
+# 2. Restaurar el backup mas reciente en modo estricto
+gunzip -c ./backups/postgres/inventario_YYYYMMDD_HHMM.sql.gz | \
+  docker compose exec -T db psql -U "${DB_USER:-bolsas_user}" \
+    -d restore_drill -v ON_ERROR_STOP=1
+echo "exit=$?"   # debe ser 0
+
+# 3. Verificar que las tablas llegaron
+docker compose exec -T db psql -U "${DB_USER:-bolsas_user}" -d restore_drill \
+  -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+
+# 4. Limpiar
+docker compose exec -T db psql -U "${DB_USER:-bolsas_user}" -d postgres \
+  -c "DROP DATABASE restore_drill;"
+```
+
+Nota sobre versiones: el `pg_dump` de la imagen de la app esta fijado a la
+misma version mayor que el servidor (PostgreSQL 15, ver `Dockerfile`). Un
+cliente mas nuevo genera dumps con directivas que PG15 no entiende y que
+hacen fallar la restauracion estricta. Si algun dia se sube la version mayor
+de la base, hay que subir tambien `postgresql-client-15` en el `Dockerfile`.
 
 ---
 

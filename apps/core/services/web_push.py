@@ -22,6 +22,7 @@ EVENT_CATEGORIES = {
     'stock_zero': 'inventario',
     'stock_low': 'inventario',
     'pigmentos_resumen': 'inventario',
+    'pigmentos_cobertura': 'inventario',
     'inventario_camiseta_actual': 'inventario',
     'inventario_pigmentos_actual': 'inventario',
     'reporte_stock_bajo': 'inventario',
@@ -111,6 +112,21 @@ def event_notification(event_type, payload):
         title = 'Resumen de pigmentos'
         body = f'{p.get("total_bajos", 0)} pigmento(s) con stock bajo o agotado.'
         url = reverse('reporte_stock_bajo')
+    elif event_type == 'pigmentos_cobertura':
+        criticos = int(p.get('total_criticos', 0) or 0)
+        bajos = int(p.get('total_bajos', 0) or 0)
+        title = 'Cobertura de pigmentos'
+        primero = (p.get('pigmentos') or [{}])[0]
+        if criticos:
+            title = f'{criticos} pigmento(s) por agotarse'
+        body = (
+            f'{primero.get("nombre", "Pigmento")}: '
+            f'{primero.get("dias_cobertura", "?")} día(s) de cobertura'
+        )
+        if criticos + bajos > 1:
+            body = f'{body} · {criticos + bajos} en riesgo'
+        url = reverse('reporte_consumo_pigmentos')
+        tag = f'pigmentos-cobertura-{p.get("fecha_fin", "")}'
     elif event_type in ('inventario_camiseta_actual', 'inventario_pigmentos_actual',
                         'reporte_stock_bajo'):
         title = p.get('titulo') or 'Reporte de inventario'

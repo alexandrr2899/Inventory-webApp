@@ -5,7 +5,9 @@ from django.contrib import admin
 from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from django.views.generic import TemplateView
-from django.http import Http404, HttpResponseForbidden, HttpResponseServerError
+from django.http import (
+    Http404, HttpResponse, HttpResponseForbidden, HttpResponseServerError,
+)
 from django.template.loader import render_to_string
 from decouple import config
 
@@ -32,6 +34,31 @@ security_log = logging.getLogger('security')
 def _admin_not_found(request, *args, **kwargs):
     """Devuelve 404 para cualquier acceso a /admin/ — evita fingerprinting."""
     raise Http404
+
+
+def healthz(request):
+    """
+    Sonda de salud para el healthcheck de Docker.
+
+    Sin autenticación (el orquestador no tiene sesión) y sin detalle en la
+    respuesta: solo 'ok' o 'unhealthy'. El motivo del fallo va al log, no al
+    cuerpo HTTP, para no exponer topología interna a quien escanee el puerto.
+
+    Verifica dependencias reales — un gunicorn que responde pero no alcanza la
+    base de datos no está sano, y es justo el caso que `restart: always` no
+    detecta porque el proceso sigue vivo.
+    """
+    from django.db import connection
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+            cursor.fetchone()
+    except Exception as exc:
+        logging.getLogger('django').error('healthz: base de datos inaccesible: %s', exc)
+        return HttpResponse('unhealthy', status=503, content_type='text/plain')
+
+    return HttpResponse('ok', content_type='text/plain')
 
 
 # ── Handlers globales de error ────────────────────────────────────────────────
@@ -79,6 +106,9 @@ def handler500(request):
 
 
 urlpatterns = [
+    # Sonda de salud para Docker/orquestador (sin auth, sin detalle).
+    path('healthz', healthz, name='healthz'),
+
     # Admin en ruta configurable (nunca /admin/).
     path(_ADMIN_URL, admin.site.urls),
 

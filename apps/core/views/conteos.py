@@ -191,12 +191,112 @@ def _render_conteo_form(request, form, filas_previas, tipo_conteo_inicial=None, 
     return render(request, 'conteos/form.html', context)
 
 
-def _recalcular_diferencias_conteo(conteo):
-    detalles = conteo.detalles.select_related('item', 'ubicacion')
-    for detalle in detalles:
-        stock_teorico = _stock_en_momento(
-            detalle.item, detalle.ubicacion, conteo.fecha_hora_conteo
+def _stocks_en_momento_batch(detalles, fecha_hora):
+    """
+    Versión por lote de `_stock_en_momento` (views/stock.py).
+
+    Misma aritmética, pero con 2 consultas fijas en vez de 2 por ítem: un
+    conteo de 100 SKUs pasaba de ~200 consultas a 2. Devuelve
+    {(item_id, ubicacion_id): stock_teorico}.
+    """
+    pares = {(d.item_id, d.ubicacion_id) for d in detalles}
+    if not pares:
+        return {}
+
+    item_ids = {item_id for item_id, _ in pares}
+    ubicacion_ids = {ubicacion_id for _, ubicacion_id in pares}
+
+    stock_actual = {
+        (row['item_id'], row['ubicacion_id']): row['cantidad_actual']
+        for row in Stock.objects
+        .filter(item_id__in=item_ids, ubicacion_id__in=ubicacion_ids)
+        .values('item_id', 'ubicacion_id', 'cantidad_actual')
+    }
+
+    # Mismo umbral que _stock_en_momento: los movimientos del mismo minuto que
+    # el conteo cuentan como ocurridos hasta ese momento (ver el comentario
+    # extenso en views/stock.py sobre la precisión de minuto del formulario).
+    umbral_posterior = fecha_hora.replace(second=0, microsecond=0) + timedelta(minutes=1)
+
+    net_post = {}
+    post_movs = (
+        DetalleMovimiento.objects
+        .filter(
+            item_id__in=item_ids,
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__gte=umbral_posterior,
         )
+        .filter(
+            Q(ubicacion_destino_id__in=ubicacion_ids)
+            | Q(ubicacion_origen_id__in=ubicacion_ids)
+        )
+        .values_list('item_id', 'cantidad', 'ubicacion_origen_id', 'ubicacion_destino_id')
+    )
+    for item_id, cantidad, origen_id, destino_id in post_movs:
+        if destino_id in ubicacion_ids:
+            clave = (item_id, destino_id)
+            net_post[clave] = net_post.get(clave, Decimal('0')) + cantidad
+        if origen_id in ubicacion_ids:
+            clave = (item_id, origen_id)
+            net_post[clave] = net_post.get(clave, Decimal('0')) - cantidad
+
+    return {
+        clave: stock_actual.get(clave, Decimal('0')) - net_post.get(clave, Decimal('0'))
+        for clave in pares
+    }
+
+
+def _movs_tardios_batch(detalles, fecha_hora):
+    """
+    Movimientos registrados DESPUÉS del conteo pero con fecha_movimiento
+    ANTERIOR, agrupados por (item_id, ubicacion_id).
+
+    Antes esto era un queryset perezoso por fila, evaluado por el template →
+    una consulta extra por ítem del conteo.
+    """
+    pares = {(d.item_id, d.ubicacion_id) for d in detalles}
+    if not pares:
+        return {}
+
+    item_ids = {item_id for item_id, _ in pares}
+    ubicacion_ids = {ubicacion_id for _, ubicacion_id in pares}
+
+    agrupados = {}
+    movimientos = (
+        DetalleMovimiento.objects
+        .filter(
+            item_id__in=item_ids,
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha__gt=fecha_hora,
+            movimiento__fecha_movimiento__lte=fecha_hora,
+        )
+        .filter(
+            Q(ubicacion_destino_id__in=ubicacion_ids)
+            | Q(ubicacion_origen_id__in=ubicacion_ids)
+        )
+        .select_related(
+            'movimiento', 'movimiento__usuario',
+            'ubicacion_origen', 'ubicacion_destino',
+        )
+        .order_by('movimiento__fecha_movimiento')
+    )
+    for mov in movimientos:
+        # Un mismo detalle puede tocar dos ubicaciones del conteo
+        # (transferencia interna): aparece bajo ambas, igual que antes.
+        for ubicacion_id in (mov.ubicacion_destino_id, mov.ubicacion_origen_id):
+            clave = (mov.item_id, ubicacion_id)
+            if clave in pares:
+                agrupados.setdefault(clave, []).append(mov)
+    return agrupados
+
+
+def _recalcular_diferencias_conteo(conteo):
+    detalles = list(conteo.detalles.select_related('item', 'ubicacion'))
+    stocks = _stocks_en_momento_batch(detalles, conteo.fecha_hora_conteo)
+    for detalle in detalles:
+        stock_teorico = stocks[(detalle.item_id, detalle.ubicacion_id)]
         diferencia_final = detalle.cantidad_contada - stock_teorico
         if detalle.diferencia_final != diferencia_final:
             ConteoDetalle.objects.filter(pk=detalle.pk).update(
@@ -215,14 +315,23 @@ def _estado_preview_conciliacion(detalle, diferencia_final):
 
 
 def _plan_conciliacion(conteo, *, persistir=False):
-    detalles = conteo.detalles.select_related('item', 'ubicacion').order_by('item__orden', 'item__nombre')
+    detalles = list(
+        conteo.detalles.select_related('item', 'ubicacion')
+        .order_by('item__orden', 'item__nombre')
+    )
+
+    # Todo el trabajo por ítem se resuelve en dos consultas por lote antes del
+    # bucle. Esta pantalla se abre entera en cada carga y en cada ajuste
+    # individual, así que el N+1 se pagaba una y otra vez.
+    stocks = _stocks_en_momento_batch(detalles, conteo.fecha_hora_conteo)
+    tardios = _movs_tardios_batch(detalles, conteo.fecha_hora_conteo)
+
     plan = []
     for detalle in detalles:
+        clave = (detalle.item_id, detalle.ubicacion_id)
         # Stock teórico al momento del conteo usando fecha_movimiento como
         # timestamp oficial. No depende de cuándo se registró el movimiento.
-        stock_teorico = _stock_en_momento(
-            detalle.item, detalle.ubicacion, conteo.fecha_hora_conteo
-        )
+        stock_teorico = stocks[clave]
         diferencia_final = detalle.cantidad_contada - stock_teorico
 
         if persistir and detalle.diferencia_final != diferencia_final:
@@ -235,25 +344,7 @@ def _plan_conciliacion(conteo, *, persistir=False):
         # ANTES del conteo. Se muestran para transparencia: ya están
         # correctamente incluidos en stock_teorico (no son "atrasados" — son
         # movimientos reales anteriores al conteo, solo ingresados tarde).
-        movs_tardios = (
-            DetalleMovimiento.objects
-            .filter(
-                item=detalle.item,
-                movimiento__anulado=False,
-                movimiento__eliminado=False,
-                movimiento__fecha__gt=conteo.fecha_hora_conteo,
-                movimiento__fecha_movimiento__lte=conteo.fecha_hora_conteo,
-            )
-            .filter(
-                Q(ubicacion_destino=detalle.ubicacion)
-                | Q(ubicacion_origen=detalle.ubicacion)
-            )
-            .select_related(
-                'movimiento', 'movimiento__usuario',
-                'ubicacion_origen', 'ubicacion_destino',
-            )
-            .order_by('movimiento__fecha_movimiento')
-        )
+        movs_tardios = tardios.get(clave, [])
 
         plan.append({
             'detalle': detalle,

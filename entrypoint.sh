@@ -7,7 +7,10 @@ while ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" > /dev/null 2>&1; d
 done
 echo "Base de datos lista."
 
-python manage.py makemigrations --noinput
+# NO se corre makemigrations acá: generaría y aplicaría migraciones derivadas
+# del estado de los modelos en la imagen, saltándose el code review y creando
+# drift de esquema silencioso. Las migraciones se generan en desarrollo y se
+# commitean. Si falta alguna, `migrate` falla ruidosamente, que es lo correcto.
 python manage.py migrate --noinput
 python manage.py setup_groups
 

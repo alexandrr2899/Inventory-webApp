@@ -6,7 +6,9 @@ from urllib.parse import urlsplit
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
-from ..models import DocumentoFactura, TarifaCliente, MetodoPago, CategoriaProducto
+from ..models import (
+    AplicacionPago, CategoriaProducto, DocumentoFactura, MetodoPago, TarifaCliente,
+)
 from ..forms import DocumentoUploadForm, DocumentoEditarForm
 from ..services.facturas import clientes, invoice_service, status_service, payment_service
 
@@ -32,8 +34,10 @@ def _safe_return_url(request):
 @permission_required(_perm('ver_facturas'), raise_exception=True)
 @facturas_enabled
 def facturas_lista(request):
-    qs = DocumentoFactura.anotar_pagado(
-        DocumentoFactura.objects.select_related('cliente', 'categoria'))
+    # Los filtros se arman sobre un queryset SIN anotar: `anotar_pagado` mete
+    # un JOIN a aplicaciones que multiplicaría las filas de cualquier
+    # .aggregate() posterior. La anotación se agrega recién sobre la página.
+    qs = DocumentoFactura.objects.all()
     tipo = request.GET.get('tipo', '')
     cliente_id = request.GET.get('cliente', '')
     categoria_id = request.GET.get('categoria', '')
@@ -73,23 +77,41 @@ def facturas_lista(request):
         qs = qs.filter(fecha_documento__lte=hasta)
 
     qs = qs.order_by('-fecha_documento', '-created_at')
-    documentos = list(qs)
 
-    # Resumen calculado sobre el conjunto YA filtrado (el rango de fechas afecta
-    # también a los totales mostrados arriba de la tabla).
-    activos = [d for d in documentos if d.estado_pago != 'anulada']
-    total_facturado = sum((d.monto_total for d in activos), Decimal('0'))
-    total_cobrado = sum((d.monto_pagado for d in activos), Decimal('0'))
+    # Resumen calculado en la BD sobre el conjunto YA filtrado (el rango de
+    # fechas afecta también a los totales mostrados arriba de la tabla). Antes
+    # se sumaba en Python recorriendo TODOS los documentos, lo que obligaba a
+    # traerlos completos a memoria y crecía sin techo con los años.
+    activos = qs.exclude(estado_pago='anulada')
+    total_facturado = activos.aggregate(t=Sum('monto_total'))['t'] or Decimal('0')
+    total_cobrado = AplicacionPago.objects.filter(
+        documento__in=activos).aggregate(t=Sum('monto'))['t'] or Decimal('0')
+
+    # Vencido = saldo de lo que ya pasó su fecha. Se calcula como
+    # (facturado − cobrado) del subconjunto vencido: un documento saldado
+    # aporta cero, igual que el criterio de `esta_vencida`.
+    vencidas = activos.filter(fecha_vencimiento__lt=hoy)
+    vencido_facturado = vencidas.aggregate(t=Sum('monto_total'))['t'] or Decimal('0')
+    vencido_cobrado = AplicacionPago.objects.filter(
+        documento__in=vencidas).aggregate(t=Sum('monto'))['t'] or Decimal('0')
+
     resumen = {
-        'total_documentos': len(documentos),
+        'total_documentos': qs.count(),
         'total_facturado': total_facturado,
         'total_cobrado': total_cobrado,
         'total_pendiente': total_facturado - total_cobrado,
-        'total_vencido': sum((d.saldo_pendiente for d in activos if d.esta_vencida), Decimal('0')),
+        'total_vencido': max(Decimal('0'), vencido_facturado - vencido_cobrado),
     }
 
+    paginator = Paginator(
+        DocumentoFactura.anotar_pagado(qs.select_related('cliente', 'categoria')),
+        100,
+    )
+    page_obj = paginator.get_page(request.GET.get('page'))
+
     ctx = {
-        'documentos': documentos,
+        'documentos': page_obj,
+        'page_obj': page_obj,
         'resumen': resumen,
         # El contador "por revisar" lo aporta el context processor (facturas_por_revisar).
         'clientes': Cliente.objects.order_by('nombre'),

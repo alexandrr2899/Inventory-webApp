@@ -141,11 +141,23 @@ def notify_stock(item, movimiento: str = '', usuario: str = ''):
     stock_minimo = item.stock_minimo
     estado_nuevo = _estado_stock(stock_total, stock_minimo)
 
-    cache_key    = f'stock_alert_state_{item.pk}'
-    estado_previo = cache.get(cache_key, 'normal')
-
-    # Siempre actualizar la caché con el estado actual
-    cache.set(cache_key, estado_nuevo, _CACHE_TTL)
+    # La caché es anti-spam, no una dependencia crítica. Esta función corre en
+    # transaction.on_commit (ver views/common.py:_notify_stock_later), o sea
+    # DESPUÉS de que el movimiento ya se guardó: si Redis está caído y dejamos
+    # propagar la excepción, el usuario ve un 500 sobre una operación que en
+    # realidad SÍ se persistió, y la vuelve a capturar duplicándola.
+    # Ante fallo de caché degradamos a "notificar igual" (preferimos una alerta
+    # repetida antes que perder una alerta de stock cero).
+    cache_key = f'stock_alert_state_{item.pk}'
+    try:
+        estado_previo = cache.get(cache_key, 'normal')
+        cache.set(cache_key, estado_nuevo, _CACHE_TTL)
+    except Exception as exc:
+        event_log.warning(
+            '[EVENT] caché no disponible para anti-spam de stock (item=%s): %s',
+            item.pk, exc,
+        )
+        estado_previo = None
 
     # Si el estado no cambió, no hay nada que notificar
     if estado_nuevo == estado_previo:

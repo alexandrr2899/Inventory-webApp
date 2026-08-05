@@ -6,6 +6,8 @@ from .stock import *     # noqa: F401,F403
 from .calc import *      # noqa: F401,F403
 from .payloads import *  # noqa: F401,F403
 
+from ..services import pigmentos as pigmentos_service
+
 
 # ─── REPORTES ─────────────────────────────────────────────────────────────────
 
@@ -681,93 +683,20 @@ def reporte_consumo_pigmentos(request):
     except (ValueError, TypeError):
         dias_objetivo = 14
 
-    dias_rango = max(1, (fecha_fin - fecha_inicio).days + 1)
-
-    # ── Pigmentos activos ─────────────────────────────────────────────────────
-    pigmentos_qs = (
-        Item.objects
-        .filter(activo=True, tipo='consumible', categoria__nombre__iexact='Pigmentos')
-        .select_related('categoria')
-        .annotate(stock_calc=_STOCK_ANN)
-        .order_by('orden', 'nombre')
+    # El cálculo vive en services/pigmentos.py porque la alerta programada
+    # (tasks.notify_pigment_coverage) usa exactamente el mismo criterio.
+    resultados, totales = pigmentos_service.calcular_cobertura(
+        fecha_inicio, fecha_fin,
+        dias_objetivo=dias_objetivo,
+        pigmento_pk=pigmento_pk or None,
     )
-    if pigmento_pk:
-        pigmentos_qs = pigmentos_qs.filter(pk=pigmento_pk)
+    dias_rango     = totales['dias_rango']
+    total_consumo  = totales['total_consumo']
+    total_criticos = totales['total_criticos']
+    total_pedido   = totales['total_pedido']
+    consumos_base  = totales['consumos_base']
 
-    todos_pigmentos = (
-        Item.objects
-        .filter(activo=True, tipo='consumible', categoria__nombre__iexact='Pigmentos')
-        .order_by('orden', 'nombre')
-    )
-
-    # ── Consumo por ítem: ajustes negativos en el rango ───────────────────────
-    consumos_base = DetalleMovimiento.objects.filter(
-        movimiento__tipo_movimiento='ajuste',
-        movimiento__anulado=False,
-        movimiento__eliminado=False,
-        movimiento__fecha_movimiento__date__gte=fecha_inicio,
-        movimiento__fecha_movimiento__date__lte=fecha_fin,
-        item__tipo='consumible',
-        item__categoria__nombre__iexact='Pigmentos',
-        cantidad__lt=0,
-    )
-    if pigmento_pk:
-        consumos_base = consumos_base.filter(item_id=pigmento_pk)
-
-    consumo_por_item = {
-        row['item_id']: abs(row['total'])
-        for row in consumos_base.values('item_id').annotate(total=Sum('cantidad'))
-    }
-
-    # ── Construir tabla de resultados ─────────────────────────────────────────
-    ESTADO_LABELS = {
-        'ok':          'OK',
-        'bajo':        'Bajo',
-        'critico':     'Crítico',
-        'sin_consumo': 'Sin consumo',
-    }
-
-    resultados = []
-    total_consumo  = Decimal('0')
-    total_criticos = 0
-    total_pedido   = Decimal('0')
-
-    for pig in pigmentos_qs:
-        consumo = consumo_por_item.get(pig.pk, Decimal('0'))
-        stock   = pig.stock_calc or Decimal('0')
-
-        if consumo > 0:
-            promedio_diario = consumo / Decimal(str(dias_rango))
-            dias_cob = float(stock / promedio_diario) if promedio_diario else None
-            pedido   = max(Decimal('0'), promedio_diario * Decimal(str(dias_objetivo)) - stock)
-        else:
-            promedio_diario = Decimal('0')
-            dias_cob = None
-            pedido   = Decimal('0')
-
-        if dias_cob is None:
-            estado = 'sin_consumo'
-        elif dias_cob < 3:
-            estado = 'critico'
-            total_criticos += 1
-        elif dias_cob <= 7:
-            estado = 'bajo'
-        else:
-            estado = 'ok'
-
-        total_consumo += consumo
-        total_pedido  += pedido
-
-        resultados.append({
-            'item':           pig,
-            'consumo':        consumo,
-            'promedio_diario': round(promedio_diario, 2),
-            'stock':          stock,
-            'dias_cobertura': round(dias_cob, 1) if dias_cob is not None else None,
-            'pedido':         round(pedido, 2),
-            'estado':         estado,
-            'estado_label':   ESTADO_LABELS[estado],
-        })
+    todos_pigmentos = pigmentos_service.pigmentos_activos()
 
     # ── Detalle de movimientos (solo cuando se filtra un pigmento) ─────────────
     detalle_movimientos = []

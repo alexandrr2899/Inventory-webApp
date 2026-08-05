@@ -111,6 +111,11 @@ DATABASES = {
         'USER':     config('DB_USER', default='bolsas_user'),
         'PASSWORD': config('DB_PASSWORD'),           # requerido, sin default
         'PORT':     config('DB_PORT', default='5432'),
+        # Reutilizar conexiones entre requests: Postgres corre en otro
+        # contenedor, así que sin esto cada request paga handshake TCP + auth.
+        # 60s es seguro sin pgbouncer (pocos workers, conexiones acotadas).
+        'CONN_MAX_AGE': config('CONN_MAX_AGE', default=60, cast=int),
+        'CONN_HEALTH_CHECKS': True,
         'OPTIONS': {
             'connect_timeout': 10,
         },
@@ -215,6 +220,20 @@ CELERY_BEAT_SCHEDULE = {
     'facturas-vencidas-diario-8am': {
         'task': 'apps.core.tasks.notify_overdue_invoices',
         'schedule': crontab(hour=8, minute=0),
+    },
+    # Cobertura de pigmentos: avisa qué se va a acabar antes de reponerlo.
+    'pigmentos-cobertura-diario-7am': {
+        'task': 'apps.core.tasks.notify_pigment_coverage',
+        'schedule': crontab(hour=7, minute=0),
+    },
+    # Backup automático de madrugada. Antes el backup dependía de que alguien
+    # entrara al panel y lo disparara a mano.
+    'backup-postgres-diario': {
+        'task': 'apps.core.tasks.scheduled_backup',
+        'schedule': crontab(
+            hour=config('BACKUP_SCHEDULE_HOUR', default=2, cast=int),
+            minute=config('BACKUP_SCHEDULE_MINUTE', default=30, cast=int),
+        ),
     },
 }
 
