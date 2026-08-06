@@ -4,9 +4,10 @@ from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.core.models import Cliente, DocumentoFactura, TarifaCliente, CategoriaProducto
-from apps.core.services.facturas import invoice_service
+from apps.core.services.facturas import clientes, invoice_service
 
 
 class DetectarTipoTests(TestCase):
@@ -29,8 +30,35 @@ class VencimientoCreditoTests(TestCase):
         )
         self.assertEqual(doc.fecha_vencimiento, date(2026, 6, 16))
 
-    def test_contado_no_pone_vencimiento(self):
+    def test_contado_vence_el_mismo_dia(self):
+        """Sin días de crédito la factura vence el día del documento.
+
+        Antes quedaba sin fecha_vencimiento y por eso nunca podía pasar a 'vencida'.
+        """
         cliente = Cliente.objects.create(nombre='Contado', dias_credito=0)
+        doc = invoice_service.crear_documento(
+            cliente=cliente, tipo_documento='factura',
+            datos={'fecha_documento': date(2026, 6, 1), 'monto_total': Decimal('100.00')},
+        )
+        self.assertEqual(doc.fecha_vencimiento, date(2026, 6, 1))
+
+    def test_contado_pendiente_hoy_y_vencida_ayer(self):
+        cliente = Cliente.objects.create(nombre='Contado estado', dias_credito=0)
+        hoy = timezone.localdate()
+        de_hoy = invoice_service.crear_documento(
+            cliente=cliente, tipo_documento='factura',
+            datos={'fecha_documento': hoy, 'monto_total': Decimal('100.00')},
+        )
+        de_ayer = invoice_service.crear_documento(
+            cliente=cliente, tipo_documento='factura',
+            datos={'fecha_documento': hoy - timedelta(days=1), 'monto_total': Decimal('100.00')},
+        )
+        self.assertEqual(de_hoy.estado_pago, 'pendiente')
+        self.assertEqual(de_ayer.estado_pago, 'vencida')
+
+    def test_sin_identificar_no_recibe_vencimiento(self):
+        """El documento que la ingesta no pudo emparejar no debe nacer vencido."""
+        cliente = clientes.cliente_sin_identificar()
         doc = invoice_service.crear_documento(
             cliente=cliente, tipo_documento='factura',
             datos={'fecha_documento': date(2026, 6, 1), 'monto_total': Decimal('100.00')},
@@ -67,7 +95,8 @@ class InvoiceServiceTests(TestCase):
         self.assertEqual(doc.tipo_documento, 'factura')
         self.assertEqual(doc.monto_total, Decimal('115.00'))
         self.assertEqual(doc.estado_revision, 'pendiente')
-        self.assertEqual(doc.estado_pago, 'pendiente')
+        # Cliente de contado con fecha del 1/6/2026: venció ese mismo día.
+        self.assertEqual(doc.estado_pago, 'vencida')
 
     def test_crear_envio_aplica_tarifa_y_calcula_monto(self):
         TarifaCliente.objects.create(

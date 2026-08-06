@@ -20,7 +20,7 @@ def build(cliente, desde, hasta):
     """Datos del estado de cuenta de `cliente` en el rango [desde, hasta] (inclusive)."""
     docs = DocumentoFactura.anotar_pagado(
         cliente.documentos
-        .filter(tipo_documento__in=('factura', 'envio'),
+        .filter(tipo_documento__in=('factura', 'envio', 'apertura'),
                 fecha_documento__gte=desde, fecha_documento__lte=hasta)
         .exclude(estado_pago='anulada')
         .select_related('categoria')
@@ -35,6 +35,8 @@ def build(cliente, desde, hasta):
         etiqueta = doc.numero_documento or str(doc.pk)
         if doc.tipo_documento == 'envio':
             etiqueta = f'Envio {etiqueta}'
+        elif doc.tipo_documento == 'apertura':
+            etiqueta = 'Saldo inicial'
         filas.append({
             'subcliente': doc.subcliente,
             'producto': doc.categoria.nombre if doc.categoria else '',

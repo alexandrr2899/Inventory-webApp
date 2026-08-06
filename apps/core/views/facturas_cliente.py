@@ -1,12 +1,14 @@
 """facturas_cliente.py — Fragmento AJAX de la tab Facturas en la vista de cliente."""
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
+
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .common import *  # noqa: F401,F403
 
 from ..models import Cliente, DocumentoFactura, Pago
-from ..forms import AbonoClienteForm, ClienteInlineForm
-from ..services.facturas import clientes, payment_service, status_service
+from ..forms import AbonoClienteForm, ClienteInlineForm, SaldoInicialForm
+from ..services.facturas import clientes, invoice_service, payment_service, status_service
 
 _log = logging.getLogger(__name__)
 
@@ -86,6 +88,34 @@ def cliente_facturas_fragment(request, pk):
         'hasta': hasta,
         'return_url': reverse('cliente_salidas', args=[cliente.pk]),
         'abonos': cliente.pagos.select_related('metodo_pago')[:50],
+        'saldo_inicial': invoice_service.saldo_inicial_de(cliente),
+    })
+
+
+@login_required
+@permission_required(_perm('gestionar_facturas'), raise_exception=True)
+@facturas_enabled
+def cliente_saldo_inicial(request, pk):
+    """Registra la deuda previa al sistema como documento de apertura del cliente."""
+    cliente = get_object_or_404(Cliente, pk=pk)
+    if request.method == 'POST':
+        form = SaldoInicialForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                invoice_service.registrar_saldo_inicial(
+                    cliente, monto=cd['monto'], fecha=cd['fecha'],
+                    notas=cd.get('notas', ''))
+            except DjangoValidationError as e:
+                form.add_error(None, e.messages[0])
+            else:
+                messages.success(request, 'Saldo inicial registrado.')
+                return redirect('cliente_salidas', pk=cliente.pk)
+    else:
+        form = SaldoInicialForm(initial={'fecha': timezone.localdate()})
+    return render(request, 'facturas/form_saldo_inicial.html', {
+        'form': form, 'cliente': cliente,
+        'saldo_inicial': invoice_service.saldo_inicial_de(cliente),
     })
 
 
@@ -94,17 +124,17 @@ def cliente_facturas_fragment(request, pk):
 @facturas_enabled
 def cliente_abono_nuevo(request, pk):
     cliente = get_object_or_404(Cliente, pk=pk)
-    pendientes = payment_service._facturas_pendientes(cliente)
+    filas = payment_service.facturas_para_reparto(cliente)
     if request.method == 'POST':
-        form = AbonoClienteForm(request.POST, request.FILES)
+        form = AbonoClienteForm(request.POST, request.FILES,
+                                facturas=[(doc, saldo) for doc, saldo, _ in filas])
         if form.is_valid():
             cd = form.cleaned_data
-            aplicaciones, tiene_edicion = _leer_reparto(request, pendientes)
             pago = payment_service.registrar_abono(
                 cliente, fecha_pago=cd['fecha_pago'], metodo_pago=cd['metodo_pago'],
                 monto=cd['monto'], referencia=cd.get('referencia', ''),
                 comprobante=cd.get('comprobante'), notas=cd.get('notas', ''),
-                aplicaciones=aplicaciones if tiene_edicion else None,
+                aplicaciones=cd['aplicaciones'],
             )
             _send_event_later('abono_cliente_creado', {
                 'pago_id': pago.pk,
@@ -133,37 +163,25 @@ def cliente_abono_nuevo(request, pk):
             return JsonResponse({'ok': False, 'errors': _form_errors_json(form)}, status=400)
     else:
         form = AbonoClienteForm(initial={'fecha_pago': timezone.localdate()})
-    plantilla = 'facturas/_abono_fragment.html' if _es_ajax(request) else 'facturas/form_abono.html'
-    return render(request, plantilla, {
+    return render(request, _plantilla_abono(request), {
         'form': form, 'cliente': cliente,
-        'pendientes': [{'doc': d, 'aplicado': None} for d in pendientes],
+        'pendientes': _filas_reparto(filas),
         'modo_edicion': False, 'pago': None,
         'action_url': reverse('cliente_abono_nuevo', args=[cliente.pk]),
         'titulo': 'Registrar abono', 'submit_label': 'Registrar abono',
     })
 
 
-def _leer_reparto(request, docs):
-    """Construye (aplicaciones, tiene_edicion) desde los campos aplicar_<pk>.
+def _plantilla_abono(request):
+    return 'facturas/_abono_fragment.html' if _es_ajax(request) else 'facturas/form_abono.html'
 
-    `docs`: iterable de DocumentoFactura. Devuelve una lista de (doc, monto) para
-    todos los valores numéricos válidos (incluyendo 0, que fija la factura en 0),
-    y un flag que indica si hubo algún valor numérico — si no hubo ninguno, el
-    llamador auto-reparte.
-    """
-    aplicaciones = []
-    tiene_edicion = False
-    for doc in docs:
-        raw = request.POST.get(f'aplicar_{doc.pk}')
-        if raw in (None, ''):
-            continue
-        try:
-            monto = Decimal(raw)
-        except (InvalidOperation, ValueError):
-            continue
-        tiene_edicion = True
-        aplicaciones.append((doc, monto))
-    return aplicaciones, tiene_edicion
+
+def _filas_reparto(filas):
+    """Adapta las filas de `facturas_para_reparto` a lo que consume el template."""
+    return [
+        {'doc': doc, 'saldo': saldo, 'aplicado': aplicado or None}
+        for doc, saldo, aplicado in filas
+    ]
 
 
 @login_required
@@ -172,27 +190,21 @@ def _leer_reparto(request, docs):
 def cliente_abono_editar(request, pk):
     pago = get_object_or_404(Pago, pk=pk)
     cliente = pago.cliente
-    # Reparto: facturas pendientes + las ya aplicadas por ESTE pago (aunque este
-    # abono las haya dejado en saldo 0), para poder redistribuir hacia ellas.
-    apps_list = list(pago.aplicaciones.select_related('documento'))
-    aplicado_por_doc = {}
-    for a in apps_list:
-        aplicado_por_doc[a.documento_id] = aplicado_por_doc.get(a.documento_id, Decimal('0')) + a.monto
-    docs = {d.pk: d for d in payment_service._facturas_pendientes(cliente)}
-    for a in apps_list:
-        docs.setdefault(a.documento_id, a.documento)
-    docs = sorted(docs.values(), key=lambda d: (d.fecha_documento, d.created_at))
+    # El saldo de cada factura se calcula como si este abono no existiera: las que él
+    # mismo dejó en cero vuelven a mostrar su saldo completo, que es lo que se puede
+    # redistribuir (editar_abono borra las aplicaciones antes de repartir de nuevo).
+    filas = payment_service.facturas_para_reparto(cliente, pago=pago)
 
     if request.method == 'POST':
-        form = AbonoClienteForm(request.POST, request.FILES)
+        form = AbonoClienteForm(request.POST, request.FILES,
+                                facturas=[(doc, saldo) for doc, saldo, _ in filas])
         if form.is_valid():
             cd = form.cleaned_data
-            aplicaciones, tiene_edicion = _leer_reparto(request, docs)
             payment_service.editar_abono(
                 pago, fecha_pago=cd['fecha_pago'], metodo_pago=cd['metodo_pago'],
                 monto=cd['monto'], referencia=cd.get('referencia', ''),
                 comprobante=cd.get('comprobante'), notas=cd.get('notas', ''),
-                aplicaciones=aplicaciones if tiene_edicion else None,
+                aplicaciones=cd['aplicaciones'],
             )
             if _es_ajax(request):
                 return JsonResponse({'ok': True, 'saldo': str(cliente.saldo_a_favor)})
@@ -205,10 +217,9 @@ def cliente_abono_editar(request, pk):
             'fecha_pago': pago.fecha_pago, 'metodo_pago': pago.metodo_pago_id,
             'monto': pago.monto, 'referencia': pago.referencia, 'notas': pago.notas,
         })
-    plantilla = 'facturas/_abono_fragment.html' if _es_ajax(request) else 'facturas/form_abono.html'
-    return render(request, plantilla, {
+    return render(request, _plantilla_abono(request), {
         'form': form, 'cliente': cliente,
-        'pendientes': [{'doc': d, 'aplicado': aplicado_por_doc.get(d.pk)} for d in docs],
+        'pendientes': _filas_reparto(filas),
         'modo_edicion': True, 'pago': pago,
         'action_url': reverse('cliente_abono_editar', args=[pago.pk]),
         'titulo': 'Editar abono', 'submit_label': 'Guardar cambios',
@@ -277,12 +288,11 @@ def factura_identificar(request, pk):
 
     doc.cliente = cliente
     campos = ['cliente', 'updated_at']
-    # El documento entró bajo "Sin identificar" (0 días de crédito), así que suele
-    # llegar sin vencimiento. Se calcula con el mismo guardia que usa
-    # invoice_service: solo si está vacío, para no pisar una fecha del PDF ni una
-    # que puso una persona.
-    if not doc.fecha_vencimiento and doc.fecha_documento and cliente.dias_credito:
-        doc.fecha_vencimiento = doc.fecha_documento + timedelta(days=cliente.dias_credito)
+    # El documento entró bajo "Sin identificar", que nunca recibe vencimiento, así que
+    # suele llegar sin él. Se calcula con el mismo guardia que usa invoice_service:
+    # solo si está vacío, para no pisar una fecha del PDF ni una que puso una persona.
+    if not doc.fecha_vencimiento:
+        doc.fecha_vencimiento = invoice_service.calcular_vencimiento(cliente, doc.fecha_documento)
         campos.append('fecha_vencimiento')
 
     revisada = request.POST.get('marcar_revisado') == '1'

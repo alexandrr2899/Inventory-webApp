@@ -1,4 +1,4 @@
-{% load facturas_extras %}
+{% load facturas_extras l10n %}
 <form method="post" action="{{ action_url }}" enctype="multipart/form-data" data-abono-form>
   {% csrf_token %}
   {% if form.non_field_errors %}
@@ -38,11 +38,11 @@
     <div class="card-body">
       <p class="text-muted small mb-2">Deja los montos en blanco para repartir automáticamente de la más antigua a la más reciente.</p>
       <div class="table-responsive">
-        <table class="table table-sm align-middle">
+        <table class="table table-sm align-middle" data-abono-reparto>
           <thead class="table-light">
             <tr>
               <th>Factura</th><th>Fecha</th>
-              <th class="text-end">Saldo pendiente</th>
+              <th class="text-end">{% if modo_edicion %}Saldo sin este abono{% else %}Saldo pendiente{% endif %}</th>
               <th style="min-width:140px">Aplicar</th>
             </tr>
           </thead>
@@ -51,11 +51,14 @@
             <tr>
               <td><a href="{% url 'factura_detalle' row.doc.pk %}">{{ row.doc.numero_documento|default:row.doc.pk }}</a></td>
               <td class="text-nowrap">{{ row.doc.fecha_documento|date:"d/m/Y" }}</td>
-              <td class="text-end fw-bold">L {{ row.doc.saldo_pendiente|moneda }}</td>
+              <td class="text-end fw-bold">L {{ row.saldo|moneda }}</td>
               <td>
-                <input type="number" step="0.01" min="0" name="aplicar_{{ row.doc.pk }}"
-                       value="{{ row.aplicado|default_if_none:'' }}"
-                       class="form-control form-control-sm" placeholder="auto">
+                {# unlocalize: con es-* el decimal sale con coma y el input[type=number] lo descarta #}
+                <input type="number" step="0.01" min="0" max="{{ row.saldo|unlocalize }}"
+                       name="aplicar_{{ row.doc.pk }}"
+                       value="{{ row.aplicado|default_if_none:''|unlocalize }}"
+                       class="form-control form-control-sm" placeholder="auto"
+                       data-abono-aplicar>
               </td>
             </tr>
             {% empty %}
@@ -64,6 +67,18 @@
             </td></tr>
             {% endfor %}
           </tbody>
+          {% if pendientes %}
+          <tfoot>
+            <tr class="border-top">
+              <td colspan="3" class="text-end text-muted">Repartido a mano</td>
+              <td class="fw-semibold" data-abono-total>L 0.00</td>
+            </tr>
+            <tr>
+              <td colspan="3" class="text-end text-muted">Resto (auto-reparto o saldo a favor)</td>
+              <td class="fw-semibold" data-abono-resto>L 0.00</td>
+            </tr>
+          </tfoot>
+          {% endif %}
         </table>
       </div>
     </div>

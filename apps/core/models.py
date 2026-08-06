@@ -624,6 +624,10 @@ class DocumentoFactura(models.Model):
     TIPO_CHOICES = [
         ('factura', 'Factura'),
         ('envio', 'Envío'),
+        # Deuda que el cliente ya traía antes de empezar a llevar las facturas aquí.
+        # Es un tipo aparte para que los reportes de facturación no la cuenten como
+        # venta, pero sí sume en lo adeudado y reciba abonos como cualquier factura.
+        ('apertura', 'Saldo inicial'),
     ]
     ESTADO_REVISION_CHOICES = [
         ('pendiente', 'Pendiente'),

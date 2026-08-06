@@ -11,6 +11,9 @@ from ..services.facturas import payment_service
 @facturas_enabled
 def factura_pago_nuevo(request, pk):
     doc = get_object_or_404(DocumentoFactura, pk=pk)
+    if doc.estado_pago == 'anulada':
+        messages.error(request, 'No se puede registrar un pago sobre un documento anulado.')
+        return redirect('factura_detalle', pk=doc.pk)
     if request.method == 'POST':
         form = PagoFacturaForm(request.POST, request.FILES)
         if form.is_valid():

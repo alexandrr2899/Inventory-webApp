@@ -1,3 +1,47 @@
+// Totalizador del reparto: muestra en vivo cuánto se repartió a mano y cuánto resto
+// queda (que el servidor auto-reparte por antigüedad o deja como saldo a favor).
+// Vive fuera del IIFE del modal porque el formulario también se usa como página.
+(function () {
+  function fmt(n) {
+    return 'L ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function refrescar(form) {
+    var tabla = form.querySelector('[data-abono-reparto]');
+    if (!tabla) return;
+    var celdaTotal = tabla.querySelector('[data-abono-total]');
+    var celdaResto = tabla.querySelector('[data-abono-resto]');
+    if (!celdaTotal || !celdaResto) return;
+
+    var total = 0;
+    tabla.querySelectorAll('[data-abono-aplicar]').forEach(function (input) {
+      var valor = parseFloat(input.value);
+      if (isNaN(valor)) { input.classList.remove('is-invalid'); return; }
+      total += valor;
+      var max = parseFloat(input.getAttribute('max'));
+      input.classList.toggle('is-invalid', !isNaN(max) && valor > max);
+    });
+
+    var monto = parseFloat((form.querySelector('[name="monto"]') || {}).value);
+    if (isNaN(monto)) monto = 0;
+    var resto = monto - total;
+    celdaTotal.textContent = fmt(total);
+    celdaTotal.classList.toggle('text-danger', resto < 0);
+    celdaResto.textContent = resto < 0 ? fmt(resto) + ' (te pasaste)' : fmt(resto);
+    celdaResto.classList.toggle('text-danger', resto < 0);
+  }
+
+  window.abonoRefrescarTotales = function () {
+    document.querySelectorAll('form[data-abono-form]').forEach(refrescar);
+  };
+
+  document.addEventListener('input', function (e) {
+    var form = e.target.closest('form[data-abono-form]');
+    if (form && e.target.matches('[data-abono-aplicar], [name="monto"]')) refrescar(form);
+  });
+  document.addEventListener('DOMContentLoaded', window.abonoRefrescarTotales);
+})();
+
 (function () {
   var modalEl = document.getElementById('abonoModal');
   if (!modalEl || !window.bootstrap) return;
@@ -35,6 +79,7 @@
     if (!form) return;
     var cancel = content.querySelector('[data-abono-cancel]');
     if (cancel) cancel.addEventListener('click', function (e) { e.preventDefault(); bsModal.hide(); });
+    if (window.abonoRefrescarTotales) window.abonoRefrescarTotales();
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var fd = new FormData(form);

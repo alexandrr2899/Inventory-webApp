@@ -146,6 +146,8 @@
         <span>
           {% if doc.tipo_documento == 'envio' %}
           <span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-truck me-1"></i>Envío</span>
+          {% elif doc.tipo_documento == 'apertura' %}
+          <span class="badge bg-secondary-subtle text-secondary-emphasis"><i class="bi bi-clock-history me-1"></i>Saldo inicial</span>
           {% else %}
           <span class="badge bg-primary-subtle text-primary-emphasis"><i class="bi bi-receipt me-1"></i>Factura</span>
           {% endif %}
@@ -219,6 +221,8 @@
           <td class="px-3">
             {% if doc.tipo_documento == 'envio' %}
             <span class="badge bg-info-subtle text-info-emphasis"><i class="bi bi-truck me-1"></i>Envío</span>
+            {% elif doc.tipo_documento == 'apertura' %}
+            <span class="badge bg-secondary-subtle text-secondary-emphasis"><i class="bi bi-clock-history me-1"></i>Saldo inicial</span>
             {% else %}
             <span class="badge bg-primary-subtle text-primary-emphasis"><i class="bi bi-receipt me-1"></i>Factura</span>
             {% endif %}

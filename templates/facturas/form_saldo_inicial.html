@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load facturas_extras %}
+{% block title %}Saldo inicial · {{ cliente.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1><i class="bi bi-clock-history me-2"></i>Saldo inicial · {{ cliente.nombre }}</h1>
+</div>
+
+{% if saldo_inicial %}
+<div class="alert alert-warning">
+  Este cliente ya tiene un saldo inicial de
+  <strong>L {{ saldo_inicial.monto_total|moneda }}</strong>
+  del {{ saldo_inicial.fecha_documento|date:"d/m/Y" }}.
+  <a href="{% url 'factura_detalle' saldo_inicial.pk %}">Verlo o editarlo</a>.
+</div>
+{% else %}
+<p class="text-muted">
+  La deuda que el cliente ya traía antes de empezar a llevar sus facturas aquí. Se
+  registra como un documento aparte: recibe abonos y suma en lo adeudado, pero no cuenta
+  como venta en los reportes. Al ser el más antiguo, los abonos lo cobran primero.
+</p>
+
+<form method="post" class="card">
+  {% csrf_token %}
+  <div class="card-body">
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+    <div class="row g-3">
+      <div class="col-12 col-md-4">
+        <label class="form-label">{{ form.monto.label }}</label>
+        {{ form.monto }}
+        {% if form.monto.errors %}<div class="text-danger small">{{ form.monto.errors }}</div>{% endif %}
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label">{{ form.fecha.label }}</label>
+        {{ form.fecha }}
+        <div class="form-text">{{ form.fecha.help_text }}</div>
+        {% if form.fecha.errors %}<div class="text-danger small">{{ form.fecha.errors }}</div>{% endif %}
+      </div>
+      <div class="col-12">
+        <label class="form-label">{{ form.notas.label }}</label>
+        {{ form.notas }}
+      </div>
+    </div>
+  </div>
+  <div class="card-footer d-flex gap-2">
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-check-lg me-2"></i>Registrar saldo inicial
+    </button>
+    <a href="{% url 'cliente_salidas' cliente.pk %}" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

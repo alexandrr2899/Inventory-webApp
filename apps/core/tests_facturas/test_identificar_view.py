@@ -41,6 +41,21 @@ class FacturaIdentificarTests(TestCase):
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.cliente, self.acme)
 
+    def test_calcula_el_vencimiento_con_los_dias_del_cliente_real(self):
+        """«Sin identificar» no recibe vencimiento; se calcula al identificar."""
+        self.assertIsNone(self.doc.fecha_vencimiento)
+        self.client.force_login(self.admin)
+        self._post()
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.fecha_vencimiento, date(2026, 8, 2))  # +30 días
+
+    def test_cliente_de_contado_vence_el_dia_del_documento(self):
+        contado = Cliente.objects.create(nombre='Contado ident', dias_credito=0)
+        self.client.force_login(self.admin)
+        self._post(cliente=contado.pk)
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.fecha_vencimiento, date(2026, 7, 3))
+
     def test_guarda_el_alias_cuando_se_pide(self):
         self.client.force_login(self.admin)
         self._post(guardar_alias='1')

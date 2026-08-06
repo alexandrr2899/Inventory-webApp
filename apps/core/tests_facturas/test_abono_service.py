@@ -177,6 +177,28 @@ class AbonoServiceTests(TestCase):
         self.assertEqual(self.f1.monto_pagado, Decimal('0.00'))
         self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
 
+    def test_no_se_aplica_a_factura_anulada(self):
+        DocumentoFactura.objects.filter(pk=self.f1.pk).update(estado_pago='anulada')
+        self.f1.refresh_from_db()
+        self._abono('100.00', aplicaciones=[(self.f1, Decimal('100.00'))])
+        self.f1.refresh_from_db(); self.f2.refresh_from_db()
+        self.assertEqual(self.f1.monto_pagado, Decimal('0.00'))
+        # El monto sigue de largo hacia la siguiente factura pendiente.
+        self.assertEqual(self.f2.monto_pagado, Decimal('100.00'))
+
+    def test_facturas_para_reparto_devuelve_saldo_sin_el_abono(self):
+        pago = self._abono('150.00')  # cubre f1 y 50 de f2
+        filas = {doc.pk: (saldo, aplicado)
+                 for doc, saldo, aplicado in payment_service.facturas_para_reparto(
+                     self.cli, pago=pago)}
+        self.assertEqual(filas[self.f1.pk], (Decimal('100.00'), Decimal('100.00')))
+        self.assertEqual(filas[self.f2.pk], (Decimal('100.00'), Decimal('50.00')))
+
+    def test_facturas_para_reparto_sin_pago_son_las_pendientes(self):
+        self._abono('100.00')  # cubre f1
+        filas = payment_service.facturas_para_reparto(self.cli)
+        self.assertEqual([doc.pk for doc, _s, _a in filas], [self.f2.pk])
+
     def test_editar_conserva_comprobante_si_no_se_envia_uno(self):
         comp = SimpleUploadedFile('c.pdf', b'x', content_type='application/pdf')
         pago = payment_service.registrar_abono(

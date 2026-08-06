@@ -108,6 +108,7 @@ urlpatterns = [
     path('facturas/tarifas/<int:pk>/toggle/', views.cliente_tarifa_toggle, name='cliente_tarifa_toggle'),
     path('facturas/clientes/<int:pk>/fragmento/', views.cliente_facturas_fragment, name='cliente_facturas_fragment'),
     path('facturas/clientes/<int:pk>/abono/', views.cliente_abono_nuevo, name='cliente_abono_nuevo'),
+    path('facturas/clientes/<int:pk>/saldo-inicial/', views.cliente_saldo_inicial, name='cliente_saldo_inicial'),
     path('facturas/abonos/<int:pk>/editar/', views.cliente_abono_editar, name='cliente_abono_editar'),
     path('facturas/abonos/<int:pk>/borrar/', views.cliente_abono_borrar, name='cliente_abono_borrar'),
     path('facturas/clientes/<int:pk>/estado-cuenta/', views.cliente_estado_cuenta, name='cliente_estado_cuenta'),

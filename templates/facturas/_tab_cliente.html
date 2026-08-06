@@ -45,6 +45,12 @@
     <i class="bi bi-cash-coin me-1"></i>Registrar abono
   </button>
   {% endif %}
+  {% if perms.core.gestionar_facturas and not saldo_inicial %}
+  <a href="{% url 'cliente_saldo_inicial' cliente.pk %}" class="btn btn-sm btn-outline-secondary"
+     title="Deuda que el cliente ya traía antes de llevar sus facturas aquí">
+    <i class="bi bi-clock-history me-1"></i>Saldo inicial
+  </a>
+  {% endif %}
   <span class="text-muted small">Saldo a favor: <strong>L {{ cliente.saldo_a_favor }}</strong></span>
 </div>
 
@@ -86,6 +92,8 @@
         <td>
           {% if doc.tipo_documento == 'envio' %}
           <span class="badge bg-info-subtle text-info-emphasis">Envío</span>
+          {% elif doc.tipo_documento == 'apertura' %}
+          <span class="badge bg-secondary-subtle text-secondary-emphasis">Saldo inicial</span>
           {% else %}
           <span class="badge bg-primary-subtle text-primary-emphasis">Factura</span>
           {% endif %}

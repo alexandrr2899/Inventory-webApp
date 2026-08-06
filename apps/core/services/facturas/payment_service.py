@@ -25,7 +25,36 @@ def _facturas_base(cliente, *, bloquear=False):
 def _facturas_pendientes(cliente, *, bloquear=False):
     """Facturas no anuladas con saldo, de la más vieja a la más nueva."""
     docs = _facturas_base(cliente, bloquear=bloquear)
+    if not bloquear:
+        # `select_for_update` no admite el LEFT JOIN de la anotación, así que el
+        # atajo O(1) solo se usa cuando no hay que bloquear.
+        docs = DocumentoFactura.anotar_pagado(docs)
     return [d for d in docs if d.saldo_pendiente > 0]
+
+
+def facturas_para_reparto(cliente, pago=None):
+    """Filas editables del reparto: lista de (documento, saldo_editable, ya_aplicado).
+
+    `saldo_editable` es lo que ESTE abono puede aplicarle a la factura: su saldo
+    pendiente más lo que el propio abono ya le tenía aplicado. Sin ese ajuste, al
+    editar un abono las facturas que él mismo dejó en cero aparecen como pagadas y
+    con saldo 0, cuando en realidad todo ese monto se puede redistribuir (`editar_abono`
+    borra las aplicaciones antes de repartir de nuevo).
+
+    Sin `pago` (alta de abono) equivale a las facturas pendientes.
+    """
+    ya_aplicado = {}
+    if pago is not None:
+        for apl in pago.aplicaciones.all():
+            ya_aplicado[apl.documento_id] = (
+                ya_aplicado.get(apl.documento_id, Decimal('0.00')) + apl.monto)
+    filas = []
+    for doc in DocumentoFactura.anotar_pagado(_facturas_base(cliente)):
+        aplicado = ya_aplicado.get(doc.pk, Decimal('0.00'))
+        saldo = doc.saldo_pendiente + aplicado
+        if saldo > 0:
+            filas.append((doc, saldo, aplicado))
+    return filas
 
 
 def proponer_reparto(cliente, monto, excluir=None, *, bloquear=False):
@@ -66,6 +95,10 @@ def _aplicar_reparto(pago, aplicaciones):
             continue
         # Refrescar la factura bloqueada antes de leer saldo_pendiente.
         documento = DocumentoFactura.objects.select_for_update().get(pk=documento.pk)
+        if documento.estado_pago == 'anulada' or documento.cliente_id != pago.cliente_id:
+            # Una factura anulada no debe retener dinero (al anularla se liberan sus
+            # aplicaciones); el monto sigue de largo al auto-reparto o a saldo a favor.
+            continue
         monto_aplicar = min(Decimal(monto_aplicar), documento.saldo_pendiente, restante)
         if monto_aplicar > 0:
             AplicacionPago.objects.create(pago=pago, documento=documento, monto=monto_aplicar)
@@ -106,6 +139,10 @@ def editar_abono(pago, *, fecha_pago, metodo_pago, monto,
     """
     monto = _validar_monto_positivo(monto)
     pago = Pago.objects.select_for_update(of=('self',)).select_related('cliente').get(pk=pago.pk)
+    # Liberar ANTES de bloquear: las facturas que este abono había dejado en cero
+    # vuelven a estar pendientes, y así entran en el mismo lote de bloqueo que el
+    # resto en vez de bloquearse sueltas más tarde (orden de locks impredecible).
+    pago.aplicaciones.all().delete()
     _facturas_pendientes(pago.cliente, bloquear=True)
     pago.fecha_pago = fecha_pago
     pago.metodo_pago = metodo_pago
@@ -115,7 +152,6 @@ def editar_abono(pago, *, fecha_pago, metodo_pago, monto,
     if comprobante is not None:
         pago.comprobante = comprobante
     pago.save()
-    pago.aplicaciones.all().delete()
     _aplicar_reparto(pago, aplicaciones)
     return pago
 

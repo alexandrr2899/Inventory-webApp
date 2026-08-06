@@ -4,7 +4,7 @@ import os
 from django import forms
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User, Group
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, Conteo, ConteoDetalle,
@@ -570,7 +570,11 @@ class DocumentoUploadForm(forms.Form):
         widget=forms.Select(attrs={'class': 'form-select cliente-select'}),
     )
     tipo_documento = forms.ChoiceField(
-        choices=[('', 'Auto-detectar por nombre')] + list(DocumentoFactura.TIPO_CHOICES),
+        # 'apertura' no se sube: no tiene PDF, se registra desde la ficha del cliente.
+        choices=[('', 'Auto-detectar por nombre')] + [
+            (valor, etiqueta) for valor, etiqueta in DocumentoFactura.TIPO_CHOICES
+            if valor != 'apertura'
+        ],
         required=False,
         widget=forms.Select(attrs={'class': 'form-select'}),
     )
@@ -659,10 +663,72 @@ class AbonoClienteForm(forms.Form):
     notas = forms.CharField(
         required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
 
+    def __init__(self, *args, facturas=None, **kwargs):
+        """`facturas`: lista de (documento, saldo_editable) que el reparto puede tocar.
+
+        Sin ella el formulario solo valida los datos del abono; los campos
+        `aplicar_<pk>` se ignoran (útil para tests y para llamadores sin reparto).
+        """
+        self.facturas = list(facturas or [])
+        super().__init__(*args, **kwargs)
+
     def clean_comprobante(self):
         return validar_upload(self.cleaned_data.get('comprobante'),
                               extensiones=['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
                               max_mb=MAX_COMPROBANTE_MB)
+
+    def clean(self):
+        """Valida el reparto manual (campos `aplicar_<pk>`) contra saldos y monto.
+
+        Antes los excesos se recortaban en silencio dentro del servicio y se guardaba
+        un reparto distinto al que la persona escribió. Ahora se le avisa. El resto que
+        quede sin asignar se sigue auto-repartiendo por antigüedad.
+        """
+        cleaned = super().clean()
+        monto = cleaned.get('monto')
+        aplicaciones = []
+        total = Decimal('0.00')
+        for documento, saldo in self.facturas:
+            crudo = (self.data.get(f'aplicar_{documento.pk}') or '').strip()
+            if not crudo:
+                continue
+            try:
+                valor = Decimal(crudo)
+            except (InvalidOperation, ValueError):
+                continue  # fila ilegible: se trata como si estuviera en blanco
+            etiqueta = documento.numero_documento or f'#{documento.pk}'
+            if valor < 0:
+                self.add_error(None, f'El monto de {etiqueta} no puede ser negativo.')
+                continue
+            if valor > saldo:
+                self.add_error(
+                    None,
+                    f'{etiqueta} solo admite L {saldo:.2f} y pediste L {valor:.2f}.')
+                continue
+            total += valor
+            aplicaciones.append((documento, valor))
+        if monto is not None and total > monto:
+            self.add_error(
+                None,
+                f'El reparto suma L {total:.2f} y el abono es de L {monto:.2f}.')
+        # Lista vacía = ninguna fila editada: el servicio auto-reparte todo.
+        cleaned['aplicaciones'] = aplicaciones or None
+        return cleaned
+
+
+class SaldoInicialForm(forms.Form):
+    """Deuda que el cliente ya traía antes de empezar a llevar sus facturas aquí."""
+    monto = forms.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        label='Monto adeudado',
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0.01'}))
+    fecha = forms.DateField(
+        label='Fecha de corte',
+        help_text='Desde cuándo se le debe. La deuda queda exigible ese mismo día.',
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'))
+    notas = forms.CharField(
+        required=False, label='Notas',
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
 
 
 class MetodoPagoForm(forms.ModelForm):
