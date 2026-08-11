@@ -1,10 +1,9 @@
 """envio_extractor — datos de un Envío desde texto posicional."""
 import re
 from decimal import Decimal
-from .base_extractor import BaseExtractor, parse_fecha
+from .base_extractor import BaseExtractor, extraer_fecha, quitar_fechas
 
 
-_FECHA_RE = re.compile(r'\d{2}/\d{2}/\d{4}')
 _ENTERO_RE = re.compile(r'(?<![\d/.,\-])\d+(?![\d/.,\-])')
 
 
@@ -13,13 +12,12 @@ class EnvioExtractor(BaseExtractor):
         datos = {}
         texto = texto or ''
 
-        mf = _FECHA_RE.search(texto)
-        if mf:
-            f = parse_fecha(mf.group(0))
-            if f:
-                datos['fecha_documento'] = f
+        fecha = extraer_fecha(texto)
+        if fecha:
+            datos['fecha_documento'] = fecha
 
-        enteros = sorted({int(x) for x in _ENTERO_RE.findall(texto)}, reverse=True)
+        texto_sin_fechas = quitar_fechas(texto)
+        enteros = sorted({int(x) for x in _ENTERO_RE.findall(texto_sin_fechas)}, reverse=True)
         if enteros:
             datos['_enteros'] = enteros          # auxiliar para invoice_service
             datos['total_libras'] = Decimal(enteros[0])

@@ -1,22 +1,19 @@
 """factura_extractor — datos de una Factura desde texto posicional."""
 import re
 from decimal import Decimal
-from .base_extractor import BaseExtractor, parse_decimal, parse_fecha
+from .base_extractor import BaseExtractor, extraer_fecha, parse_decimal
 
 
 _MONTO_RE = re.compile(r'\d{1,7}(?:,\d{3})*\.\d{2}')
-_FECHA_RE = re.compile(r'\d{2}/\d{2}/\d{4}')
 
 
 class FacturaExtractor(BaseExtractor):
     def extraer(self, texto):
         datos = {}
 
-        mf = _FECHA_RE.search(texto or '')
-        if mf:
-            f = parse_fecha(mf.group(0))
-            if f:
-                datos['fecha_documento'] = f
+        fecha = extraer_fecha(texto)
+        if fecha:
+            datos['fecha_documento'] = fecha
 
         montos = []
         for s in _MONTO_RE.findall(texto or ''):

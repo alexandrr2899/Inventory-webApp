@@ -37,10 +37,20 @@ def extraer_de_nombre(nombre_archivo):
                 datos['cliente_nombre'] = cliente
             datos['numero_documento'] = m.group(3)
         else:
-            # fallback: último número del nombre
-            nums = re.findall(r'\d+', base)
-            if nums:
-                datos['numero_documento'] = nums[-1]
+            # "<CLIENTE> Envio <NUM>": algunos envíos de lisa no incluyen
+            # el producto en el nombre, pero todo lo anterior a "Envio" sigue
+            # siendo el nombre fiable del cliente.
+            m = re.search(r'(.+?)\s+env[íi]o\s+(\d+)$', base, re.IGNORECASE)
+            if m:
+                cliente = m.group(1).strip()
+                if cliente:
+                    datos['cliente_nombre'] = cliente
+                datos['numero_documento'] = m.group(2)
+            else:
+                # fallback final: último número del nombre
+                nums = re.findall(r'\d+', base)
+                if nums:
+                    datos['numero_documento'] = nums[-1]
     elif es_factura:
         datos['tipo_documento'] = 'factura'
         # "Fact <NUM> <CLIENTE>"

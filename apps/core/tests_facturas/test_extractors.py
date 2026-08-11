@@ -68,6 +68,17 @@ class HelpersTests(TestCase):
     def test_parse_fecha_dmy(self):
         self.assertEqual(base_extractor.parse_fecha('03/06/2026'), date(2026, 6, 3))
 
+    def test_extraer_fecha_tolera_espacios_y_saltos_del_pdf(self):
+        texto = 'Certificado de Entrega\n07 /\n 08 / 2026\nCliente'
+        self.assertEqual(base_extractor.extraer_fecha(texto), date(2026, 8, 7))
+
+    def test_extraer_fecha_tolera_dia_y_mes_sin_cero(self):
+        self.assertEqual(base_extractor.extraer_fecha('Fecha: 7/8/2026'), date(2026, 8, 7))
+
+    def test_extraer_fecha_ignora_una_fecha_invalida_y_busca_la_siguiente(self):
+        texto = 'Fecha anulada: 32/08/2026\nFecha: 10/08/2026'
+        self.assertEqual(base_extractor.extraer_fecha(texto), date(2026, 8, 10))
+
 
 # ---------------------------------------------------------------------------
 # FilenameExtractorTests
@@ -87,6 +98,12 @@ class FilenameExtractorTests(TestCase):
         self.assertEqual(d['tipo_documento'], 'envio')
         self.assertEqual(d['numero_documento'], '126')
         self.assertEqual(d['cliente_nombre'], 'RENATO DIAZ')
+
+    def test_envio_sin_producto_en_nombre_conserva_cliente(self):
+        d = filename_extractor.extraer_de_nombre('Porfirio Sanchez Envio 19.pdf')
+        self.assertEqual(d['tipo_documento'], 'envio')
+        self.assertEqual(d['numero_documento'], '19')
+        self.assertEqual(d['cliente_nombre'], 'Porfirio Sanchez')
 
     def test_factura_nombre_compuesto(self):
         # Cliente con doble guion y nombre compuesto.
@@ -124,6 +141,10 @@ class FilenameExtractorTests(TestCase):
 # ---------------------------------------------------------------------------
 
 class FacturaRealTests(TestCase):
+    def test_fecha_agosto_con_espacios_de_extraccion(self):
+        d = FacturaExtractor().extraer('Total 1,000.00\n10 / 08 / 2026')
+        self.assertEqual(d['fecha_documento'], date(2026, 8, 10))
+
     def test_montos(self):
         d = FacturaExtractor().extraer(REAL_FACTURA)
         self.assertEqual(d['fecha_documento'], date(2026, 6, 23))
@@ -145,6 +166,18 @@ class FacturaRealTests(TestCase):
 # ---------------------------------------------------------------------------
 
 class EnvioRealTests(TestCase):
+    def test_fecha_agosto_sin_cero_en_mes(self):
+        d = EnvioExtractor().extraer(
+            'Total Lbs\n50\n2000\n19\nCertificado de Entrega\n10/8/2026\nPorfirio Sanchez'
+        )
+        self.assertEqual(d['fecha_documento'], date(2026, 8, 10))
+        self.assertEqual(d['total_libras'], Decimal('2000'))
+
+    def test_fecha_agosto_con_salto_de_linea(self):
+        d = EnvioExtractor().extraer('Total Lbs\n500\n10/\n08/2026')
+        self.assertEqual(d['fecha_documento'], date(2026, 8, 10))
+        self.assertEqual(d['total_libras'], Decimal('500'))
+
     def test_libras_y_fecha(self):
         d = EnvioExtractor().extraer(REAL_ENVIO)
         self.assertEqual(d['fecha_documento'], date(2026, 6, 23))
