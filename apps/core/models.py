@@ -425,7 +425,10 @@ class Conteo(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['fecha', 'turno', 'tipo_conteo'],
-                condition=Q(anulado=False),
+                # "Otros" se usa para conteos parciales de repuestos: pueden
+                # hacerse varios durante el mismo turno. Los conteos fijos sí
+                # deben seguir siendo únicos para evitar dobles ajustes.
+                condition=Q(anulado=False) & ~Q(tipo_conteo='otros'),
                 name='conteo_activo_unico',
             )
         ]

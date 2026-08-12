@@ -16,6 +16,11 @@ from .payloads import *  # noqa: F401,F403
 
 # ─── CONTEOS ──────────────────────────────────────────────────────────────────
 
+def _conteo_debe_ser_unico(tipo_conteo):
+    """Los conteos libres de repuestos ("Otros") pueden repetirse."""
+    return tipo_conteo != 'otros'
+
+
 def _conteo_form_context(*, form, filas_previas, tipo_conteo_inicial=None):
     hoy = date.today()
     ubicaciones = list(Ubicacion.objects.all())
@@ -478,7 +483,9 @@ def conteo_nuevo(request):
         turno = form.cleaned_data['turno']
         tipo_conteo = form.cleaned_data['tipo_conteo']
 
-        if Conteo.objects.filter(fecha=fecha, turno=turno, tipo_conteo=tipo_conteo, anulado=False).exists():
+        if (_conteo_debe_ser_unico(tipo_conteo) and Conteo.objects.filter(
+                fecha=fecha, turno=turno, tipo_conteo=tipo_conteo, anulado=False,
+        ).exists()):
             label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(tipo_conteo, tipo_conteo)
             label_turno = dict(Conteo.TURNO_CHOICES).get(turno, turno)
             messages.error(
@@ -580,12 +587,12 @@ def conteo_editar(request, pk):
         turno = form.cleaned_data['turno']
         tipo_conteo = form.cleaned_data['tipo_conteo']
 
-        if Conteo.objects.filter(
+        if (_conteo_debe_ser_unico(tipo_conteo) and Conteo.objects.filter(
             fecha=fecha,
             turno=turno,
             tipo_conteo=tipo_conteo,
             anulado=False,
-        ).exclude(pk=conteo.pk).exists():
+        ).exclude(pk=conteo.pk).exists()):
             label_tipo = dict(Conteo.TIPO_CONTEO_CHOICES).get(tipo_conteo, tipo_conteo)
             label_turno = dict(Conteo.TURNO_CHOICES).get(turno, turno)
             messages.error(

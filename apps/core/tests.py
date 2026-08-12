@@ -7,6 +7,7 @@ import tempfile
 
 from django.contrib.auth.models import Group, Permission, User
 from django.core.cache import cache
+from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -758,6 +759,48 @@ class SalidaPendienteConciliacionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         # El JSON con stocks_by_ub debe contener -4
         self.assertContains(response, '-4')
+
+    def test_permite_varios_conteos_de_repuestos_el_mismo_turno(self):
+        """"Otros" representa conteos parciales de repuestos y es repetible."""
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='registrar_conteo')
+        )
+        self.client.force_login(self.user)
+        payload = {
+            'fecha': date.today().isoformat(),
+            'turno': 'manana',
+            'tipo_conteo': 'otros',
+            'fecha_hora_conteo': timezone.localtime().strftime('%Y-%m-%dT%H:%M'),
+            'item[]': [str(self.item.pk)],
+            'ubicacion[]': [str(self.ubicacion.pk)],
+            'cantidad_contada[]': ['21'],
+        }
+
+        primero = self.client.post(reverse('conteo_nuevo'), payload)
+        segundo = self.client.post(reverse('conteo_nuevo'), payload)
+
+        self.assertEqual(primero.status_code, 302)
+        self.assertEqual(segundo.status_code, 302)
+        self.assertEqual(
+            Conteo.objects.filter(
+                fecha=date.today(), turno='manana', tipo_conteo='otros',
+                anulado=False,
+            ).count(),
+            2,
+        )
+
+    def test_conteo_fijo_sigue_siendo_unico_por_turno(self):
+        datos = {
+            'fecha': date.today(),
+            'turno': 'manana',
+            'tipo_conteo': 'camiseta',
+            'usuario': self.user,
+            'fecha_hora_conteo': timezone.now(),
+        }
+        Conteo.objects.create(**datos)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Conteo.objects.create(**datos)
 
     def test_conteo_rechaza_cantidad_decimal(self):
         self.user.user_permissions.add(Permission.objects.get(codename='registrar_conteo'))

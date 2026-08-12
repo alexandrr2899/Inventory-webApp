@@ -42,7 +42,7 @@
     var selects = container.querySelectorAll('select[name="item[]"]');
     for (var i = 0; i < selects.length; i++) {
       if (String(selects[i].value) === String(id)) {
-        return selects[i].closest('.fila-item, .fila-dinamica');
+      return selects[i].closest('.fila-item, .fila-dinamica, .fila-otros');
       }
     }
     return null;

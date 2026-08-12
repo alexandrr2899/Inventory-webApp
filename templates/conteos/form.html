@@ -192,7 +192,10 @@
 
       <!-- Pane libre: Otros (filas dinámicas) -->
       <div id="pane-otros" class="conteo-pane d-none">
-        <div class="d-flex justify-content-end mb-2">
+        <div class="d-flex justify-content-end gap-2 mb-2">
+          <button type="button" id="btn-escanear-otros" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-qr-code-scan me-1"></i>Escanear QR
+          </button>
           <button type="button" id="btn-agregar-otros" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Agregar ítem
           </button>
@@ -213,7 +216,7 @@
         </div>
         <div class="text-center py-4 text-muted" id="empty-otros">
           <i class="bi bi-clipboard-plus fs-3 d-block mb-2 opacity-50"></i>
-          Presioná <strong>Agregar ítem</strong> para comenzar el conteo libre
+          Escaneá un QR o presioná <strong>Agregar ítem</strong> para comenzar
         </div>
       </div>
 
@@ -541,6 +544,7 @@ function agregarFilaOtros(pre = {}) {
   }
 
   actualizarCount();
+  return tr;
 }
 
 // ── Contar ítems con cantidad ingresada en el tab activo ───────────────────────
@@ -588,6 +592,32 @@ document.querySelectorAll('#tabs-tipo .nav-link').forEach(function(btn) {
 
 // ── Botón "Agregar ítem" en Otros ─────────────────────────────────────────────
 document.getElementById('btn-agregar-otros').addEventListener('click', () => agregarFilaOtros());
+
+// Escaneo QR en Otros: identifica el ítem y agrega una fila.
+const btnEscanearOtros = document.getElementById('btn-escanear-otros');
+if (btnEscanearOtros && window.QRScanner) {
+  btnEscanearOtros.addEventListener('click', () => {
+    QRScanner.open({ mode: 'continuous', onItem: (id) => {
+      const it = ALL_ITEMS.find(x => String(x.pk) === String(id));
+      if (!it) {
+        QRScanner.notify('El ítem no existe o está inactivo.', 'warning');
+        return;
+      }
+
+      const tbody = document.getElementById('tbody-otros');
+      const existente = QRScanner.findRowByItemId(tbody, id);
+      if (existente) {
+        QRScanner.notify(`"${it.nombre}" ya está agregado.`, 'info');
+        QRScanner.flash(existente);
+        return;
+      }
+
+      const fila = agregarFilaOtros({ item_id: String(id) });
+      QRScanner.flash(fila);
+      QRScanner.notify(`Agregado: ${it.nombre}. Ingresá la cantidad contada.`, 'success');
+    }});
+  });
+}
 
 // ── Validar antes de enviar ────────────────────────────────────────────────────
 document.getElementById('form-conteo').addEventListener('submit', function(e) {

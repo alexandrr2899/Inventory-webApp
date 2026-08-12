@@ -19,3 +19,15 @@ class QrScannerNavbarRenderTests(TestCase):
         resp = self.client.get(reverse('dashboard'))
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, 'id="btnQrScan"')
+
+    def test_conteo_otros_incluye_escaner_qr(self):
+        user = User.objects.create_user('scan-conteo', password='x')
+        user.user_permissions.add(Permission.objects.get(codename='registrar_conteo'))
+        self.client.force_login(user)
+
+        resp = self.client.get(reverse('conteo_nuevo'))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'id="btn-escanear-otros"')
+        self.assertContains(resp, "QRScanner.open({ mode: 'continuous'")
+        self.assertContains(resp, 'agregarFilaOtros({ item_id: String(id) })')
