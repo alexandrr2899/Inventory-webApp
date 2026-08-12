@@ -112,6 +112,23 @@ class FacturasPagoTests(TestCase):
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.estado_pago, 'pagada')
 
+    def test_pagada_muestra_fecha_del_pago_completo(self):
+        payment_service.registrar_abono(
+            self.cliente, fecha_pago=date(2026, 8, 1), metodo_pago=self.met,
+            monto=Decimal('30.00'), aplicaciones=[(self.doc, Decimal('30.00'))],
+        )
+        payment_service.registrar_abono(
+            self.cliente, fecha_pago=date(2026, 8, 5), metodo_pago=self.met,
+            monto=Decimal('70.00'), aplicaciones=[(self.doc, Decimal('70.00'))],
+        )
+        self.client.force_login(self.admin)
+
+        lista = self.client.get(reverse('facturas_lista'))
+        detalle = self.client.get(reverse('factura_detalle', args=[self.doc.pk]))
+
+        self.assertContains(lista, 'Pagada · 05/08/2026')
+        self.assertContains(detalle, 'Pagada · 05/08/2026')
+
 
 class FacturasTarifasTests(TestCase):
     def setUp(self):
@@ -159,6 +176,19 @@ class VencidasFiltroTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'VEN-1')
         self.assertNotContains(resp, 'ALDIA-1')
+
+    def test_vencida_con_abono_muestra_pago_parcial(self):
+        met = MetodoPago.objects.create(nombre='Efectivo', tipo='efectivo')
+        payment_service.registrar_abono(
+            self.cliente, fecha_pago=timezone.localdate(), metodo_pago=met,
+            monto=Decimal('40.00'), aplicaciones=[(self.vencida, Decimal('40.00'))],
+        )
+        self.client.force_login(self.admin)
+
+        resp = self.client.get(reverse('facturas_lista'), {'estado': 'vencida'})
+
+        self.assertContains(resp, 'Vencida · atrasada')
+        self.assertContains(resp, 'Pago parcial')
 
 
 @override_settings(FACTURAS_MODULE_ENABLED=True, ALLOWED_HOSTS=['testserver', 'localhost'])

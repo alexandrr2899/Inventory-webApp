@@ -690,17 +690,21 @@ class DocumentoFactura(models.Model):
 
     @staticmethod
     def anotar_pagado(qs):
-        """Anota `pagado_ann` (suma de AplicacionPago) en `qs`.
+        """Anota monto pagado y fecha del último abono aplicado en `qs`.
 
         Cualquier queryset de DocumentoFactura anotado así hace que `monto_pagado`
         y `saldo_pendiente` sean O(1) por fila (una sola consulta agregada en la
-        BD), evitando el N+1 al recorrer listas o el estado de cuenta.
+        BD), evitando el N+1 al recorrer listas o el estado de cuenta. La
+        última fecha se muestra como fecha de pago completo si el saldo es cero.
         """
-        return qs.annotate(pagado_ann=Coalesce(
-            models.Sum('aplicaciones__monto'),
-            models.Value(Decimal('0')),
-            output_field=models.DecimalField(max_digits=12, decimal_places=2),
-        ))
+        return qs.annotate(
+            pagado_ann=Coalesce(
+                models.Sum('aplicaciones__monto'),
+                models.Value(Decimal('0')),
+                output_field=models.DecimalField(max_digits=12, decimal_places=2),
+            ),
+            fecha_ultimo_pago=models.Max('aplicaciones__pago__fecha_pago'),
+        )
 
     @property
     def monto_pagado(self):

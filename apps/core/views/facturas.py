@@ -138,7 +138,12 @@ def facturas_lista(request):
 @permission_required(_perm('ver_facturas'), raise_exception=True)
 @facturas_enabled
 def factura_detalle(request, pk):
-    doc = get_object_or_404(DocumentoFactura.objects.select_related('cliente'), pk=pk)
+    doc = get_object_or_404(
+        DocumentoFactura.anotar_pagado(
+            DocumentoFactura.objects.select_related('cliente')
+        ),
+        pk=pk,
+    )
     return render(request, 'facturas/detalle.html', {
         'doc': doc,
         'aplicaciones': doc.aplicaciones.select_related('pago', 'pago__metodo_pago'),
