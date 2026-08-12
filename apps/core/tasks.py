@@ -206,8 +206,8 @@ def notify_pigment_coverage(dias_analisis=30, dias_objetivo=14):
 
 
 # El límite global (CELERY_TASK_TIME_LIMIT=60s) mataría un pg_dump a mitad y
-# dejaría un .sql.gz truncado. El script ya se autolimita con
-# BACKUP_TIMEOUT_SECONDS (300s por defecto); este techo queda por encima.
+# dejaría un .tar.gz truncado. El script ya se autolimita con
+# BACKUP_TIMEOUT_SECONDS (900s por defecto); este techo queda por encima.
 @shared_task(time_limit=1800, soft_time_limit=1500, **RETRY_KWARGS)
 def scheduled_backup():
     """

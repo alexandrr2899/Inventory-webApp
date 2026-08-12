@@ -16,7 +16,7 @@ def _puede_gestionar_backups(user):
 
 
 def _safe_backup_file(filename):
-    if Path(filename).name != filename or not filename.endswith('.sql.gz'):
+    if Path(filename).name != filename or not filename.endswith(('.tar.gz', '.sql.gz')):
         raise Http404
 
     root = _backup_root()

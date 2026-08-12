@@ -32,7 +32,7 @@
 <div class="page-header d-flex justify-content-between align-items-center">
   <div>
     <h1><i class="bi bi-database-down me-2"></i>Backups</h1>
-    <small class="opacity-75">Backups manuales PostgreSQL</small>
+    <small class="opacity-75">Backups de PostgreSQL y archivos adjuntos</small>
   </div>
   <a href="{% url 'dashboard' %}" class="btn btn-light btn-sm fw-semibold">
     <i class="bi bi-house-fill me-1"></i>Dashboard
@@ -68,7 +68,7 @@
           <div class="flex-fill">
             <h2 class="h6 fw-bold mb-1">Crear backup ahora</h2>
             <p class="text-muted small mb-3">
-              Ejecuta el script autorizado de PostgreSQL. Puede tardar unos segundos según el tamaño de la base de datos.
+              Respalda la base de datos y la carpeta media (PDFs y comprobantes). Puede tardar según el tamaño total.
             </p>
             <form method="post" class="m-0">
               {% csrf_token %}

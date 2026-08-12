@@ -1,12 +1,15 @@
-# Restaurar backup PostgreSQL
+# Restaurar backup completo
 
-Este procedimiento restaura la base de datos desde un archivo:
+Este procedimiento restaura la base de datos y los archivos adjuntos desde:
 
 ```text
-inventario_YYYYMMDD_HHMM.sql.gz
+inventario_YYYYMMDD_HHMM.tar.gz
 ```
 
-El proyecto genera backups en formato SQL plano comprimido (`.sql.gz`), por eso se restauran con `psql` y `gunzip`. `pg_restore` solo aplica a backups custom como `pg_dump -Fc`.
+El paquete contiene `database.sql.gz` y `media/`. La base se restaura con
+`psql` y `gunzip`; los PDFs y comprobantes se copian nuevamente al volumen
+Docker `media_files`. `pg_restore` solo aplica a backups custom como
+`pg_dump -Fc`.
 
 No ejecutes una restauracion improvisada en produccion. Antes de empezar, confirma:
 
@@ -37,7 +40,7 @@ ls -lh /apps/inventario/backups/postgres/
 Ejemplo:
 
 ```text
-inventario_20260519_2130.sql.gz
+inventario_20260811_1200.tar.gz
 ```
 
 Tambien puedes descargar backups desde el panel web:
@@ -72,12 +75,12 @@ ls -lh /apps/inventario/backups/postgres/
 
 ---
 
-## 3. Detener la app web
+## 3. Detener procesos que escriben datos
 
 La base de datos debe quedar corriendo, pero la app no debe aceptar escrituras.
 
 ```bash
-docker compose stop web
+docker compose stop web worker beat
 ```
 
 Confirma que `db` sigue arriba:
@@ -110,29 +113,33 @@ docker compose exec db psql \
 
 ---
 
-## 5. Restaurar el archivo `.sql.gz`
+## 5. Extraer el paquete
+
+Usa una carpeta temporal y conserva esa terminal abierta durante el proceso:
+
+```bash
+RESTORE_TMP="$(mktemp -d)"
+tar -xzf ./backups/postgres/inventario_YYYYMMDD_HHMM.tar.gz -C "$RESTORE_TMP"
+test -s "$RESTORE_TMP/database.sql.gz"
+test -d "$RESTORE_TMP/media"
+```
+
+En Raspberry, sustituye la ruta del archivo por
+`/apps/inventario/backups/postgres/inventario_YYYYMMDD_HHMM.tar.gz`.
+
+## 6. Restaurar la base de datos
 
 Local:
 
 ```bash
-gunzip -c ./backups/postgres/inventario_YYYYMMDD_HHMM.sql.gz | \
+gunzip -c "$RESTORE_TMP/database.sql.gz" | \
   docker compose exec -T db psql \
     -U "${DB_USER:-bolsas_user}" \
     -d "${DB_NAME:-bolsas_inventario}" \
     -v ON_ERROR_STOP=1
 ```
 
-Raspberry/Portainer:
-
-```bash
-gunzip -c /apps/inventario/backups/postgres/inventario_YYYYMMDD_HHMM.sql.gz | \
-  docker compose exec -T db psql \
-    -U "${DB_USER:-bolsas_user}" \
-    -d "${DB_NAME:-bolsas_inventario}" \
-    -v ON_ERROR_STOP=1
-```
-
-Reemplaza `inventario_YYYYMMDD_HHMM.sql.gz` por el archivo real.
+Reemplaza `inventario_YYYYMMDD_HHMM.tar.gz` por el archivo real.
 
 `-v ON_ERROR_STOP=1` aborta al primer error en vez de seguir adelante y
 dejarte una base a medio restaurar que *parece* haber funcionado. Si el
@@ -140,19 +147,43 @@ comando termina con codigo distinto de 0, la restauracion NO se completo.
 
 ---
 
-## 5b. Ensayo de restauracion (hacerlo periodicamente)
+## 7. Restaurar PDFs y demás archivos adjuntos
+
+Este paso reemplaza el contenido actual de `media_files` por el contenido del
+backup. Ejecútalo solamente después de confirmar que `RESTORE_TMP/media`
+corresponde al respaldo correcto:
+
+```bash
+test -d "$RESTORE_TMP/media" && \
+tar -C "$RESTORE_TMP/media" -cf - . | \
+  docker compose run --rm -T --no-deps --entrypoint sh web -c \
+  'find /app/media -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xf - -C /app/media'
+```
+
+Al terminar, elimina la extracción temporal:
+
+```bash
+rm -rf -- "$RESTORE_TMP"
+unset RESTORE_TMP
+```
+
+## 7b. Ensayo de restauracion (hacerlo periodicamente)
 
 Un backup que nunca se restauro es una suposicion, no un respaldo. Este
 ensayo restaura sobre una base descartable sin tocar produccion:
 
 ```bash
+# 0. Extraer el paquete en una carpeta temporal
+DRILL_TMP="$(mktemp -d)"
+tar -xzf ./backups/postgres/inventario_YYYYMMDD_HHMM.tar.gz -C "$DRILL_TMP"
+
 # 1. Crear base scratch
 docker compose exec -T db psql -U "${DB_USER:-bolsas_user}" -d postgres \
   -c "DROP DATABASE IF EXISTS restore_drill;" \
   -c "CREATE DATABASE restore_drill;"
 
 # 2. Restaurar el backup mas reciente en modo estricto
-gunzip -c ./backups/postgres/inventario_YYYYMMDD_HHMM.sql.gz | \
+gunzip -c "$DRILL_TMP/database.sql.gz" | \
   docker compose exec -T db psql -U "${DB_USER:-bolsas_user}" \
     -d restore_drill -v ON_ERROR_STOP=1
 echo "exit=$?"   # debe ser 0
@@ -164,6 +195,10 @@ docker compose exec -T db psql -U "${DB_USER:-bolsas_user}" -d restore_drill \
 # 4. Limpiar
 docker compose exec -T db psql -U "${DB_USER:-bolsas_user}" -d postgres \
   -c "DROP DATABASE restore_drill;"
+
+# 5. Limpiar archivos temporales
+rm -rf -- "$DRILL_TMP"
+unset DRILL_TMP
 ```
 
 Nota sobre versiones: el `pg_dump` de la imagen de la app esta fijado a la
@@ -174,7 +209,7 @@ de la base, hay que subir tambien `postgresql-client-15` en el `Dockerfile`.
 
 ---
 
-## 6. Aplicar migraciones
+## 8. Aplicar migraciones
 
 Despues de restaurar, aplica migraciones por si el codigo actual tiene cambios de schema posteriores al backup.
 
@@ -192,16 +227,16 @@ docker compose run --rm --entrypoint python web manage.py setup_groups
 
 ---
 
-## 7. Levantar la app
+## 9. Levantar la app
 
 ```bash
-docker compose up -d web
+docker compose up -d web worker beat
 docker compose logs -f web
 ```
 
 ---
 
-## 8. Verificacion rapida
+## 10. Verificacion rapida
 
 Ejecuta:
 
@@ -218,6 +253,7 @@ Luego entra al sistema y revisa:
 - Conteos y conciliaciones.
 - Reportes principales.
 - Panel de backups.
+- Abrir varios PDFs de facturas y comprobantes restaurados.
 
 Si usas notificaciones, confirma que `N8N_WEBHOOK_URL` siga configurado.
 

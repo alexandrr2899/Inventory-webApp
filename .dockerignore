@@ -14,5 +14,6 @@ postgres_data/
 backups/
 *.sql
 *.sql.gz
+inventario_*.tar.gz
 
 .claude/

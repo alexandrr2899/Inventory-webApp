@@ -309,6 +309,7 @@ class BackupServiceTests(TestCase):
 
     def test_verificar_integridad_detecta_archivo_corrupto(self):
         import gzip
+        import tarfile
         import tempfile
         from pathlib import Path
 
@@ -326,6 +327,26 @@ class BackupServiceTests(TestCase):
             ok, detalle = backups.verificar_integridad(malo)
             self.assertFalse(ok)
             self.assertTrue(detalle)
+
+            sql = Path(tmp) / 'database.sql.gz'
+            with gzip.open(sql, 'wb') as fh:
+                fh.write(b'CREATE TABLE x();')
+            media = Path(tmp) / 'media'
+            media.mkdir()
+            (media / 'factura.pdf').write_bytes(b'%PDF-1.4')
+            completo = Path(tmp) / 'inventario_20260811_1200.tar.gz'
+            with tarfile.open(completo, 'w:gz') as tar:
+                tar.add(sql, arcname='database.sql.gz')
+                tar.add(media, arcname='media')
+            ok, detalle = backups.verificar_integridad(completo)
+            self.assertTrue(ok, detalle)
+
+            incompleto = Path(tmp) / 'inventario_20260811_1201.tar.gz'
+            with tarfile.open(incompleto, 'w:gz') as tar:
+                tar.add(media, arcname='media')
+            ok, detalle = backups.verificar_integridad(incompleto)
+            self.assertFalse(ok)
+            self.assertIn('database.sql.gz', detalle)
 
 
 class FacturasListaPaginacionTests(TestCase):

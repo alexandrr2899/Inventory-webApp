@@ -502,7 +502,7 @@ class VistasOperativasTests(TestCase):
             root.mkdir(parents=True)
 
             def fake_run(*args, **kwargs):
-                (root / 'inventario_20260520_1200.sql.gz').write_bytes(b'backup')
+                (root / 'inventario_20260520_1200.tar.gz').write_bytes(b'backup')
                 return SimpleNamespace(returncode=0, stdout='ok', stderr='')
 
             with patch.dict('os.environ', {'BACKUP_ROOT': str(root), 'N8N_WEBHOOK_URL': ''}):
@@ -512,7 +512,7 @@ class VistasOperativasTests(TestCase):
         self.assertRedirects(response, reverse('backups_panel'))
         job = BackupJob.objects.latest('fecha_inicio')
         self.assertEqual(job.estado, 'exitoso')
-        self.assertEqual(job.archivo, 'postgres/inventario_20260520_1200.sql.gz')
+        self.assertEqual(job.archivo, 'postgres/inventario_20260520_1200.tar.gz')
 
     def test_backup_download_rechaza_path_traversal(self):
         self.user.user_permissions.add(Permission.objects.get(codename='gestionar_backups'))

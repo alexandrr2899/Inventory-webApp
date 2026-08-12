@@ -19,6 +19,7 @@ staticfiles/
 /backups/
 *.sql
 *.sql.gz
+inventario_*.tar.gz
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 # Los volúmenes se gestionan en el contenedor; no persistir localmente.

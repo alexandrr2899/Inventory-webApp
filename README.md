@@ -22,7 +22,7 @@ WhiteNoise, openpyxl, django-axes y Docker Compose.
 | **Reportes** | Stock bajo, produccion, produccion avanzada y consumo de pigmentos |
 | **Importacion Excel** | Descarga de plantilla e importacion masiva de items |
 | **Usuarios y permisos** | Roles Administrador, Supervisor y Operador con permisos por modulo |
-| **Backups** | Backup PostgreSQL automatico diario, manual desde Docker o panel web, verificacion de integridad, descarga y registro de trabajos |
+| **Backups** | Backup diario de PostgreSQL y archivos adjuntos, manual desde Docker o panel web, verificacion de integridad, descarga y registro de trabajos |
 | **Notificaciones** | Envio opcional de eventos/reportes a n8n mediante `N8N_WEBHOOK_URL`, Web Push (VAPID) y alertas programadas (facturas vencidas, cobertura de pigmentos) |
 | **Salud** | Sonda `/healthz` (sin autenticacion) usada por los healthchecks de Docker en `web`, `worker` y `beat` |
 
@@ -64,7 +64,7 @@ DB_PORT=5432
 POSTGRES_HOST=db
 BACKUP_DIR=./backups
 BACKUP_RETENTION_DAYS=14
-BACKUP_TIMEOUT_SECONDS=300
+BACKUP_TIMEOUT_SECONDS=900
 APP_PORT=8000
 N8N_WEBHOOK_URL=
 ADMIN_URL=gestion-interna/
@@ -240,7 +240,7 @@ Si el codigo ya existe, el item se actualiza. Si no existe, se crea.
 
 ---
 
-## Backups PostgreSQL
+## Backups completos (PostgreSQL + archivos)
 
 El proyecto tiene tres formas de ejecutar backups:
 
@@ -250,22 +250,23 @@ El proyecto tiene tres formas de ejecutar backups:
 2. Servicio Docker `backup` (manual).
 3. Panel web `/backups/` para usuarios con permiso `gestionar_backups`.
 
-Los tres generan archivos SQL plano comprimidos:
+Los tres generan un paquete comprimido con `database.sql.gz` y la carpeta
+`media/` completa (incluidos PDFs de facturas y comprobantes):
 
 ```text
-<BACKUP_DIR>/postgres/inventario_YYYYMMDD_HHMM.sql.gz
+<BACKUP_DIR>/postgres/inventario_YYYYMMDD_HHMM.tar.gz
 ```
 
-Todo backup se verifica con `gzip -t` antes de marcarse como exitoso: un
-archivo truncado o corrupto se registra como `BackupJob` fallido y dispara el
-evento `backup_fallido`, en vez de dar falsa confianza.
+Todo backup se verifica antes de marcarse como exitoso: se valida la compresión
+y la presencia de `database.sql.gz`. Un archivo truncado, corrupto o incompleto
+se registra como `BackupJob` fallido y dispara el evento `backup_fallido`.
 
 ### Copia fuera del host (importante)
 
 `BACKUP_DIR` vive en el **mismo disco** que la base de datos. Si se pierde el
 equipo, se pierden la base y todos sus respaldos a la vez. Para evitarlo,
 configura `BACKUP_POST_HOOK` con la ruta de un script (accesible dentro del
-contenedor `worker`) que reciba el `.sql.gz` recien creado como primer
+contenedor `worker`) que reciba el `.tar.gz` recien creado como primer
 argumento y lo copie a otro lado:
 
 ```env
@@ -304,7 +305,9 @@ BACKUP_RETENTION_DAYS=14
 docker compose run --rm backup
 ```
 
-El contenedor ejecuta `pg_dump`, comprime el resultado, valida que el archivo no este vacio y elimina respaldos mayores a `BACKUP_RETENTION_DAYS`.
+El contenedor ejecuta `pg_dump`, incluye el volumen `media_files`, comprime el
+paquete, valida que no esté vacío y elimina respaldos mayores a
+`BACKUP_RETENTION_DAYS`.
 
 ### Backup desde panel web
 
@@ -319,7 +322,7 @@ Requiere superusuario o permiso `gestionar_backups`. El panel permite:
 - Ejecutar un backup.
 - Ver los ultimos trabajos (`BackupJob`).
 - Listar backups disponibles.
-- Descargar archivos `.sql.gz`.
+- Descargar paquetes `.tar.gz` (y backups antiguos `.sql.gz`).
 
 ### Restaurar
 
@@ -330,7 +333,7 @@ Buenas practicas:
 - Ejecuta un backup antes de actualizar produccion.
 - Copia backups importantes fuera de la Raspberry.
 - Prueba restauraciones en un entorno de prueba.
-- No subas archivos `.sql` ni `.sql.gz` al repositorio.
+- No subas archivos `.sql`, `.sql.gz` ni `.tar.gz` de respaldo al repositorio.
 
 ---
 

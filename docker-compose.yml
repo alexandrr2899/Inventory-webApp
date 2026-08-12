@@ -27,6 +27,7 @@ services:
     volumes:
       - ./scripts:/scripts:ro
       - ${BACKUP_DIR:-./backups}:/backups
+      - media_files:/app/media:ro
     environment:
       POSTGRES_HOST:          ${POSTGRES_HOST:-db}
       POSTGRES_PORT:          ${DB_PORT:-5432}
@@ -34,6 +35,7 @@ services:
       POSTGRES_USER:          ${DB_USER:-bolsas_user}
       POSTGRES_PASSWORD:      ${DB_PASSWORD}
       BACKUP_RETENTION_DAYS:  ${BACKUP_RETENTION_DAYS:-14}
+      MEDIA_ROOT:             /app/media
       TZ:                     ${TZ:-America/Tegucigalpa}
     depends_on:
       db:
@@ -82,7 +84,7 @@ services:
       BACKUP_DIR:           /backups
       BACKUP_ROOT:          /backups/postgres
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
-      BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-300}
+      BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-900}
       N8N_WEBHOOK_URL:      ${N8N_WEBHOOK_URL:-}
       VAPID_PUBLIC_KEY:     ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY:    ${VAPID_PRIVATE_KEY:-}
@@ -140,9 +142,9 @@ services:
       BACKUP_DIR:           /backups
       BACKUP_ROOT:          /backups/postgres
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
-      BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-300}
+      BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-900}
       # Opcional: script que copia el backup fuera del host (recibe la ruta
-      # del .sql.gz como argumento). Sin esto el respaldo vive en el mismo
+      # del .tar.gz como argumento). Sin esto el respaldo vive en el mismo
       # disco que la base de datos.
       BACKUP_POST_HOOK:     ${BACKUP_POST_HOOK:-}
       REDIS_URL:            ${REDIS_URL:-redis://redis:6379/0}

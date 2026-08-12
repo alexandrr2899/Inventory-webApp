@@ -1,5 +1,5 @@
 """
-Ejecución del backup PostgreSQL.
+Ejecución del backup de PostgreSQL y archivos media.
 
 Compartido entre el panel web (apps/core/views/admin_ops.py) y la tarea
 programada de Celery (apps/core/tasks.py:scheduled_backup) para que ambos
@@ -43,7 +43,8 @@ def listar_backups():
         return []
 
     backups = []
-    for path in sorted(root.glob('*.sql.gz'), key=lambda p: p.stat().st_mtime, reverse=True):
+    paths = list(root.glob('*.tar.gz')) + list(root.glob('*.sql.gz'))
+    for path in sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True):
         stat = path.stat()
         backups.append({
             'filename': path.name,
@@ -67,6 +68,7 @@ def backup_env(root):
         'POSTGRES_USER': env.get('POSTGRES_USER') or env.get('DB_USER') or 'bolsas_user',
         'POSTGRES_PASSWORD': env.get('POSTGRES_PASSWORD') or env.get('DB_PASSWORD') or '',
         'BACKUP_ROOT': str(root),
+        'MEDIA_ROOT': str(settings.MEDIA_ROOT),
         'BACKUP_RETENTION_DAYS': env.get('BACKUP_RETENTION_DAYS', '14'),
     })
     return env
@@ -74,23 +76,36 @@ def backup_env(root):
 
 def verificar_integridad(path):
     """
-    Comprueba que el .sql.gz no esté corrupto ni truncado (`gzip -t`).
+    Comprueba que el archivo no esté corrupto ni truncado (`gzip -t`). En el
+    formato completo también exige que exista `database.sql.gz` dentro del tar.
 
     Un backup que existe pero no se puede descomprimir es peor que no tener
     backup, porque da falsa confianza. Esto no valida que el SQL restaure
     correctamente — para eso hace falta el drill descrito en RESTORE.md — pero
     sí detecta el modo de falla más común (dump interrumpido a medias).
     """
+    timeout = int(os.environ.get('BACKUP_TIMEOUT_SECONDS', '900'))
     try:
         result = subprocess.run(
             ['gzip', '-t', str(path)],
-            capture_output=True, text=True, timeout=120, check=False,
+            capture_output=True, text=True, timeout=timeout, check=False,
         )
     except Exception as exc:
         event_log.warning('[BACKUP] no se pudo verificar %s: %s', path.name, exc)
         return False, f'No se pudo verificar el archivo: {exc}'
     if result.returncode != 0:
         return False, (result.stderr or 'gzip -t falló').strip()[:300]
+
+    if path.name.endswith('.tar.gz'):
+        try:
+            result = subprocess.run(
+                ['tar', '-tzf', str(path), 'database.sql.gz'],
+                capture_output=True, text=True, timeout=timeout, check=False,
+            )
+        except Exception as exc:
+            return False, f'No se pudo inspeccionar el archivo: {exc}'
+        if result.returncode != 0:
+            return False, 'El backup no contiene database.sql.gz.'
     return True, ''
 
 
@@ -148,7 +163,7 @@ def ejecutar_backup(usuario=None, origen='manual'):
     job = BackupJob.objects.create(usuario=usuario)
     root = backup_root()
     script_path = (Path(settings.BASE_DIR) / 'scripts' / 'backup_postgres.sh').resolve()
-    timeout = int(os.environ.get('BACKUP_TIMEOUT_SECONDS', '300'))
+    timeout = int(os.environ.get('BACKUP_TIMEOUT_SECONDS', '900'))
     actor = usuario.username if usuario else f'sistema ({origen})'
     before = {b['filename'] for b in listar_backups()}
 
