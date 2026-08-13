@@ -22,7 +22,7 @@
         <div class="d-flex justify-content-between align-items-start">
           <div>
             <div class="fw-semibold">{{ d.item.nombre }}</div>
-            <div class="text-muted small">{{ d.ubicacion.nombre }}</div>
+            <div class="text-muted small">{{ d.ubicacion.ruta_completa }}</div>
             <div class="small mt-1">
               Sistema: <strong>{{ d.cantidad_sistema|floatformat:0 }}</strong> →
               Contado: <strong class="text-primary">{{ d.cantidad_contada|floatformat:0 }}</strong>

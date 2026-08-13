@@ -35,6 +35,11 @@ class Item(models.Model):
         Categoria, on_delete=models.SET_NULL, null=True, blank=True,
         verbose_name='Categoría'
     )
+    ubicacion_predeterminada = models.ForeignKey(
+        'Ubicacion', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='items_predeterminados', verbose_name='Ubicación predeterminada',
+        help_text='Ubicación que se seleccionará automáticamente al escanear el QR.',
+    )
     unidad_medida = models.CharField(max_length=30, verbose_name='Unidad de medida')
     stock_minimo = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
@@ -80,6 +85,9 @@ class Item(models.Model):
 
 class Ubicacion(models.Model):
     TIPO_CHOICES = [
+        ('planta', 'Planta'),
+        ('oficina', 'Oficina'),
+        ('casa', 'Casa'),
         ('bodega', 'Bodega'),
         ('produccion', 'Producción'),
         ('estante', 'Estante'),
@@ -88,6 +96,11 @@ class Ubicacion(models.Model):
 
     nombre = models.CharField(max_length=100)
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    padre = models.ForeignKey(
+        'self', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='sububicaciones', verbose_name='Ubicación superior',
+        help_text='Ejemplo: Estante 1 puede estar dentro de Oficina 1.',
+    )
     descripcion = models.TextField(blank=True, verbose_name='Descripción')
 
     class Meta:
@@ -96,7 +109,29 @@ class Ubicacion(models.Model):
         ordering = ['nombre']
 
     def __str__(self):
-        return f'{self.nombre} ({self.get_tipo_display()})'
+        return f'{self.ruta_completa} ({self.get_tipo_display()})'
+
+    @property
+    def ruta_completa(self):
+        nombres = [self.nombre]
+        actual = self.padre
+        visitados = {self.pk}
+        while actual and actual.pk not in visitados:
+            visitados.add(actual.pk)
+            nombres.append(actual.nombre)
+            actual = actual.padre
+        return ' → '.join(reversed(nombres))
+
+    def clean(self):
+        super().clean()
+        actual = self.padre
+        visitados = set()
+        while actual and actual.pk not in visitados:
+            if actual == self:
+                from django.core.exceptions import ValidationError
+                raise ValidationError({'padre': 'Una ubicación no puede contenerse a sí misma.'})
+            visitados.add(actual.pk)
+            actual = actual.padre
 
 
 class Stock(models.Model):
@@ -110,7 +145,7 @@ class Stock(models.Model):
         unique_together = ['item', 'ubicacion']
 
     def __str__(self):
-        return f'{self.item.nombre} en {self.ubicacion.nombre}: {self.cantidad_actual}'
+        return f'{self.item.nombre} en {self.ubicacion.ruta_completa}: {self.cantidad_actual}'
 
 
 class Maquina(models.Model):

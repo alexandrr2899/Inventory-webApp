@@ -42,21 +42,71 @@ def validar_upload(archivo, *, extensiones, max_mb, magic=None):
     return archivo
 
 
+def validar_comprobante_pago(archivo, *, solo_imagen=False):
+    """Valida comprobantes por extensión, tamaño y firma real del archivo."""
+    if not archivo:
+        return archivo
+    extensiones = ['.jpg', '.jpeg', '.png', '.webp']
+    if not solo_imagen:
+        extensiones.insert(0, '.pdf')
+    validar_upload(
+        archivo, extensiones=extensiones, max_mb=MAX_COMPROBANTE_MB,
+    )
+
+    cabecera = archivo.read(16)
+    archivo.seek(0)
+    ext = os.path.splitext(archivo.name)[1].lower()
+    firmas_validas = {
+        '.pdf': cabecera.startswith(b'%PDF'),
+        '.jpg': cabecera.startswith(b'\xff\xd8\xff'),
+        '.jpeg': cabecera.startswith(b'\xff\xd8\xff'),
+        '.png': cabecera.startswith(b'\x89PNG\r\n\x1a\n'),
+        '.webp': cabecera.startswith(b'RIFF') and cabecera[8:12] == b'WEBP',
+    }
+    if not firmas_validas.get(ext, False):
+        raise ValidationError('El comprobante está dañado o no coincide con su tipo de archivo.')
+    return archivo
+
+
+def combinar_comprobante_pago(form, cleaned):
+    """Unifica el archivo adjunto y la captura de cámara en Pago.comprobante."""
+    adjunto = cleaned.get('comprobante')
+    foto = cleaned.get('foto_comprobante')
+    if adjunto and foto:
+        form.add_error(
+            'foto_comprobante',
+            'Elegí solamente una opción: adjuntar un archivo o tomar una foto.',
+        )
+        return cleaned
+    cleaned['comprobante'] = foto or adjunto
+    return cleaned
+
+
 class ItemForm(forms.ModelForm):
     class Meta:
         model = Item
         fields = ['codigo', 'nombre', 'descripcion', 'tipo', 'categoria',
-                  'unidad_medida', 'stock_minimo', 'activo']
+                  'ubicacion_predeterminada', 'unidad_medida', 'stock_minimo', 'activo']
         widgets = {
             'codigo': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: BOLSA-001'}),
             'nombre': forms.TextInput(attrs={'class': 'form-control'}),
             'descripcion': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'tipo': forms.Select(attrs={'class': 'form-select'}),
             'categoria': forms.Select(attrs={'class': 'form-select'}),
+            'ubicacion_predeterminada': forms.Select(attrs={'class': 'form-select'}),
             'unidad_medida': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: unidad, kg, m'}),
             'stock_minimo': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['ubicacion_predeterminada'].queryset = (
+            Ubicacion.objects
+            .select_related('padre', 'padre__padre', 'padre__padre__padre')
+            .order_by('nombre')
+        )
+        self.fields['ubicacion_predeterminada'].empty_label = '— Sin asignar —'
 
 
 class CategoriaForm(forms.ModelForm):
@@ -71,12 +121,26 @@ class CategoriaForm(forms.ModelForm):
 class UbicacionForm(forms.ModelForm):
     class Meta:
         model = Ubicacion
-        fields = ['nombre', 'tipo', 'descripcion']
+        fields = ['nombre', 'tipo', 'padre', 'descripcion']
         widgets = {
             'nombre': forms.TextInput(attrs={'class': 'form-control'}),
             'tipo': forms.Select(attrs={'class': 'form-select'}),
+            'padre': forms.Select(attrs={'class': 'form-select'}),
             'descripcion': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = (
+            Ubicacion.objects
+            .select_related('padre', 'padre__padre', 'padre__padre__padre')
+            .order_by('nombre')
+        )
+        if self.instance and self.instance.pk:
+            # Excluirse evita el ciclo directo; model.clean cubre ciclos profundos.
+            qs = qs.exclude(pk=self.instance.pk)
+        self.fields['padre'].queryset = qs
+        self.fields['padre'].empty_label = '— Nivel principal —'
 
 
 class MaquinaForm(forms.ModelForm):
@@ -637,14 +701,29 @@ class PagoFacturaForm(forms.Form):
     referencia = forms.CharField(
         required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
     comprobante = forms.FileField(
-        required=False, widget=forms.ClearableFileInput(attrs={'class': 'form-control'}))
+        label='Adjuntar archivo', required=False,
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': 'application/pdf,image/jpeg,image/png,image/webp',
+        }))
+    foto_comprobante = forms.FileField(
+        label='Tomar foto', required=False,
+        widget=forms.FileInput(attrs={
+            'class': 'form-control', 'accept': 'image/*', 'capture': 'environment',
+        }))
     notas = forms.CharField(
         required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
 
     def clean_comprobante(self):
-        return validar_upload(self.cleaned_data.get('comprobante'),
-                              extensiones=['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
-                              max_mb=MAX_COMPROBANTE_MB)
+        return validar_comprobante_pago(self.cleaned_data.get('comprobante'))
+
+    def clean_foto_comprobante(self):
+        return validar_comprobante_pago(
+            self.cleaned_data.get('foto_comprobante'), solo_imagen=True,
+        )
+
+    def clean(self):
+        return combinar_comprobante_pago(self, super().clean())
 
 
 class AbonoClienteForm(forms.Form):
@@ -659,7 +738,16 @@ class AbonoClienteForm(forms.Form):
     referencia = forms.CharField(
         required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
     comprobante = forms.FileField(
-        required=False, widget=forms.ClearableFileInput(attrs={'class': 'form-control'}))
+        label='Adjuntar archivo', required=False,
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': 'application/pdf,image/jpeg,image/png,image/webp',
+        }))
+    foto_comprobante = forms.FileField(
+        label='Tomar foto', required=False,
+        widget=forms.FileInput(attrs={
+            'class': 'form-control', 'accept': 'image/*', 'capture': 'environment',
+        }))
     notas = forms.CharField(
         required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
 
@@ -673,9 +761,12 @@ class AbonoClienteForm(forms.Form):
         super().__init__(*args, **kwargs)
 
     def clean_comprobante(self):
-        return validar_upload(self.cleaned_data.get('comprobante'),
-                              extensiones=['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
-                              max_mb=MAX_COMPROBANTE_MB)
+        return validar_comprobante_pago(self.cleaned_data.get('comprobante'))
+
+    def clean_foto_comprobante(self):
+        return validar_comprobante_pago(
+            self.cleaned_data.get('foto_comprobante'), solo_imagen=True,
+        )
 
     def clean(self):
         """Valida el reparto manual (campos `aplicar_<pk>`) contra saldos y monto.
@@ -684,7 +775,7 @@ class AbonoClienteForm(forms.Form):
         un reparto distinto al que la persona escribió. Ahora se le avisa. El resto que
         quede sin asignar se sigue auto-repartiendo por antigüedad.
         """
-        cleaned = super().clean()
+        cleaned = combinar_comprobante_pago(self, super().clean())
         monto = cleaned.get('monto')
         aplicaciones = []
         total = Decimal('0.00')

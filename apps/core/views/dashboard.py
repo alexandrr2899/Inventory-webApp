@@ -278,7 +278,7 @@ def alertas_centro(request):
             'severidad': 'alta',
             'icono': 'bi-arrow-repeat',
             'titulo': f'Salida pendiente de conciliación: {det.item.nombre}',
-            'detalle': f'{det.cantidad} {det.item.unidad_medida} · {det.ubicacion_origen.nombre if det.ubicacion_origen else "Sin ubicación"}',
+            'detalle': f'{det.cantidad} {det.item.unidad_medida} · {det.ubicacion_origen.ruta_completa if det.ubicacion_origen else "Sin ubicación"}',
             'fecha': det.movimiento.fecha_movimiento,
             'referencia': f'Op. #{det.movimiento_id}',
             'url': reverse('movimiento_detalle', args=[det.movimiento_id]),

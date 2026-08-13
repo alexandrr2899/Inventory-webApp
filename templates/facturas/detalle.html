@@ -171,6 +171,7 @@
           <th>Referencia</th>
           <th class="text-end">Monto</th>
           <th>Notas</th>
+          <th>Comprobante</th>
           <th class="text-end px-3"></th>
         </tr>
       </thead>
@@ -182,6 +183,13 @@
           <td class="text-muted small">{{ apl.pago.referencia|default:"–" }}</td>
           <td class="text-end fw-bold text-success">L {{ apl.monto|moneda }}</td>
           <td class="text-muted small">{{ apl.pago.notas|default:"–"|truncatechars:60 }}</td>
+          <td>
+            {% if apl.pago.comprobante %}
+            <a href="{{ apl.pago.comprobante.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Abrir comprobante">
+              <i class="bi bi-paperclip"></i>
+            </a>
+            {% else %}<span class="text-muted">–</span>{% endif %}
+          </td>
           <td class="text-end px-3">
             {% if perms.core.registrar_pago_factura %}
             <form method="post" action="{% url 'factura_pago_borrar' apl.pk %}" class="d-inline"

@@ -1,7 +1,7 @@
 {# Modal reutilizable de pago rápido. Los botones .btn-pago lo abren con data-url/data-saldo/data-info. #}
 <div class="modal fade" id="modalPago" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
-    <form method="post" id="form-pago-rapido">{% csrf_token %}
+    <form method="post" enctype="multipart/form-data" id="form-pago-rapido">{% csrf_token %}
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Registrar pago</h5>
@@ -39,6 +39,27 @@
               <label class="form-label">Referencia <span class="text-muted small">(opcional)</span></label>
               <input type="text" name="referencia" class="form-control">
             </div>
+            <div class="col-12">
+              <div class="form-label mb-1">Comprobante <span class="text-muted small">(opcional)</span></div>
+              <div class="row g-2">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label small" for="pago-comprobante">
+                    <i class="bi bi-paperclip me-1"></i>Adjuntar archivo
+                  </label>
+                  <input type="file" name="comprobante" id="pago-comprobante"
+                         class="form-control form-control-sm"
+                         accept="application/pdf,image/jpeg,image/png,image/webp">
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label small" for="pago-foto-comprobante">
+                    <i class="bi bi-camera-fill me-1"></i>Tomar foto
+                  </label>
+                  <input type="file" name="foto_comprobante" id="pago-foto-comprobante"
+                         class="form-control form-control-sm" accept="image/*" capture="environment">
+                </div>
+              </div>
+              <div class="form-text">PDF o imagen, máximo 10 MB.</div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -71,6 +92,8 @@
       document.getElementById('pago-fecha').value = iso(new Date());
       monto.value = saldoActual ? saldoActual.toFixed(2) : '';
       monto.max = saldoActual || '';
+      document.getElementById('pago-comprobante').value = '';
+      document.getElementById('pago-foto-comprobante').value = '';
       modal.show();
     });
   });

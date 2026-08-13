@@ -124,8 +124,8 @@
           <td class="text-end fw-bold">
             {{ det.cantidad|floatformat:0 }} <span class="text-muted small">{{ det.item.unidad_medida }}</span>
           </td>
-          <td class="text-muted small">{{ det.ubicacion_origen.nombre|default:"–" }}</td>
-          <td class="text-muted small">{{ det.ubicacion_destino.nombre|default:"–" }}</td>
+          <td class="text-muted small">{{ det.ubicacion_origen.ruta_completa|default:"–" }}</td>
+          <td class="text-muted small">{{ det.ubicacion_destino.ruta_completa|default:"–" }}</td>
           <td class="small">
             {% if det.cliente %}<i class="bi bi-person-fill text-primary"></i> {{ det.cliente.nombre }}<br>{% endif %}
             {% if det.maquina %}<i class="bi bi-gear-fill text-warning"></i> {{ det.maquina.nombre }}{% endif %}

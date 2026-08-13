@@ -49,8 +49,8 @@
               {% if det.cantidad > 0 %}+{% endif %}{{ det.cantidad|floatformat:0 }} {{ det.item.unidad_medida }}
             </td>
             <td class="text-muted small">
-              {% if det.ubicacion_destino %}{{ det.ubicacion_destino.nombre }}
-              {% elif det.ubicacion_origen %}{{ det.ubicacion_origen.nombre }}
+              {% if det.ubicacion_destino %}{{ det.ubicacion_destino.ruta_completa }}
+              {% elif det.ubicacion_origen %}{{ det.ubicacion_origen.ruta_completa }}
               {% else %}–{% endif %}
             </td>
             <td>

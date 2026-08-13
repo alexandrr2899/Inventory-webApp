@@ -56,7 +56,7 @@
           </td>
           <td class="text-end fw-bold">{{ det.cantidad|floatformat:0 }} {{ det.item.unidad_medida }}</td>
           <td class="text-muted small">
-            {{ det.ubicacion_origen.nombre|default:det.ubicacion_destino.nombre|default:"–" }}
+            {{ det.ubicacion_origen.ruta_completa|default:det.ubicacion_destino.ruta_completa|default:"–" }}
           </td>
         </tr>
         {% endfor %}

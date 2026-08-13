@@ -51,6 +51,40 @@ class UploadValidationTests(TestCase):
                                                content_type='image/jpeg')})
         self.assertTrue(form.is_valid(), form.errors)
 
+    def test_foto_de_camara_se_unifica_como_comprobante(self):
+        foto = SimpleUploadedFile(
+            'foto.jpg', b'\xff\xd8\xffcaptura', content_type='image/jpeg',
+        )
+        form = AbonoClienteForm(
+            {'fecha_pago': '2026-01-01', 'metodo_pago': self.met.pk, 'monto': '10.00'},
+            {'foto_comprobante': foto},
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['comprobante'].name, 'foto.jpg')
+
+    def test_comprobante_rechaza_imagen_con_extension_falsa(self):
+        form = PagoFacturaForm(
+            {'fecha_pago': '2026-01-01', 'metodo_pago': self.met.pk, 'monto': '10.00'},
+            {'comprobante': SimpleUploadedFile(
+                'recibo.jpg', b'no-es-una-imagen', content_type='image/jpeg')},
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('comprobante', form.errors)
+
+    def test_rechaza_archivo_y_foto_al_mismo_tiempo(self):
+        form = AbonoClienteForm(
+            {'fecha_pago': '2026-01-01', 'metodo_pago': self.met.pk, 'monto': '10.00'},
+            {
+                'comprobante': SimpleUploadedFile('recibo.pdf', b'%PDF-1.4'),
+                'foto_comprobante': SimpleUploadedFile('foto.jpg', b'\xff\xd8\xff'),
+            },
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('foto_comprobante', form.errors)
+
     def test_comprobante_rechaza_ejecutable(self):
         form = AbonoClienteForm(
             {'fecha_pago': '2026-01-01', 'metodo_pago': self.met.pk, 'monto': '10.00'},

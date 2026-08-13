@@ -2,7 +2,7 @@ from django.contrib.auth.models import User, Permission
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.core.models import Item
+from apps.core.models import Item, Ubicacion
 
 
 class ItemQrPngTests(TestCase):
@@ -44,6 +44,19 @@ class ItemDetalleQrTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         qr_url = reverse('item_qr_png', args=[self.item.pk])
         self.assertContains(resp, qr_url)
+
+    def test_ficha_muestra_ubicacion_predeterminada_sin_cambiar_qr(self):
+        planta = Ubicacion.objects.create(nombre='Planta 1', tipo='planta')
+        oficina = Ubicacion.objects.create(nombre='Oficina 1', tipo='oficina', padre=planta)
+        estante = Ubicacion.objects.create(nombre='Estante 1', tipo='estante', padre=oficina)
+        self.item.ubicacion_predeterminada = estante
+        self.item.save(update_fields=['ubicacion_predeterminada'])
+
+        resp = self.client.get(reverse('item_detalle', args=[self.item.pk]))
+
+        self.assertContains(resp, 'Planta 1 → Oficina 1 → Estante 1')
+        # El QR sigue apuntando a la ficha por PK; no incorpora la ubicación.
+        self.assertContains(resp, reverse('item_qr_png', args=[self.item.pk]))
 
 
 class ItemEtiquetasTests(TestCase):

@@ -28,6 +28,8 @@ class AbonoModalTests(TestCase):
         resp = self.client.get(self.url, **AJAX)
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'data-abono-form')
+        self.assertContains(resp, 'name="foto_comprobante"')
+        self.assertContains(resp, 'capture="environment"')
         self.assertNotContains(resp, '<nav')  # no es la página completa
 
     def test_post_ajax_registra_y_devuelve_json(self):

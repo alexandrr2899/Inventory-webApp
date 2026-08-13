@@ -30,4 +30,5 @@ class QrScannerNavbarRenderTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'id="btn-escanear-otros"')
         self.assertContains(resp, "QRScanner.open({ mode: 'continuous'")
-        self.assertContains(resp, 'agregarFilaOtros({ item_id: String(id) })')
+        self.assertContains(resp, 'usar_ubicacion_asignada: true')
+        self.assertContains(resp, 'Ubicación detectada:')

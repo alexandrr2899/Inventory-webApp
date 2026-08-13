@@ -23,7 +23,12 @@ def _conteo_debe_ser_unico(tipo_conteo):
 
 def _conteo_form_context(*, form, filas_previas, tipo_conteo_inicial=None):
     hoy = date.today()
-    ubicaciones = list(Ubicacion.objects.all())
+    ubicaciones = sorted(
+        Ubicacion.objects.select_related(
+            'padre', 'padre__padre', 'padre__padre__padre',
+        ).all(),
+        key=lambda u: u.ruta_completa.lower(),
+    )
 
     stocks_map = {}
     for s in Stock.objects.select_related('item', 'ubicacion').filter(item__activo=True):
@@ -35,7 +40,12 @@ def _conteo_form_context(*, form, filas_previas, tipo_conteo_inicial=None):
 
     all_items = list(
         Item.objects.filter(activo=True)
-        .select_related('categoria')
+        .select_related(
+            'categoria', 'ubicacion_predeterminada',
+            'ubicacion_predeterminada__padre',
+            'ubicacion_predeterminada__padre__padre',
+            'ubicacion_predeterminada__padre__padre__padre',
+        )
         .order_by('orden', 'nombre')
     )
 
@@ -57,6 +67,7 @@ def _conteo_form_context(*, form, filas_previas, tipo_conteo_inicial=None):
             if ipk == item.pk
         }
         best_ub = max(stocks_by_ub, key=lambda k: Decimal(stocks_by_ub[k]), default=None)
+        default_ub = item.ubicacion_predeterminada_id or best_ub
         return {
             'pk': item.pk,
             'nombre': item.nombre,
@@ -64,7 +75,8 @@ def _conteo_form_context(*, form, filas_previas, tipo_conteo_inicial=None):
             'categoria': item.categoria.nombre if item.categoria else '',
             'unidad': item.unidad_medida,
             'stock_total': str(stocks_totales.get(item.pk, Decimal('0'))),
-            'default_ub': int(best_ub) if best_ub else (ubicaciones[0].pk if ubicaciones else None),
+            'default_ub': int(default_ub) if default_ub else None,
+            'ubicacion_asignada': bool(item.ubicacion_predeterminada_id),
             'stocks_by_ub': stocks_by_ub,
         }
 
@@ -77,7 +89,7 @@ def _conteo_form_context(*, form, filas_previas, tipo_conteo_inicial=None):
         'items_por_tipo_json': _json_safe(items_por_tipo),
         'all_items_json': _json_safe([_build_item_dict(item) for item in all_items]),
         'ubicaciones_json': _json_safe([
-            {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
+            {'pk': u.pk, 'nombre': u.ruta_completa, 'tipo': u.get_tipo_display()}
             for u in ubicaciones
         ]),
         'hoy': hoy,
@@ -170,7 +182,7 @@ def _validar_filas_conteo(request):
         clave = (item.pk, ubicacion.pk)
         if clave in vistos:
             errores.append(
-                f'Fila {i}: «{item.nombre}» en «{ubicacion.nombre}» está '
+                f'Fila {i}: «{item.nombre}» en «{ubicacion.ruta_completa}» está '
                 f'duplicado (ya aparece en la fila {vistos[clave]}).'
             )
             continue
@@ -737,7 +749,7 @@ def conteo_ajustar_detalle(request, pk, det_pk):
 
     send_event('count_difference', {
         'conteo_id': conteo.pk, 'item': detalle.item.nombre, 'codigo': detalle.item.codigo,
-        'diferencia': str(detalle.diferencia_final), 'ubicacion': detalle.ubicacion.nombre,
+        'diferencia': str(detalle.diferencia_final), 'ubicacion': detalle.ubicacion.ruta_completa,
         'ajustes_aplicados': 1,
         'tipo_conteo': conteo.get_tipo_conteo_display(),
         'turno': conteo.get_turno_display(),

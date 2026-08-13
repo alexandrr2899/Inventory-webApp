@@ -169,7 +169,7 @@ def notify_stock(item, movimiento: str = '', usuario: str = ''):
 
     # ── Obtener ubicación principal (texto informativo) ──
     stock_ub = item.stock_set.select_related('ubicacion').order_by('-cantidad_actual').first()
-    ubicacion_nombre = stock_ub.ubicacion.nombre if stock_ub else 'Sin ubicación'
+    ubicacion_nombre = stock_ub.ubicacion.ruta_completa if stock_ub else 'Sin ubicación'
 
     base_payload = {
         'item_id':          item.pk,

@@ -104,7 +104,7 @@
               {% for u in ubicaciones %}
               <option value="{{ u.pk }}"
                 {% if ub_pt_previo == u.pk|stringformat:'s' %}selected{% endif %}>
-                {{ u.nombre }}
+                {{ u.ruta_completa }}
               </option>
               {% endfor %}
             </select>

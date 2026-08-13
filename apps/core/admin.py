@@ -20,7 +20,7 @@ class CategoriaAdmin(admin.ModelAdmin):
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
-    list_display       = ['codigo', 'orden', 'nombre', 'tipo', 'categoria', 'unidad_medida', 'stock_minimo', 'activo']
+    list_display       = ['codigo', 'orden', 'nombre', 'tipo', 'categoria', 'ubicacion_predeterminada', 'unidad_medida', 'stock_minimo', 'activo']
     list_display_links = ['codigo']
     list_filter        = ['tipo', 'categoria', 'activo']
     search_fields      = ['codigo', 'nombre']
@@ -30,7 +30,7 @@ class ItemAdmin(admin.ModelAdmin):
 
 @admin.register(Ubicacion)
 class UbicacionAdmin(admin.ModelAdmin):
-    list_display = ['nombre', 'tipo', 'descripcion']
+    list_display = ['nombre', 'tipo', 'padre', 'descripcion']
     list_filter = ['tipo']
     search_fields = ['nombre']
 

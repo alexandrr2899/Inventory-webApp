@@ -41,8 +41,8 @@
           </td>
           <td class="text-end fw-bold">{{ det.cantidad|floatformat:0 }} {{ det.item.unidad_medida }}</td>
           <td class="text-muted small">
-            {% if mov.tipo_movimiento == 'entrada' %}{{ det.ubicacion_destino.nombre|default:"–" }}
-            {% else %}{{ det.ubicacion_origen.nombre|default:"–" }}
+            {% if mov.tipo_movimiento == 'entrada' %}{{ det.ubicacion_destino.ruta_completa|default:"–" }}
+            {% else %}{{ det.ubicacion_origen.ruta_completa|default:"–" }}
             {% endif %}
           </td>
           <td>

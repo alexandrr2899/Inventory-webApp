@@ -39,7 +39,7 @@ def produccion_nueva(request):
 
             send_event('production_created', {
                 'item': item.nombre, 'codigo': item.codigo,
-                'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
+                'cantidad': str(cantidad), 'ubicacion': ubicacion.ruta_completa,
                 'usuario': request.user.username,
                 'fecha_movimiento': fecha_movimiento.isoformat(),
             })

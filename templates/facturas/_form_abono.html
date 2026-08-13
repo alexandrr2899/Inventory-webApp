@@ -88,12 +88,32 @@
     <div class="card-header fw-semibold">Comprobante y notas</div>
     <div class="card-body">
       <div class="mb-3">
-        <label class="form-label">{{ form.comprobante.label }}</label>
+        <label class="form-label fw-semibold">Comprobante</label>
         {% if pago and pago.comprobante %}
-        <div class="small mb-1"><a href="{{ pago.comprobante.url }}" target="_blank">Ver comprobante actual</a></div>
+        <div class="alert alert-light border py-2 px-3 mb-3">
+          <i class="bi bi-paperclip me-1"></i>
+          <a href="{{ pago.comprobante.url }}" target="_blank" rel="noopener">Ver comprobante actual</a>
+          <span class="text-muted small"> · Se conservará si no elegís otro.</span>
+        </div>
         {% endif %}
-        {{ form.comprobante }}
-        {% if form.comprobante.errors %}<div class="text-danger small">{{ form.comprobante.errors }}</div>{% endif %}
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="{{ form.comprobante.id_for_label }}">
+              <i class="bi bi-paperclip me-1"></i>{{ form.comprobante.label }}
+            </label>
+            {{ form.comprobante }}
+            <div class="form-text">PDF, JPG, PNG o WEBP. Máximo 10 MB.</div>
+            {% if form.comprobante.errors %}<div class="text-danger small">{{ form.comprobante.errors }}</div>{% endif %}
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="{{ form.foto_comprobante.id_for_label }}">
+              <i class="bi bi-camera-fill me-1"></i>{{ form.foto_comprobante.label }}
+            </label>
+            {{ form.foto_comprobante }}
+            <div class="form-text">En el teléfono abrirá la cámara trasera.</div>
+            {% if form.foto_comprobante.errors %}<div class="text-danger small">{{ form.foto_comprobante.errors }}</div>{% endif %}
+          </div>
+        </div>
       </div>
       <div>
         <label class="form-label">{{ form.notas.label }}</label>

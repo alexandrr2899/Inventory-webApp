@@ -109,13 +109,16 @@ def inventario_lista(request):
     stocks_raw = (
         Stock.objects
         .filter(item__in=page_items)
-        .values('item_id', 'ubicacion__nombre', 'cantidad_actual')
+        .select_related(
+            'ubicacion', 'ubicacion__padre', 'ubicacion__padre__padre',
+            'ubicacion__padre__padre__padre',
+        )
     )
     ub_map: dict = {}
     for s in stocks_raw:
-        iid = s['item_id']
-        if iid not in ub_map or s['cantidad_actual'] > ub_map[iid][0]:
-            ub_map[iid] = (s['cantidad_actual'], s['ubicacion__nombre'])
+        iid = s.item_id
+        if iid not in ub_map or s.cantidad_actual > ub_map[iid][0]:
+            ub_map[iid] = (s.cantidad_actual, s.ubicacion.ruta_completa)
 
     # Pendientes de conciliación por ítem (salidas con stock insuficiente activas)
     pendientes_map: dict = {}
@@ -160,8 +163,19 @@ def inventario_lista(request):
 @login_required
 @permission_required(_perm('ver_inventario'), raise_exception=True)
 def item_detalle(request, pk):
-    item = get_object_or_404(Item, pk=pk)
-    stocks = Stock.objects.filter(item=item).select_related('ubicacion')
+    item = get_object_or_404(
+        Item.objects.select_related(
+            'ubicacion_predeterminada',
+            'ubicacion_predeterminada__padre',
+            'ubicacion_predeterminada__padre__padre',
+            'ubicacion_predeterminada__padre__padre__padre',
+        ),
+        pk=pk,
+    )
+    stocks = Stock.objects.filter(item=item).select_related(
+        'ubicacion', 'ubicacion__padre', 'ubicacion__padre__padre',
+        'ubicacion__padre__padre__padre',
+    )
     # Últimas líneas que afectan este ítem (sin movimientos eliminados)
     detalles_recientes = (
         DetalleMovimiento.objects
@@ -354,7 +368,12 @@ def item_toggle_activo(request, pk):
 @login_required
 @permission_required(_perm('ver_inventario'), raise_exception=True)
 def ubicacion_lista(request):
-    ubicaciones = Ubicacion.objects.all()
+    ubicaciones = sorted(
+        Ubicacion.objects.select_related(
+            'padre', 'padre__padre', 'padre__padre__padre',
+        ).all(),
+        key=lambda u: u.ruta_completa.lower(),
+    )
     return render(request, 'inventario/ubicaciones.html', {'ubicaciones': ubicaciones})
 
 

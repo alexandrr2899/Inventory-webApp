@@ -163,7 +163,7 @@
               {% else %}bg-info text-dark{% endif %}"
               style="font-size:.65rem">{{ d.item.get_tipo_display }}</span>
           </td>
-          <td class="text-muted small">{{ d.ubicacion.nombre }}</td>
+          <td class="text-muted small">{{ d.ubicacion.ruta_completa }}</td>
           <td class="text-end">{{ d.cantidad_sistema_al_conteo|floatformat:0 }}</td>
           <td class="text-end fw-semibold">{{ d.cantidad_contada|floatformat:0 }}</td>
           <td class="text-end {% if d.diferencia_original > 0 %}diff-pos{% elif d.diferencia_original < 0 %}diff-neg{% else %}diff-zero{% endif %}">

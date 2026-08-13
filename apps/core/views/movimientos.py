@@ -103,8 +103,8 @@ def _exportar_movimientos_csv(movimientos):
                 det.item.codigo,
                 det.cantidad,
                 det.item.unidad_medida,
-                det.ubicacion_origen.nombre if det.ubicacion_origen else '',
-                det.ubicacion_destino.nombre if det.ubicacion_destino else '',
+                det.ubicacion_origen.ruta_completa if det.ubicacion_origen else '',
+                det.ubicacion_destino.ruta_completa if det.ubicacion_destino else '',
                 det.cliente.nombre if det.cliente else '',
                 det.maquina.nombre if det.maquina else '',
                 mov.motivo,
@@ -129,7 +129,7 @@ def movimiento_entrada(request):
         for it in items
     ])
     ubicaciones_json = _json_safe([
-        {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
+        {'pk': u.pk, 'nombre': u.ruta_completa, 'tipo': u.get_tipo_display()}
         for u in ubicaciones
     ])
 
@@ -225,7 +225,7 @@ def movimiento_entrada(request):
                 _aplicar_efecto_detalle(det)
                 _send_event_later('movement_created', {
                     'tipo': 'entrada', 'item': item.nombre, 'codigo': item.codigo,
-                    'cantidad': str(cantidad), 'ubicacion': ubicacion_destino.nombre,
+                    'cantidad': str(cantidad), 'ubicacion': ubicacion_destino.ruta_completa,
                     'usuario': request.user.username,
                 })
                 _notify_stock_later(item, movimiento='entrada', usuario=request.user.username)
@@ -291,7 +291,7 @@ def movimiento_salida(request):
         ])
 
     ubicaciones_json = _json_safe([
-        {'pk': u.pk, 'nombre': u.nombre, 'tipo': u.get_tipo_display()}
+        {'pk': u.pk, 'nombre': u.ruta_completa, 'tipo': u.get_tipo_display()}
         for u in ubicaciones
     ])
     clientes_json = _json_safe([
@@ -594,7 +594,7 @@ def movimiento_salida(request):
             _aplicar_efecto_detalle(det)
             _send_event_later('movement_created', {
                 'tipo': 'salida', 'item': it.nombre, 'codigo': it.codigo,
-                'cantidad': str(cantidad), 'ubicacion': ubicacion.nombre,
+                'cantidad': str(cantidad), 'ubicacion': ubicacion.ruta_completa,
                 'usuario': request.user.username,
             })
             _notify_stock_later(it, movimiento='salida', usuario=request.user.username)

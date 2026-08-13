@@ -20,6 +20,12 @@
           <label class="form-label">Tipo *</label>
           {{ form.tipo }}
         </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Está dentro de</label>
+          {{ form.padre }}
+          <div class="form-text">Déjalo vacío para Planta 1, Planta 2 o Casa Rosa. Para Estante 1, selecciona primero su oficina o planta.</div>
+          {% if form.padre.errors %}<div class="text-danger small">{{ form.padre.errors }}</div>{% endif %}
+        </div>
         <div class="col-12">
           <label class="form-label">Descripción</label>
           {{ form.descripcion }}

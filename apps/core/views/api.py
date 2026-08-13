@@ -24,14 +24,17 @@ def api_categoria_nueva(request):
 @login_required
 def api_item_info(request, pk):
     item = get_object_or_404(Item, pk=pk)
-    stocks = list(Stock.objects.filter(item=item).values('ubicacion__id', 'ubicacion__nombre', 'cantidad_actual'))
+    stocks = Stock.objects.filter(item=item).select_related(
+        'ubicacion', 'ubicacion__padre', 'ubicacion__padre__padre',
+        'ubicacion__padre__padre__padre',
+    )
     return JsonResponse({
         'tipo': item.tipo,
         'unidad_medida': item.unidad_medida,
         'stock_total': str(item.stock_total()),
         'stocks': [
-            {'ubicacion_id': s['ubicacion__id'], 'ubicacion': s['ubicacion__nombre'],
-             'cantidad': str(s['cantidad_actual'])}
+            {'ubicacion_id': s.ubicacion_id, 'ubicacion': s.ubicacion.ruta_completa,
+             'cantidad': str(s.cantidad_actual)}
             for s in stocks
         ]
     })

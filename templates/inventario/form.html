@@ -47,6 +47,12 @@
           {{ form.unidad_medida }}
           {% if form.unidad_medida.errors %}<div class="text-danger small mt-1">{{ form.unidad_medida.errors }}</div>{% endif %}
         </div>
+        <div class="col-12 col-md-8">
+          <label class="form-label">Ubicación predeterminada</label>
+          {{ form.ubicacion_predeterminada }}
+          <div class="form-text">Se seleccionará automáticamente al escanear el QR en un conteo.</div>
+          {% if form.ubicacion_predeterminada.errors %}<div class="text-danger small mt-1">{{ form.ubicacion_predeterminada.errors }}</div>{% endif %}
+        </div>
         <div class="col-12 col-md-4">
           <label class="form-label">Stock mínimo</label>
           {{ form.stock_minimo }}

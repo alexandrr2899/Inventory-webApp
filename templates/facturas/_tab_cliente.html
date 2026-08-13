@@ -121,7 +121,7 @@
 <h2 class="h6 mt-4">Abonos del cliente</h2>
 <table class="table table-sm">
   <thead><tr>
-    <th>Fecha</th><th>Método</th><th>Monto</th><th>Aplicado</th><th>Sin aplicar</th>
+    <th>Fecha</th><th>Método</th><th>Monto</th><th>Aplicado</th><th>Sin aplicar</th><th>Comprobante</th>
     {% if perms.core.registrar_pago_factura %}<th class="text-end">Acciones</th>{% endif %}
   </tr></thead>
   <tbody>
@@ -132,6 +132,13 @@
       <td>L {{ p.monto }}</td>
       <td>L {{ p.monto_aplicado }}</td>
       <td>L {{ p.saldo_sin_aplicar }}</td>
+      <td>
+        {% if p.comprobante %}
+        <a href="{{ p.comprobante.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Abrir comprobante">
+          <i class="bi bi-paperclip"></i><span class="d-none d-lg-inline ms-1">Abrir</span>
+        </a>
+        {% else %}<span class="text-muted">–</span>{% endif %}
+      </td>
       {% if perms.core.registrar_pago_factura %}
       <td class="text-end text-nowrap">
         <a href="{% url 'cliente_abono_editar' p.pk %}" class="btn btn-sm btn-outline-primary" title="Editar">
@@ -148,7 +155,7 @@
       {% endif %}
     </tr>
     {% empty %}
-    <tr><td colspan="{% if perms.core.registrar_pago_factura %}6{% else %}5{% endif %}" class="text-muted">Sin abonos.</td></tr>
+    <tr><td colspan="{% if perms.core.registrar_pago_factura %}7{% else %}6{% endif %}" class="text-muted">Sin abonos.</td></tr>
     {% endfor %}
   </tbody>
 </table>

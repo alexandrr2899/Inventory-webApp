@@ -194,7 +194,7 @@
         <span class="text-muted small">→ {{ det.maquina.nombre }}</span>
       {% elif mov.tipo_movimiento == 'transferencia' and det.ubicacion_origen and det.ubicacion_destino %}
         <span class="text-muted small">
-          {{ det.ubicacion_origen.nombre }} → {{ det.ubicacion_destino.nombre }}
+          {{ det.ubicacion_origen.ruta_completa }} → {{ det.ubicacion_destino.ruta_completa }}
         </span>
       {% endif %}
       <!-- Enlace al movimiento completo -->
@@ -263,9 +263,9 @@
   <div class="text-muted" style="font-size:.72rem; line-height:1.5;">
     <i class="bi bi-person-fill me-1"></i>{{ mov.usuario.get_full_name|default:mov.usuario.username }}
     {% if det.ubicacion_destino %}
-      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ det.ubicacion_destino.nombre }}</span>
+      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ det.ubicacion_destino.ruta_completa }}</span>
     {% elif det.ubicacion_origen %}
-      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ det.ubicacion_origen.nombre }}</span>
+      <span class="ms-2"><i class="bi bi-geo-alt me-1"></i>{{ det.ubicacion_origen.ruta_completa }}</span>
     {% endif %}
     {% if mov.motivo %}
       <span class="ms-2 fst-italic">{{ mov.motivo|truncatechars:60 }}</span>

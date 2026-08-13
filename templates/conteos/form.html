@@ -429,6 +429,10 @@ function agregarFilaOtros(pre = {}) {
   const selUb = document.createElement('select');
   selUb.name  = 'ubicacion[]';
   selUb.className = 'form-select form-select-sm';
+  const blankUb = document.createElement('option');
+  blankUb.value = '';
+  blankUb.textContent = '— Seleccionar ubicación —';
+  selUb.appendChild(blankUb);
   UBICACIONES.forEach(u => {
     const opt = document.createElement('option');
     opt.value = u.pk;
@@ -521,8 +525,12 @@ function agregarFilaOtros(pre = {}) {
     const it = ALL_ITEMS.find(x => String(x.pk) === String(val));
     if (!it) { unidadSpan.textContent = 'ud'; stockSpan.textContent = '–'; return; }
     unidadSpan.textContent = it.unidad || 'ud';
-    // Pre-seleccionar la ubicación con más stock si no hay una ya elegida
-    if (!tsUb.getValue() && it.default_ub) {
+    // Al escanear, usar únicamente la ubicación asignada manualmente al ítem.
+    // En una fila manual conservamos la sugerencia histórica por stock.
+    const puedePreseleccionar = pre.usar_ubicacion_asignada
+      ? it.ubicacion_asignada
+      : !tsUb.getValue();
+    if (it.default_ub && puedePreseleccionar) {
       tsUb.setValue(String(it.default_ub), true);
     }
     updateStockSpan(stockSpan, it, selUb.value);
@@ -612,9 +620,18 @@ if (btnEscanearOtros && window.QRScanner) {
         return;
       }
 
-      const fila = agregarFilaOtros({ item_id: String(id) });
+      const fila = agregarFilaOtros({
+        item_id: String(id),
+        usar_ubicacion_asignada: true,
+      });
       QRScanner.flash(fila);
-      QRScanner.notify(`Agregado: ${it.nombre}. Ingresá la cantidad contada.`, 'success');
+      const ubicacion = it.ubicacion_asignada
+        ? UBICACIONES.find(u => String(u.pk) === String(it.default_ub))
+        : null;
+      const detalle = ubicacion
+        ? ` Ubicación detectada: ${ubicacion.nombre}.`
+        : ' No tiene ubicación predeterminada; seleccioná una.';
+      QRScanner.notify(`Agregado: ${it.nombre}.${detalle} Ingresá la cantidad.`, 'success');
     }});
   });
 }
