@@ -3,6 +3,7 @@ import logging
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.views.decorators.cache import never_cache
 
 from .common import *  # noqa: F401,F403
 
@@ -122,6 +123,7 @@ def cliente_saldo_inicial(request, pk):
 @login_required
 @permission_required(_perm('registrar_pago_factura'), raise_exception=True)
 @facturas_enabled
+@never_cache
 def cliente_abono_nuevo(request, pk):
     cliente = get_object_or_404(Cliente, pk=pk)
     filas = payment_service.facturas_para_reparto(cliente)
@@ -187,6 +189,7 @@ def _filas_reparto(filas):
 @login_required
 @permission_required(_perm('registrar_pago_factura'), raise_exception=True)
 @facturas_enabled
+@never_cache
 def cliente_abono_editar(request, pk):
     pago = get_object_or_404(Pago, pk=pk)
     cliente = pago.cliente

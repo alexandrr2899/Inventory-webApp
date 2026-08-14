@@ -53,9 +53,11 @@
 
   function urlFor(id) { return baseUrl.replace('/0/', '/' + id + '/'); }
 
-  function csrf() {
+  function csrf(form) {
     var m = document.cookie.match(/csrftoken=([^;]+)/);
-    return m ? m[1] : '';
+    if (m) return decodeURIComponent(m[1]);
+    var hidden = form && form.querySelector('[name="csrfmiddlewaretoken"]');
+    return hidden ? hidden.value : '';
   }
 
   function limpiarErrores(form) {
@@ -83,10 +85,19 @@
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var fd = new FormData(form);
+      // El fragmento puede llevar varios minutos abierto mientras se toma la foto.
+      // Sincronizar el token del cuerpo con la cookie actual evita enviar dos
+      // tokens distintos después de una rotación de CSRF.
+      var token = csrf(form);
+      if (token) fd.set('csrfmiddlewaretoken', token);
       fetch(form.action, {
         method: 'POST', body: fd,
-        headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrf()},
+        credentials: 'same-origin',
+        headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': token},
       }).then(function (r) {
+        if (r.status === 403) {
+          throw new Error('csrf');
+        }
         return r.json().then(function (data) { return {ok: r.ok, data: data}; });
       }).then(function (res) {
         if (res.ok && res.data.ok) {
@@ -97,12 +108,22 @@
           // Mostrar los errores del formulario inline, conservando lo tipeado.
           mostrarErrores(form, (res.data && res.data.errors) || {});
         }
-      }).catch(function () { alert('No se pudo registrar el abono.'); });
+      }).catch(function (error) {
+        if (error && error.message === 'csrf') {
+          alert('La sesión de seguridad cambió. Recargá la página y volvé a enviar el abono.');
+          return;
+        }
+        alert('No se pudo registrar el abono.');
+      });
     });
   }
 
   window.abrirAbono = function (clienteId) {
-    fetch(urlFor(clienteId), {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+    fetch(urlFor(clienteId), {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {'X-Requested-With': 'XMLHttpRequest'},
+    })
       .then(function (r) { return r.text(); })
       .then(function (html) { content.innerHTML = html; bsModal.show(); wireForm(); })
       .catch(function () { alert('No se pudo abrir el abono.'); });

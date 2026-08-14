@@ -1,7 +1,9 @@
 from decimal import Decimal
+import tempfile
 
 from django.contrib.auth.models import Permission, User
-from django.test import TestCase, override_settings
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -42,6 +44,27 @@ class AbonoModalTests(TestCase):
         self.assertEqual(Pago.objects.filter(cliente=self.cli).count(), 1)
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.saldo_pendiente, Decimal('600'))
+
+    def test_post_ajax_con_foto_supera_validacion_csrf_real(self):
+        cliente_http = Client(enforce_csrf_checks=True)
+        cliente_http.force_login(self.user)
+        get_response = cliente_http.get(self.url, **AJAX)
+        self.assertEqual(get_response.status_code, 200)
+        token = cliente_http.cookies['csrftoken'].value
+
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            response = cliente_http.post(self.url, {
+                'csrfmiddlewaretoken': token,
+                'fecha_pago': timezone.localdate().isoformat(),
+                'metodo_pago': self.met.pk,
+                'monto': '400',
+                'foto_comprobante': SimpleUploadedFile(
+                    'foto.jpg', b'\xff\xd8\xffcaptura', content_type='image/jpeg',
+                ),
+            }, HTTP_X_CSRFTOKEN=token, **AJAX)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
 
     def test_post_ajax_invalido_devuelve_errores(self):
         resp = self.client.post(self.url, {'monto': ''}, **AJAX)
