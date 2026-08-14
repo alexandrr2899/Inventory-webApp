@@ -90,6 +90,7 @@ services:
       VAPID_PRIVATE_KEY:    ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT:        ${VAPID_SUBJECT:-}
       FACTURAS_INGEST_TOKEN: ${FACTURAS_INGEST_TOKEN:-}
+      JAIME_API_TOKEN:      ${JAIME_API_TOKEN:-}
       ADMIN_URL:            ${ADMIN_URL:-gestion-interna/}
       REDIS_URL:            ${REDIS_URL:-redis://redis:6379/0}
       CELERY_BROKER_URL:     ${CELERY_BROKER_URL:-redis://redis:6379/1}

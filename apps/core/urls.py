@@ -1,7 +1,10 @@
-from django.urls import path
+from django.urls import include, path
 from . import views
 
 urlpatterns = [
+    # API interna read-only para Jaime (token dedicado, sin sesión Django).
+    path('api/jaime/', include('apps.core.jaime_api.urls')),
+
     # Dashboard
     path('', views.dashboard, name='dashboard'),
     path('alertas/', views.alertas_centro, name='alertas_centro'),
