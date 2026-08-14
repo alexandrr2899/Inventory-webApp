@@ -50,7 +50,7 @@
         <div class="text-end">
           <div class="fw-bold">L {{ p.monto|moneda }}</div>
           {% if p.comprobante %}
-          <a href="{{ p.comprobante.url }}" target="_blank" class="small"><i class="bi bi-paperclip"></i> Comprobante</a>
+          <a href="{% url 'pago_comprobante' p.pk %}" target="_blank" rel="noopener" class="small"><i class="bi bi-paperclip"></i> Comprobante</a>
           {% endif %}
         </div>
       </div>
@@ -98,7 +98,7 @@
             </td>
             <td>
               {% if p.comprobante %}
-              <a href="{{ p.comprobante.url }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-paperclip"></i></a>
+              <a href="{% url 'pago_comprobante' p.pk %}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary"><i class="bi bi-paperclip"></i></a>
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td>
           </tr>

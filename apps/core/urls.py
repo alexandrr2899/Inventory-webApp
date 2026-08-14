@@ -102,6 +102,7 @@ urlpatterns = [
     path('facturas/documentos/<int:pk>/anular/', views.factura_anular, name='factura_anular'),
     path('facturas/documentos/<int:pk>/identificar/', views.factura_identificar, name='factura_identificar'),
     path('facturas/documentos/<int:pk>/pago/', views.factura_pago_nuevo, name='factura_pago_nuevo'),
+    path('facturas/pagos/<int:pk>/comprobante/', views.pago_comprobante, name='pago_comprobante'),
     path('facturas/pagos/<int:pk>/borrar/', views.factura_pago_borrar, name='factura_pago_borrar'),
     path('facturas/clientes/inline/', views.cliente_crear_inline, name='cliente_crear_inline'),
     path('facturas/clientes/<int:pk>/tarifas/', views.cliente_tarifas, name='cliente_tarifas'),

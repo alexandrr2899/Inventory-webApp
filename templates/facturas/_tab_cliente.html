@@ -134,7 +134,7 @@
       <td>L {{ p.saldo_sin_aplicar }}</td>
       <td>
         {% if p.comprobante %}
-        <a href="{{ p.comprobante.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Abrir comprobante">
+        <a href="{% url 'pago_comprobante' p.pk %}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Abrir comprobante">
           <i class="bi bi-paperclip"></i><span class="d-none d-lg-inline ms-1">Abrir</span>
         </a>
         {% else %}<span class="text-muted">–</span>{% endif %}

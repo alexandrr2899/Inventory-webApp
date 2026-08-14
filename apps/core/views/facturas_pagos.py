@@ -1,9 +1,41 @@
-"""facturas_pagos.py — Registro y borrado de pagos."""
+"""facturas_pagos.py — Registro, comprobantes y borrado de pagos."""
 from .common import *  # noqa: F401,F403
+
+import mimetypes
+import os
 
 from ..models import DocumentoFactura, Pago, AplicacionPago
 from ..forms import PagoFacturaForm
 from ..services.facturas import payment_service
+
+
+@login_required
+@facturas_enabled
+def pago_comprobante(request, pk):
+    """Sirve un comprobante desde MEDIA_ROOT sin publicar todo `/media/`."""
+    permisos = (
+        _perm('ver_facturas'),
+        _perm('registrar_pago_factura'),
+        _perm('gestionar_metodos_pago'),
+    )
+    if not request.user.is_superuser and not any(
+        request.user.has_perm(permiso) for permiso in permisos
+    ):
+        raise PermissionDenied
+
+    pago = get_object_or_404(Pago, pk=pk)
+    if not pago.comprobante:
+        raise Http404('El pago no tiene comprobante.')
+    try:
+        archivo = pago.comprobante.open('rb')
+    except (FileNotFoundError, OSError, ValueError):
+        raise Http404('Archivo no encontrado.')
+
+    nombre = os.path.basename(pago.comprobante.name) or f'comprobante-{pago.pk}'
+    content_type = mimetypes.guess_type(nombre)[0] or 'application/octet-stream'
+    return FileResponse(
+        archivo, content_type=content_type, as_attachment=False, filename=nombre,
+    )
 
 
 @login_required

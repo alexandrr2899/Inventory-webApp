@@ -92,7 +92,7 @@
         {% if pago and pago.comprobante %}
         <div class="alert alert-light border py-2 px-3 mb-3">
           <i class="bi bi-paperclip me-1"></i>
-          <a href="{{ pago.comprobante.url }}" target="_blank" rel="noopener">Ver comprobante actual</a>
+          <a href="{% url 'pago_comprobante' pago.pk %}" target="_blank" rel="noopener">Ver comprobante actual</a>
           <span class="text-muted small"> · Se conservará si no elegís otro.</span>
         </div>
         {% endif %}

@@ -185,7 +185,7 @@
           <td class="text-muted small">{{ apl.pago.notas|default:"–"|truncatechars:60 }}</td>
           <td>
             {% if apl.pago.comprobante %}
-            <a href="{{ apl.pago.comprobante.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Abrir comprobante">
+            <a href="{% url 'pago_comprobante' apl.pago.pk %}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Abrir comprobante">
               <i class="bi bi-paperclip"></i>
             </a>
             {% else %}<span class="text-muted">–</span>{% endif %}
