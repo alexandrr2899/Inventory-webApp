@@ -90,8 +90,9 @@ Parámetros opcionales:
 - `limite`: entero entre 1 y 100; por defecto 20.
 
 Incluye todos los tipos de documentos que el sistema considera deuda (`factura`,
-`envio` y `apertura`) cuando conservan saldo, y excluye anulados. El resumen
-corresponde a los registros devueltos después de aplicar `limite`.
+`envio` y `apertura`) cuando conservan saldo, y excluye anulados. `limite` solo
+controla cuántos elementos aparecen en `facturas`; `cantidad` y
+`total_pendiente` resumen todos los documentos que cumplen el filtro.
 
 ```bash
 curl -sS -G -H "Authorization: Bearer ${JAIME_TOKEN}" \
@@ -112,7 +113,11 @@ curl -sS -G -H "Authorization: Bearer ${JAIME_TOKEN}" \
         "vencida": true
       }
     ],
-    "resumen": {"cantidad": 1, "total_pendiente": 10000.0}
+    "resumen": {
+      "cantidad": 35,
+      "registros_devuelto": 20,
+      "total_pendiente": 125000.0
+    }
   }
 }
 ```
@@ -132,7 +137,8 @@ curl -sS -G -H "Authorization: Bearer ${JAIME_TOKEN}" \
 ```
 
 La respuesta usa la misma estructura de facturas pendientes y agrega
-`dias_vencida`; el resumen contiene `cantidad` y `total_vencido`.
+`dias_vencida`. `cantidad` y `total_vencido` abarcan todos los documentos
+filtrados; `registros_devuelto` indica cuántos se incluyeron según `limite`.
 
 ### Consultar inventario
 

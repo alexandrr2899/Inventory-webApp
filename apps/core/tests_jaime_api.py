@@ -117,6 +117,23 @@ class JaimeApiTests(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {token}',
         )
 
+    def _crear_35_facturas(self):
+        cliente = Cliente.objects.create(nombre='Cliente con 35 facturas')
+        documentos = [
+            DocumentoFactura(
+                cliente=cliente,
+                tipo_documento='factura',
+                numero_documento=f'LOTE-{numero:02d}',
+                fecha_documento=self.hoy - timedelta(days=60 - numero),
+                fecha_vencimiento=self.hoy - timedelta(days=36 - numero),
+                monto_total=Decimal(numero),
+                estado_pago='pendiente',
+            )
+            for numero in range(1, 36)
+        ]
+        DocumentoFactura.objects.bulk_create(documentos)
+        return cliente, 630.0
+
     def test_peticion_sin_token_retorna_401(self):
         response = self.client.get(reverse('jaime_api:buscar_clientes'), {'q': 'ABC'})
         self.assertEqual(response.status_code, 401)
@@ -183,7 +200,11 @@ class JaimeApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()['data']
-        self.assertEqual(data['resumen'], {'cantidad': 2, 'total_pendiente': 1100.0})
+        self.assertEqual(data['resumen'], {
+            'cantidad': 2,
+            'registros_devuelto': 2,
+            'total_pendiente': 1100.0,
+        })
         self.assertEqual(
             {factura['numero'] for factura in data['facturas']},
             {'FAC-001', 'ENV-002'},
@@ -197,9 +218,91 @@ class JaimeApiTests(TestCase):
         response = self._get(reverse('jaime_api:facturas_vencidas'))
         self.assertEqual(response.status_code, 200)
         data = response.json()['data']
-        self.assertEqual(data['resumen'], {'cantidad': 1, 'total_vencido': 600.0})
+        self.assertEqual(data['resumen'], {
+            'cantidad': 1,
+            'registros_devuelto': 1,
+            'total_vencido': 600.0,
+        })
         self.assertEqual(data['facturas'][0]['numero'], 'FAC-001')
         self.assertEqual(data['facturas'][0]['dias_vencida'], 10)
+
+    def test_35_vencidas_sin_limite_resume_todas_y_devuelve_20(self):
+        cliente, total = self._crear_35_facturas()
+        response = self._get(
+            reverse('jaime_api:facturas_vencidas'), {'cliente_id': cliente.pk}
+        )
+        data = response.json()['data']
+        self.assertEqual(len(data['facturas']), 20)
+        self.assertEqual(data['resumen'], {
+            'cantidad': 35,
+            'registros_devuelto': 20,
+            'total_vencido': total,
+        })
+
+    def test_35_vencidas_limite_1_mantiene_resumen_total(self):
+        cliente, total = self._crear_35_facturas()
+        response = self._get(reverse('jaime_api:facturas_vencidas'), {
+            'cliente_id': cliente.pk, 'limite': 1,
+        })
+        data = response.json()['data']
+        self.assertEqual(len(data['facturas']), 1)
+        self.assertEqual(data['resumen'], {
+            'cantidad': 35,
+            'registros_devuelto': 1,
+            'total_vencido': total,
+        })
+
+    def test_35_vencidas_limite_100_devuelve_todas(self):
+        cliente, total = self._crear_35_facturas()
+        response = self._get(reverse('jaime_api:facturas_vencidas'), {
+            'cliente_id': cliente.pk, 'limite': 100,
+        })
+        data = response.json()['data']
+        self.assertEqual(len(data['facturas']), 35)
+        self.assertEqual(data['resumen'], {
+            'cantidad': 35,
+            'registros_devuelto': 35,
+            'total_vencido': total,
+        })
+
+    def test_35_pendientes_sin_limite_resume_todas_y_devuelve_20(self):
+        cliente, total = self._crear_35_facturas()
+        response = self._get(
+            reverse('jaime_api:facturas_pendientes'), {'cliente_id': cliente.pk}
+        )
+        data = response.json()['data']
+        self.assertEqual(len(data['facturas']), 20)
+        self.assertEqual(data['resumen'], {
+            'cantidad': 35,
+            'registros_devuelto': 20,
+            'total_pendiente': total,
+        })
+
+    def test_35_pendientes_limite_1_mantiene_resumen_total(self):
+        cliente, total = self._crear_35_facturas()
+        response = self._get(reverse('jaime_api:facturas_pendientes'), {
+            'cliente_id': cliente.pk, 'limite': 1,
+        })
+        data = response.json()['data']
+        self.assertEqual(len(data['facturas']), 1)
+        self.assertEqual(data['resumen'], {
+            'cantidad': 35,
+            'registros_devuelto': 1,
+            'total_pendiente': total,
+        })
+
+    def test_35_pendientes_limite_100_devuelve_todas(self):
+        cliente, total = self._crear_35_facturas()
+        response = self._get(reverse('jaime_api:facturas_pendientes'), {
+            'cliente_id': cliente.pk, 'limite': 100,
+        })
+        data = response.json()['data']
+        self.assertEqual(len(data['facturas']), 35)
+        self.assertEqual(data['resumen'], {
+            'cantidad': 35,
+            'registros_devuelto': 35,
+            'total_pendiente': total,
+        })
 
     def test_consulta_inventario_suma_stock_por_ubicacion(self):
         response = self._get(
@@ -212,4 +315,3 @@ class JaimeApiTests(TestCase):
         self.assertEqual(data[0]['existencia'], 20.0)
         self.assertEqual(data[0]['unidad'], 'unidades')
         self.assertEqual(data[0]['categoria'], 'Camisetas')
-

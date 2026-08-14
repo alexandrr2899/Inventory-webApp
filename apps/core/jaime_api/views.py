@@ -2,12 +2,12 @@
 
 from decimal import Decimal
 
-from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models import Count, DecimalField, F, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.utils import timezone
 
-from apps.core.models import Cliente, DocumentoFactura, Item
+from apps.core.models import AplicacionPago, Cliente, DocumentoFactura, Item
 
 from .auth import jaime_read_only
 
@@ -66,6 +66,33 @@ def _documentos_con_saldo(cliente_id=None):
         qs = qs.filter(cliente_id=cliente_id)
     qs = DocumentoFactura.anotar_pagado(qs)
     return qs.filter(monto_total__gt=F('pagado_ann'))
+
+
+def _resumen_documentos(queryset):
+    """Cuenta y suma todo el queryset sin materializar sus documentos.
+
+    El subquery conserva exactamente el criterio canónico de saldo de
+    ``_documentos_con_saldo``. Los dos agregados posteriores evitan sumar en
+    Python y evitan que el JOIN de aplicaciones multiplique ``monto_total``.
+    """
+    ids = Subquery(queryset.order_by().values('pk'))
+    decimal_field = DecimalField(max_digits=12, decimal_places=2)
+    documentos = DocumentoFactura.objects.filter(pk__in=ids).aggregate(
+        cantidad=Count('pk'),
+        total_documentos=Coalesce(
+            Sum('monto_total'),
+            Value(Decimal('0')),
+            output_field=decimal_field,
+        ),
+    )
+    total_pagado = AplicacionPago.objects.filter(documento_id__in=ids).aggregate(
+        total=Coalesce(
+            Sum('monto'),
+            Value(Decimal('0')),
+            output_field=decimal_field,
+        )
+    )['total']
+    return documentos['cantidad'], documentos['total_documentos'] - total_pagado
 
 
 def _factura_data(documento, *, include_days=False):
@@ -150,15 +177,16 @@ def facturas_pendientes(request):
     if error:
         return error
 
-    documentos = list(
-        _documentos_con_saldo(cliente_id)
-        .order_by(F('fecha_documento').asc(nulls_last=True), 'created_at')[:limit]
-    )
-    total = sum((documento.saldo_pendiente for documento in documentos), Decimal('0'))
+    queryset = _documentos_con_saldo(cliente_id)
+    cantidad, total = _resumen_documentos(queryset)
+    documentos = list(queryset.order_by(
+        F('fecha_documento').asc(nulls_last=True), 'created_at'
+    )[:limit])
     return _success({
         'facturas': [_factura_data(documento) for documento in documentos],
         'resumen': {
-            'cantidad': len(documentos),
+            'cantidad': cantidad,
+            'registros_devuelto': len(documentos),
             'total_pendiente': _number(total),
         },
     })
@@ -173,18 +201,20 @@ def facturas_vencidas(request):
     if error:
         return error
 
-    documentos = list(
-        _documentos_con_saldo(cliente_id)
-        .filter(fecha_vencimiento__lt=timezone.localdate())
-        .order_by('fecha_vencimiento', 'fecha_documento', 'created_at')[:limit]
+    queryset = _documentos_con_saldo(cliente_id).filter(
+        fecha_vencimiento__lt=timezone.localdate()
     )
-    total = sum((documento.saldo_pendiente for documento in documentos), Decimal('0'))
+    cantidad, total = _resumen_documentos(queryset)
+    documentos = list(queryset.order_by(
+        'fecha_vencimiento', 'fecha_documento', 'created_at'
+    )[:limit])
     return _success({
         'facturas': [
             _factura_data(documento, include_days=True) for documento in documentos
         ],
         'resumen': {
-            'cantidad': len(documentos),
+            'cantidad': cantidad,
+            'registros_devuelto': len(documentos),
             'total_vencido': _number(total),
         },
     })
