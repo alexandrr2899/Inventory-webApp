@@ -101,7 +101,7 @@
     {% if modo_edicion %}Editar Conteo #{{ conteo.pk }}{% else %}Nuevo Conteo Físico{% endif %}
   </h1>
   <small class="opacity-75">
-    {% if modo_edicion %}Corregí los datos y volvé a revisar la conciliación{% else %}Seleccioná el tipo, completá las cantidades y guardá{% endif %}
+    {% if modo_edicion %}Corregí los datos y volvé a revisar la conciliación{% else %}Seleccioná el tipo, registrá los cambios y guardá{% endif %}
   </small>
 </div>
 
@@ -165,6 +165,12 @@
             </button>
           </li>
         </ul>
+      </div>
+
+      <div class="alert alert-info py-2 small mb-3" role="note">
+        <i class="bi bi-info-circle me-1"></i>
+        Si dejás <strong>Cant. contada</strong> vacía, se guardará la cantidad
+        mostrada en <strong>Sistema</strong> y la diferencia será cero.
       </div>
 
       <!-- Panes fijos: camiseta, pigmentos, lisa -->
@@ -238,7 +244,7 @@
 const ITEMS_POR_TIPO = {{ items_por_tipo_json|safe }};
 const ALL_ITEMS      = {{ all_items_json|safe }};
 const UBICACIONES    = {{ ubicaciones_json|safe }};
-// Lista: [{item_id, ub_id, cant}] — solo ítems con cantidad ingresada
+// Lista: [{item_id, ub_id, cant}] — incluye filas válidas aunque cant esté vacía
 const FILAS_PREVIAS  = {{ filas_previas_json|safe }};
 const TIPO_INICIAL   = '{{ tipo_conteo_inicial|default:"camiseta" }}';
 
@@ -362,7 +368,7 @@ function renderTablaFija(tipo) {
     inputCant.type = 'number';
     inputCant.name = 'cantidad_contada[]';
     inputCant.className = 'form-control cant-input';
-    inputCant.placeholder = '–';
+    inputCant.placeholder = 'Sistema';
     inputCant.step = '1';
     inputCant.min  = '0';
     inputCant.inputMode = 'numeric';
@@ -460,7 +466,7 @@ function agregarFilaOtros(pre = {}) {
   inputCant.type = 'number';
   inputCant.name = 'cantidad_contada[]';
   inputCant.className = 'form-control cant-input';
-  inputCant.placeholder = '0';
+  inputCant.placeholder = 'Sistema';
   inputCant.step = '1';
   inputCant.min  = '0';
   inputCant.inputMode = 'numeric';
@@ -555,13 +561,16 @@ function agregarFilaOtros(pre = {}) {
   return tr;
 }
 
-// ── Contar ítems con cantidad ingresada en el tab activo ───────────────────────
+// ── Contar filas completas que se guardarán en el tab activo ──────────────────
 function actualizarCount() {
   const tipo  = tipoInput.value || TIPO_INICIAL;
   const tbody = document.getElementById(`tbody-${tipo}`);
   if (!tbody) { lblCount.textContent = '0'; return; }
-  const n = Array.from(tbody.querySelectorAll('input[name="cantidad_contada[]"]'))
-    .filter(inp => inp.value.trim() !== '').length;
+  const n = Array.from(tbody.querySelectorAll('tr')).filter(fila => {
+    const item = fila.querySelector('[name="item[]"]');
+    const ubicacion = fila.querySelector('[name="ubicacion[]"]');
+    return item && item.value && ubicacion && ubicacion.value;
+  }).length;
   lblCount.textContent = n;
 }
 
@@ -640,11 +649,14 @@ if (btnEscanearOtros && window.QRScanner) {
 document.getElementById('form-conteo').addEventListener('submit', function(e) {
   const tipo  = tipoInput.value;
   const tbody = document.getElementById(`tbody-${tipo}`);
-  const hay   = tbody && Array.from(tbody.querySelectorAll('input[name="cantidad_contada[]"]'))
-    .some(inp => inp.value.trim() !== '');
+  const hay = tbody && Array.from(tbody.querySelectorAll('tr')).some(fila => {
+    const item = fila.querySelector('[name="item[]"]');
+    const ubicacion = fila.querySelector('[name="ubicacion[]"]');
+    return item && item.value && ubicacion && ubicacion.value;
+  });
   if (!hay) {
     e.preventDefault();
-    alert('Ingresá al menos una cantidad antes de guardar el conteo.');
+    alert('Seleccioná al menos un ítem y su ubicación antes de guardar el conteo.');
   }
 });
 

@@ -818,6 +818,72 @@ class SalidaPendienteConciliacionTests(TestCase):
         self.assertContains(response, 'Las cantidades del conteo deben ser números enteros.')
         self.assertEqual(Conteo.objects.count(), 0)
 
+    def test_conteo_nuevo_cantidad_vacia_usa_stock_del_sistema(self):
+        self.user.user_permissions.add(Permission.objects.get(codename='registrar_conteo'))
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('conteo_nuevo'), {
+            'fecha': date.today().isoformat(),
+            'turno': 'manana',
+            'tipo_conteo': 'camiseta',
+            'fecha_hora_conteo': timezone.localtime().strftime('%Y-%m-%dT%H:%M'),
+            'item[]': [str(self.item.pk)],
+            'ubicacion[]': [str(self.ubicacion.pk)],
+            'cantidad_contada[]': [''],
+        })
+
+        self.assertEqual(response.status_code, 302)
+        detalle = ConteoDetalle.objects.get()
+        self.assertEqual(detalle.cantidad_contada, Decimal('21'))
+        self.assertEqual(detalle.cantidad_sistema_al_conteo, Decimal('21'))
+        self.assertEqual(detalle.diferencia_original, Decimal('0'))
+
+    def test_editar_conteo_cantidad_vacia_usa_stock_del_sistema(self):
+        conteo = Conteo.objects.create(
+            fecha=date.today(), turno='manana', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=timezone.now(),
+        )
+        ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ubicacion,
+            cantidad_contada=Decimal('5'),
+            cantidad_sistema_al_conteo=Decimal('21'),
+        )
+        self.user.user_permissions.add(Permission.objects.get(codename='editar_conteo'))
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('conteo_editar', args=[conteo.pk]), {
+            'fecha': date.today().isoformat(),
+            'turno': 'manana',
+            'tipo_conteo': 'camiseta',
+            'fecha_hora_conteo': timezone.localtime().strftime('%Y-%m-%dT%H:%M'),
+            'item[]': [str(self.item.pk)],
+            'ubicacion[]': [str(self.ubicacion.pk)],
+            'cantidad_contada[]': [''],
+        })
+
+        self.assertEqual(response.status_code, 302)
+        detalle = conteo.detalles.get()
+        self.assertEqual(detalle.cantidad_contada, Decimal('21'))
+        self.assertEqual(detalle.diferencia_original, Decimal('0'))
+
+    def test_conteo_otros_ignora_fila_completamente_vacia(self):
+        self.user.user_permissions.add(Permission.objects.get(codename='registrar_conteo'))
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('conteo_nuevo'), {
+            'fecha': date.today().isoformat(),
+            'turno': 'manana',
+            'tipo_conteo': 'otros',
+            'fecha_hora_conteo': timezone.localtime().strftime('%Y-%m-%dT%H:%M'),
+            'item[]': [''],
+            'ubicacion[]': [''],
+            'cantidad_contada[]': [''],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Incluí al menos un ítem con su ubicación en el conteo.')
+        self.assertFalse(Conteo.objects.exists())
+
     def test_editar_conteo_precarga_cantidad_sin_decimales(self):
         conteo = Conteo.objects.create(
             fecha=date.today(), turno='manana', tipo_conteo='camiseta',

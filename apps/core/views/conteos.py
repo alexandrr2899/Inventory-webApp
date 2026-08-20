@@ -122,7 +122,7 @@ def _filas_previas_from_post(request):
             request.POST.getlist('ubicacion[]'),
             request.POST.getlist('cantidad_contada[]'),
         )
-        if cant.strip()
+        if iid.strip() or uid.strip() or cant.strip()
     ]
 
 
@@ -146,25 +146,16 @@ def _validar_filas_conteo(request):
         zip(item_ids, ubicacion_ids, cantidades), 1
     ):
         cant_str = cant_str.strip()
-        if not cant_str:
+        # Una fila completamente vacía (posible en el conteo libre "Otros")
+        # no representa un ítem y se ignora. Si sí tiene ítem y ubicación, una
+        # cantidad vacía significa explícitamente "igual al sistema".
+        if not item_id and not ub_id and not cant_str:
             continue
         if not item_id:
             errores.append(f'Fila {i}: ítem inválido.')
             continue
         if not ub_id:
             errores.append(f'Fila {i}: selecciona una ubicación.')
-            continue
-        try:
-            cantidad_raw = Decimal(cant_str)
-        except Exception:
-            errores.append(f'Fila {i}: cantidad inválida.')
-            continue
-        if cantidad_raw != cantidad_raw.to_integral_value():
-            errores.append('Las cantidades del conteo deben ser números enteros.')
-            continue
-        cantidad_contada = cantidad_raw.quantize(Decimal('1'))
-        if cantidad_contada < 0:
-            errores.append(f'Fila {i}: la cantidad no puede ser negativa.')
             continue
         try:
             item = Item.objects.get(pk=item_id, activo=True)
@@ -191,6 +182,23 @@ def _validar_filas_conteo(request):
         cantidad_sistema = Stock.objects.filter(item=item, ubicacion=ubicacion).values_list(
             'cantidad_actual', flat=True
         ).first() or Decimal('0')
+
+        if cant_str:
+            try:
+                cantidad_raw = Decimal(cant_str)
+            except Exception:
+                errores.append(f'Fila {i}: cantidad inválida.')
+                continue
+            if cantidad_raw != cantidad_raw.to_integral_value():
+                errores.append('Las cantidades del conteo deben ser números enteros.')
+                continue
+            cantidad_contada = cantidad_raw.quantize(Decimal('1'))
+            if cantidad_contada < 0:
+                errores.append(f'Fila {i}: la cantidad no puede ser negativa.')
+                continue
+        else:
+            cantidad_contada = cantidad_sistema
+
         filas.append((item, ubicacion, cantidad_contada, cantidad_sistema))
 
     return errores, filas
@@ -514,7 +522,7 @@ def conteo_nuevo(request):
             return _render_error(form)
 
         if not filas:
-            messages.error(request, 'Ingresá al menos una cantidad en el conteo.')
+            messages.error(request, 'Incluí al menos un ítem con su ubicación en el conteo.')
             return _render_error(form)
 
         try:
@@ -621,7 +629,7 @@ def conteo_editar(request, pk):
             return _render_error(form)
 
         if not filas:
-            messages.error(request, 'Ingresá al menos una cantidad en el conteo.')
+            messages.error(request, 'Incluí al menos un ítem con su ubicación en el conteo.')
             return _render_error(form)
 
         try:
