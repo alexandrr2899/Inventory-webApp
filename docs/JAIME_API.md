@@ -4,6 +4,8 @@ API JSON de solo lectura para consultar clientes, cuentas por cobrar e inventari
 No usa sesiones de Django y no ofrece operaciones de creación, edición, pago,
 anulación ni eliminación.
 
+Volver a la [documentación principal](../README.md).
+
 ## Configuración y autenticación
 
 Defina un token largo y aleatorio en el entorno del servicio web:
@@ -28,6 +30,9 @@ curl -sS -H "Authorization: Bearer ${JAIME_TOKEN}" \
 
 Todos los endpoints aceptan exclusivamente `GET`. Cualquier
 `POST`, `PUT`, `PATCH` o `DELETE` responde `405 Method Not Allowed`.
+
+Use HTTPS fuera de una red local confiable. El token da acceso de lectura a
+datos comerciales y no debe incluirse en URLs, logs, capturas ni código fuente.
 
 ## Endpoints
 

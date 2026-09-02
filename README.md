@@ -1,7 +1,8 @@
 # Inventario Bolsas - Sistema de Control de Inventario
 
 App web mobile-first para controlar inventario, movimientos, conteos fisicos,
-produccion, clientes, maquinas, usuarios, backups y alertas operativas.
+produccion, clientes, facturas, cobros, maquinas, usuarios, backups y alertas
+operativas.
 
 Stack principal: Django 4.2, PostgreSQL 15, Bootstrap 5, Gunicorn,
 WhiteNoise, openpyxl, django-axes y Docker Compose.
@@ -18,12 +19,15 @@ WhiteNoise, openpyxl, django-axes y Docker Compose.
 | **Conteos fisicos** | Conteos manana/tarde por tipo, diferencias sistema vs fisico, conciliacion y anulacion |
 | **Produccion** | Registro de producto terminado hacia bodega con fecha/hora operativa |
 | **Maquinas** | Catalogo de maquinas por area para salidas de repuestos |
-| **Clientes** | Registro de clientes y consulta de salidas por cliente |
+| **Clientes** | Registro, alias, busqueda global, salidas, facturas y estado de cuenta por cliente |
+| **Facturas y envios** | Carga individual o por lote, revision, identificacion de cliente, vencimientos, PDFs y anulacion |
+| **Cobros** | Abonos, reparto entre documentos, saldo a favor, comprobantes y metodos de pago configurables |
 | **Reportes** | Stock bajo, produccion, produccion avanzada y consumo de pigmentos |
 | **Importacion Excel** | Descarga de plantilla e importacion masiva de items |
 | **Usuarios y permisos** | Roles Administrador, Supervisor y Operador con permisos por modulo |
 | **Backups** | Backup diario de PostgreSQL y archivos adjuntos, manual desde Docker o panel web, verificacion de integridad, descarga y registro de trabajos |
 | **Notificaciones** | Envio opcional de eventos/reportes a n8n mediante `N8N_WEBHOOK_URL`, Web Push (VAPID) y alertas programadas (facturas vencidas, cobertura de pigmentos) |
+| **Integraciones** | Ingesta autenticada de documentos y API interna de Jaime, de solo lectura y con token independiente |
 | **Salud** | Sonda `/healthz` (sin autenticacion) usada por los healthchecks de Docker en `web`, `worker` y `beat` |
 
 ---
@@ -67,12 +71,16 @@ BACKUP_RETENTION_DAYS=14
 BACKUP_TIMEOUT_SECONDS=900
 APP_PORT=8000
 N8N_WEBHOOK_URL=
+FACTURAS_INGEST_TOKEN=
+JAIME_API_TOKEN=
 ADMIN_URL=gestion-interna/
 ```
 
 Notas importantes:
 
 - `SECRET_KEY` y `DB_PASSWORD` son obligatorios.
+- `FACTURAS_INGEST_TOKEN` habilita la ingesta automatica de documentos desde n8n.
+- `JAIME_API_TOKEN` habilita la API interna de consulta; si queda vacio, esa API rechaza todo acceso.
 - `ADMIN_URL` define la ruta real del admin Django. `/admin/` devuelve 404 a proposito.
 - Si usas Cloudflare Tunnel o dominio publico, agrega el dominio a `ALLOWED_HOSTS` y el origen completo a `CSRF_TRUSTED_ORIGINS`.
 
@@ -237,6 +245,32 @@ Columnas opcionales:
 - `descripcion`
 
 Si el codigo ya existe, el item se actualiza. Si no existe, se crea.
+
+---
+
+## Conteos fisicos
+
+En un renglon que ya tiene item y ubicacion, dejar vacia la cantidad significa
+usar la existencia actual del sistema. Esto permite confirmar rapidamente los
+items sin diferencia; para registrar existencia cero hay que escribir `0`.
+
+En conteos de tipo **Otros**, los renglones completamente vacios se ignoran. Un
+renglon parcialmente lleno sigue siendo invalido y debe completarse antes de
+guardar.
+
+---
+
+## Integraciones autenticadas
+
+- `POST /facturas/api/ingest/` recibe documentos desde la automatizacion de
+  facturas. Requiere el encabezado `X-API-Key` con `FACTURAS_INGEST_TOKEN`.
+- `/api/jaime/` ofrece consultas JSON de solo lectura mediante
+  `Authorization: Bearer <JAIME_API_TOKEN>`. Incluye busqueda de clientes,
+  saldos, documentos pendientes o vencidos e inventario.
+
+La referencia completa de endpoints y respuestas de Jaime esta en
+[docs/JAIME_API.md](docs/JAIME_API.md). Use tokens distintos, largos y
+aleatorios para cada integracion y no los guarde en el repositorio.
 
 ---
 
@@ -413,11 +447,13 @@ bolsas_inventario/
 ├── config/                         # Settings, URLs globales, auth, admin configurable
 ├── apps/
 │   └── core/
-│       ├── models.py               # Items, stock, movimientos, conteos, backups
+│       ├── models.py               # Inventario, conteos, clientes, facturas, pagos y backups
 │       ├── forms.py                # Formularios operativos e importacion
 │       ├── urls.py                 # Rutas del modulo core
 │       ├── admin.py                # Admin Django
 │       ├── signals.py              # Hooks de la app
+│       ├── jaime_api/              # API JSON interna de solo lectura
+│       ├── tests_facturas/         # Pruebas del modulo de facturacion y cobros
 │       ├── services/
 │       │   └── notifications.py    # Webhook n8n y payloads de alerta
 │       ├── management/commands/
@@ -431,6 +467,10 @@ bolsas_inventario/
 │           ├── catalogos.py
 │           ├── reportes.py
 │           ├── produccion.py
+│           ├── facturas.py
+│           ├── facturas_api.py
+│           ├── facturas_cliente.py
+│           ├── facturas_pagos.py
 │           ├── notificaciones.py
 │           ├── admin_ops.py
 │           └── api.py
@@ -461,3 +501,5 @@ bolsas_inventario/
 6. Asignar roles a usuarios.
 7. Confirmar backup manual.
 8. Probar login, dashboard, inventario, movimientos y reportes.
+9. Si se habilitan integraciones, verificar la ingesta y la API de Jaime con
+   sus respectivos tokens.

@@ -256,6 +256,8 @@ Luego entra al sistema y revisa:
 - Abrir varios PDFs de facturas y comprobantes restaurados.
 
 Si usas notificaciones, confirma que `N8N_WEBHOOK_URL` siga configurado.
+Si usas integraciones, confirma tambien `FACTURAS_INGEST_TOKEN` y
+`JAIME_API_TOKEN`: estos secretos viven en el entorno y no dentro del backup.
 
 ---
 
