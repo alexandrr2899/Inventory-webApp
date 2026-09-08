@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Salud operativa{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div>
+    <h1><i class="bi bi-heart-pulse-fill me-2"></i>Salud operativa</h1>
+    <small class="opacity-75">Estado de servicios, tareas y respaldos</small>
+  </div>
+  <span class="badge fs-6 {% if overall == 'ok' %}bg-success{% elif overall == 'warning' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+    {% if overall == 'ok' %}Todo operativo{% elif overall == 'warning' %}Requiere atención{% else %}Hay fallos{% endif %}
+  </span>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for check in checks %}
+  <div class="col-12 col-md-6 col-xl-4">
+    <div class="card h-100 border-start border-4 {% if check.estado == 'ok' %}border-success{% elif check.estado == 'warning' %}border-warning{% else %}border-danger{% endif %}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between gap-2 align-items-start">
+          <h2 class="h6 fw-bold mb-2">{{ check.nombre }}</h2>
+          <span class="badge {% if check.estado == 'ok' %}bg-success{% elif check.estado == 'warning' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+            {% if check.estado == 'ok' %}Operativo{% elif check.estado == 'warning' %}Atención{% else %}Fallo{% endif %}
+          </span>
+        </div>
+        <p class="text-muted small mb-0">{{ check.detalle }}</p>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-bold">Integraciones</div>
+      <div class="list-group list-group-flush">
+        {% for name, configured in integrations %}
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+          <span>{{ name }}</span>
+          {% if configured %}
+          <span class="badge bg-success">Configurada</span>
+          {% else %}
+          <span class="badge bg-secondary">Desactivada</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-bold">Resumen de respaldos</div>
+      <div class="card-body">
+        <p><strong>Archivos disponibles:</strong> {{ backup_count }}</p>
+        <p><strong>Documentos marcados con error:</strong> {{ ingest_errors }}</p>
+        {% if latest_job %}
+        <p class="mb-1"><strong>Último trabajo:</strong> {{ latest_job.get_estado_display }}</p>
+        <p class="mb-1"><strong>Inicio:</strong> {{ latest_job.fecha_inicio|date:"d/m/Y H:i:s" }}</p>
+        <p class="mb-0"><strong>Copia externa:</strong> {{ latest_job.get_copia_externa_display }}</p>
+        {% else %}
+        <p class="text-muted mb-0">No hay trabajos registrados.</p>
+        {% endif %}
+      </div>
+      <div class="card-footer bg-white">
+        <a href="{% url 'backups_panel' %}" class="btn btn-outline-primary btn-sm">Abrir backups</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="text-muted small mt-3 mb-0">Actualizado {{ generated_at|date:"d/m/Y H:i:s" }}. Recargá la página para ejecutar una nueva comprobación.</p>
+{% endblock %}

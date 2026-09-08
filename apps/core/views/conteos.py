@@ -426,6 +426,24 @@ def conteo_anular(request, pk):
         else:
             ahora = timezone.now()
             with transaction.atomic():
+                conteo = get_object_or_404(
+                    Conteo.objects.select_for_update(), pk=pk)
+                if conteo.anulado:
+                    messages.warning(request, 'Este conteo ya estaba anulado.')
+                    return redirect('conteo_detalle', pk=pk)
+                ajustes = list(
+                    MovimientoInventario.objects.select_for_update()
+                    .filter(
+                        tipo_movimiento='ajuste',
+                        motivo__contains=f'Conteo #{conteo.pk}',
+                        anulado=False,
+                        eliminado=False,
+                    )
+                    .prefetch_related(
+                        'detalles__item', 'detalles__ubicacion_origen',
+                        'detalles__ubicacion_destino',
+                    )
+                )
                 for mov_ajuste in ajustes:
                     _revertir_todos_los_detalles(mov_ajuste)
                     mov_ajuste.anulado           = True
@@ -719,23 +737,23 @@ def conteo_ajustar_detalle(request, pk, det_pk):
     if conteo.anulado:
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
-    estado_antes = conteo.estado
-    _recalcular_diferencias_conteo(conteo)
-    detalle = get_object_or_404(ConteoDetalle, pk=det_pk, conteo=conteo)
-
-    if detalle.ajuste_aplicado:
-        messages.warning(request, 'Este ajuste ya fue aplicado.')
-        return redirect('conteo_conciliar', pk=pk)
-
-    if detalle.diferencia_final is None:
-        messages.error(request, 'Primero calculá la diferencia final en la pantalla de conciliación.')
-        return redirect('conteo_conciliar', pk=pk)
-
-    if detalle.diferencia_final == 0:
-        messages.info(request, f'{detalle.item.nombre}: no hay diferencia que ajustar.')
-        return redirect('conteo_conciliar', pk=pk)
-
     with transaction.atomic():
+        conteo = get_object_or_404(Conteo.objects.select_for_update(), pk=pk)
+        if conteo.anulado:
+            messages.error(request, 'Este conteo está anulado.')
+            return redirect('conteo_detalle', pk=pk)
+        # Bloquear todas las líneas mantiene estable el cálculo y convierte
+        # dos clics simultáneos en una sola aplicación efectiva.
+        list(ConteoDetalle.objects.select_for_update().filter(conteo=conteo))
+        _recalcular_diferencias_conteo(conteo)
+        detalle = get_object_or_404(ConteoDetalle, pk=det_pk, conteo=conteo)
+        if detalle.ajuste_aplicado:
+            messages.warning(request, 'Este ajuste ya fue aplicado.')
+            return redirect('conteo_conciliar', pk=pk)
+        if detalle.diferencia_final is None or detalle.diferencia_final == 0:
+            messages.info(request, 'La diferencia ya no requiere ajuste.')
+            return redirect('conteo_conciliar', pk=pk)
+        estado_antes = conteo.estado
         mov_ajuste = MovimientoInventario.objects.create(
             tipo_movimiento='ajuste',
             motivo=f'Ajuste por conciliación — Conteo #{conteo.pk} ({conteo.get_turno_display()} {conteo.fecha})',
@@ -778,19 +796,24 @@ def conteo_ajustar_todos(request, pk):
     if conteo.anulado:
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
-    estado_antes = conteo.estado
-    _recalcular_diferencias_conteo(conteo)
-    detalles = conteo.detalles.filter(
-        ajuste_aplicado=False,
-        diferencia_final__isnull=False,
-    ).exclude(diferencia_final=0).select_related('item', 'ubicacion')
-
-    if not detalles.exists():
-        messages.info(request, 'No hay ajustes pendientes con diferencia.')
-        return redirect('conteo_conciliar', pk=pk)
-
     count = 0
     with transaction.atomic():
+        conteo = get_object_or_404(Conteo.objects.select_for_update(), pk=pk)
+        if conteo.anulado:
+            messages.error(request, 'Este conteo está anulado.')
+            return redirect('conteo_detalle', pk=pk)
+        list(ConteoDetalle.objects.select_for_update().filter(conteo=conteo))
+        _recalcular_diferencias_conteo(conteo)
+        estado_antes = conteo.estado
+        detalles = list(
+            conteo.detalles.filter(
+                ajuste_aplicado=False,
+                diferencia_final__isnull=False,
+            ).exclude(diferencia_final=0).select_related('item', 'ubicacion')
+        )
+        if not detalles:
+            messages.info(request, 'No hay ajustes pendientes con diferencia.')
+            return redirect('conteo_conciliar', pk=pk)
         for detalle in detalles:
             mov_ajuste = MovimientoInventario.objects.create(
                 tipo_movimiento='ajuste',
@@ -835,26 +858,25 @@ def conteo_marcar_conciliado(request, pk):
     if conteo.anulado:
         messages.error(request, 'Este conteo está anulado.')
         return redirect('conteo_detalle', pk=pk)
-    estado_antes = conteo.estado
-    _recalcular_diferencias_conteo(conteo)
-
-    # Verificar que no queden diferencias sin ajustar
-    pendientes = conteo.detalles.filter(
-        ajuste_aplicado=False,
-        diferencia_final__isnull=False,
-    ).exclude(diferencia_final=0).count()
-
-    sin_calcular = conteo.detalles.filter(diferencia_final__isnull=True).count()
-
-    if sin_calcular > 0:
-        messages.warning(request, f'Hay {sin_calcular} línea(s) sin diferencia calculada. Abrí la conciliación primero.')
-        return redirect('conteo_conciliar', pk=pk)
-
-    if pendientes > 0:
-        messages.warning(request, f'Hay {pendientes} ajuste(s) pendiente(s) con diferencia. Aplicalos o ignoralos antes de cerrar.')
-        return redirect('conteo_conciliar', pk=pk)
-
     with transaction.atomic():
+        conteo = get_object_or_404(Conteo.objects.select_for_update(), pk=pk)
+        if conteo.anulado:
+            messages.error(request, 'Este conteo está anulado.')
+            return redirect('conteo_detalle', pk=pk)
+        list(ConteoDetalle.objects.select_for_update().filter(conteo=conteo))
+        _recalcular_diferencias_conteo(conteo)
+        pendientes = conteo.detalles.filter(
+            ajuste_aplicado=False, diferencia_final__isnull=False,
+        ).exclude(diferencia_final=0).count()
+        sin_calcular = conteo.detalles.filter(
+            diferencia_final__isnull=True).count()
+        if sin_calcular or pendientes:
+            messages.warning(
+                request,
+                'El conteo cambió mientras se cerraba; revisá la conciliación.',
+            )
+            return redirect('conteo_conciliar', pk=pk)
+        estado_antes = conteo.estado
         conteo.estado = 'conciliado'
         conteo.save(update_fields=['estado'])
         # Reenviar inventario camiseta (1 vez) si recién ahora quedó conciliado

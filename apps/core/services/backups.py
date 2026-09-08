@@ -215,15 +215,27 @@ def ejecutar_backup(usuario=None, origen='manual'):
             job.archivo = newest['relative_path']
             job.tamano = newest['size']
             event_log.info('[EVENT] backup_exitoso user=%s archivo=%s', actor, newest['relative_path'])
-            _ejecutar_post_hook(root / newest['filename'])
+            resultado_externo = _ejecutar_post_hook(root / newest['filename'])
+            if resultado_externo is True:
+                job.copia_externa = 'exitosa'
+                job.fecha_copia_externa = timezone.now()
+            elif resultado_externo is False:
+                job.copia_externa = 'fallida'
             send_event('backup_exitoso', {
                 'archivo': newest['relative_path'],
                 'tamano': newest['size'],
                 'usuario': actor,
                 'origen': origen,
+                'copia_externa': job.copia_externa,
                 'fecha': timezone.localtime().strftime('%Y-%m-%d'),
                 'hora': timezone.localtime().strftime('%H:%M:%S'),
             })
+            if resultado_externo is False:
+                send_event('backup_copia_externa_fallida', {
+                    'archivo': newest['relative_path'],
+                    'usuario': actor,
+                    'origen': origen,
+                })
         else:
             job.estado = 'fallido'
             job.mensaje_error = mensaje
@@ -253,6 +265,7 @@ def ejecutar_backup(usuario=None, origen='manual'):
         job.fecha_fin = timezone.now()
         job.save(update_fields=[
             'fecha_fin', 'estado', 'archivo', 'tamano', 'mensaje_error',
+            'copia_externa', 'fecha_copia_externa',
         ])
 
     return {'ok': ok, 'job': job, 'backup': newest if ok else None, 'mensaje': mensaje}

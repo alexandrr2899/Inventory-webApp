@@ -95,6 +95,7 @@
                 <th>Fecha</th>
                 <th>Usuario</th>
                 <th>Estado</th>
+                <th>Copia externa</th>
                 <th>Archivo</th>
               </tr>
             </thead>
@@ -110,6 +111,15 @@
                   <span class="badge bg-danger">Fallido</span>
                   {% else %}
                   <span class="badge bg-secondary">Ejecutando</span>
+                  {% endif %}
+                </td>
+                <td data-label="Copia externa">
+                  {% if job.copia_externa == 'exitosa' %}
+                  <span class="badge bg-success">Exitosa</span>
+                  {% elif job.copia_externa == 'fallida' %}
+                  <span class="badge bg-danger">Fallida</span>
+                  {% else %}
+                  <span class="badge bg-secondary">No configurada</span>
                   {% endif %}
                 </td>
                 <td data-label="Archivo" class="small backup-path">{{ job.archivo|default:"-" }}</td>

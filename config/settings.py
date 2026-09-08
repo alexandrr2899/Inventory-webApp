@@ -6,6 +6,7 @@ Todas las variables sensibles se leen del entorno (Portainer / .env).
 from pathlib import Path
 from celery.schedules import crontab
 from decouple import config, UndefinedValueError
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -17,8 +18,23 @@ SECRET_KEY = config('SECRET_KEY')
 # DEBUG=False en producción. Portainer envía la variable; local puede usar .env.
 DEBUG = config('DEBUG', default=False, cast=bool)
 
+if not DEBUG and (
+    len(SECRET_KEY) < 50
+    or len(set(SECRET_KEY)) < 5
+    or SECRET_KEY.startswith('django-insecure-')
+):
+    raise ImproperlyConfigured(
+        'SECRET_KEY debe tener al menos 50 caracteres aleatorios en producción.')
+
 # Hosts permitidos separados por coma: 127.0.0.1,inventario.tempaques.com
 ALLOWED_HOSTS = [h.strip() for h in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',') if h.strip()]
+
+TRUSTED_PROXY_CIDRS = [
+    cidr.strip() for cidr in config(
+        'TRUSTED_PROXY_CIDRS',
+        default='127.0.0.0/8,::1/128,172.16.0.0/12',
+    ).split(',') if cidr.strip()
+]
 
 # ─── CLOUDFLARE TUNNEL / PROXY ────────────────────────────────────────────────
 
@@ -35,9 +51,10 @@ CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_raw.split(',') if o.strip()]
 
 # ─── SEGURIDAD HTTPS / COOKIES ────────────────────────────────────────────────
 
-# Cloudflare ya maneja el redirect HTTP→HTTPS externo, así que no forzamos
-# redirect interno (evita loops de redirección con el tunnel).
-SECURE_SSL_REDIRECT = False
+# Detrás de Cloudflare, SECURE_PROXY_SSL_HEADER evita ciclos porque Django
+# reconoce como seguras las peticiones originales HTTPS.
+SECURE_SSL_REDIRECT = config(
+    'SECURE_SSL_REDIRECT', default=not DEBUG, cast=bool)
 
 # Activar cookies seguras solo en producción (cuando DEBUG=False).
 SESSION_COOKIE_SECURE = not DEBUG
@@ -46,6 +63,18 @@ CSRF_COOKIE_SECURE    = not DEBUG
 # Cabeceras de seguridad adicionales.
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
+SECURE_REFERRER_POLICY = 'same-origin'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# El navegador recordará HTTPS en producción. Cloudflare hace el redirect en
+# el borde; Django solo envía HSTS en respuestas que ya reconoce como HTTPS.
+SECURE_HSTS_SECONDS = config(
+    'SECURE_HSTS_SECONDS', default=0 if DEBUG else 31536000, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config(
+    'SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False, cast=bool)
+SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=False, cast=bool)
 
 # ─── APLICACIONES ─────────────────────────────────────────────────────────────
 
@@ -64,6 +93,9 @@ INSTALLED_APPS = [
 # ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 
 MIDDLEWARE = [
+    # Debe ejecutarse antes de SecurityMiddleware para que una conexión directa
+    # no pueda fingir HTTPS ni una IP de Cloudflare.
+    'apps.core.middleware.TrustedProxyHeadersMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',   # sirve estáticos en prod
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -204,6 +236,11 @@ MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
 
 # Webhook de n8n para alertas de stock (dejar vacío para deshabilitar).
 N8N_WEBHOOK_URL = config('N8N_WEBHOOK_URL', default='')
+BACKUP_HEALTH_MAX_HOURS = config(
+    'BACKUP_HEALTH_MAX_HOURS', default=30, cast=int)
+RESTORE_TEST_MAX_DAYS = config('RESTORE_TEST_MAX_DAYS', default=90, cast=int)
+CELERY_QUEUE_WARNING_SIZE = config(
+    'CELERY_QUEUE_WARNING_SIZE', default=100, cast=int)
 
 # Web Push es un canal independiente del webhook. Las tres variables deben
 # existir para habilitarlo; vacías mantienen toda la funcionalidad anterior.
@@ -221,6 +258,10 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 60
 CELERY_BEAT_SCHEDULE = {
+    'latido-operativo-cada-minuto': {
+        'task': 'apps.core.tasks.operational_heartbeat',
+        'schedule': crontab(minute='*'),
+    },
     'facturas-vencidas-diario-8am': {
         'task': 'apps.core.tasks.notify_overdue_invoices',
         'schedule': crontab(hour=8, minute=0),

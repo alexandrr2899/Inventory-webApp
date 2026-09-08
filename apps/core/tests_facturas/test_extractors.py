@@ -105,6 +105,17 @@ class FilenameExtractorTests(TestCase):
         self.assertEqual(d['numero_documento'], '19')
         self.assertEqual(d['cliente_nombre'], 'Porfirio Sanchez')
 
+    def test_mismo_cliente_con_numero_o_solo_producto(self):
+        con_numero = filename_extractor.extraer_de_nombre(
+            'Nahun Rodriguez Envio 6.pdf')
+        con_producto = filename_extractor.extraer_de_nombre(
+            'Nahun Rodriguez Envio Camiseta.pdf')
+
+        self.assertEqual(con_numero['cliente_nombre'], 'Nahun Rodriguez')
+        self.assertEqual(con_numero['numero_documento'], '6')
+        self.assertEqual(con_producto['cliente_nombre'], 'Nahun Rodriguez')
+        self.assertNotIn('numero_documento', con_producto)
+
     def test_factura_nombre_compuesto(self):
         # Cliente con doble guion y nombre compuesto.
         d = filename_extractor.extraer_de_nombre('Fact 9541 ASOVEMEZB-- Milton.pdf')

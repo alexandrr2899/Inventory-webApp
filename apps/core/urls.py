@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/web-push/preferences/', views.web_push_preferences, name='web_push_preferences'),
     path('api/web-push/test/', views.web_push_test, name='web_push_test'),
     path('backups/', views.backups_panel, name='backups_panel'),
+    path('salud/', views.operational_health, name='operational_health'),
     path('backups/descargar/<str:filename>/', views.backup_descargar, name='backup_descargar'),
 
     # Inventario - Items

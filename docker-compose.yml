@@ -46,7 +46,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis_data:/data
     # Sin "ports:" — solo accesible dentro de la red Docker interna.
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -61,7 +63,10 @@ services:
       dockerfile: Dockerfile
     restart: always
     ports:
-      - "${APP_PORT:-8000}:8000"
+      # Por defecto solo acepta conexiones del propio host. Cloudflare Tunnel
+      # debe apuntar a localhost; cambiar APP_BIND_IP solo si el proxy vive en
+      # otro host o red y el firewall restringe el acceso.
+      - "${APP_BIND_IP:-127.0.0.1}:${APP_PORT:-8000}:8000"
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
@@ -69,8 +74,13 @@ services:
     environment:
       SECRET_KEY:           ${SECRET_KEY}
       DEBUG:                ${DEBUG:-False}
+      SECURE_SSL_REDIRECT:  ${SECURE_SSL_REDIRECT:-True}
+      SECURE_HSTS_SECONDS:  ${SECURE_HSTS_SECONDS:-31536000}
+      SECURE_HSTS_INCLUDE_SUBDOMAINS: ${SECURE_HSTS_INCLUDE_SUBDOMAINS:-False}
+      SECURE_HSTS_PRELOAD:  ${SECURE_HSTS_PRELOAD:-False}
       ALLOWED_HOSTS:        ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
+      TRUSTED_PROXY_CIDRS:  ${TRUSTED_PROXY_CIDRS:-127.0.0.0/8,::1/128,172.16.0.0/12}
       DB_HOST:              db
       DB_NAME:              ${DB_NAME:-bolsas_inventario}
       DB_USER:              ${DB_USER:-bolsas_user}
@@ -85,6 +95,9 @@ services:
       BACKUP_ROOT:          /backups/postgres
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-900}
+      BACKUP_HEALTH_MAX_HOURS: ${BACKUP_HEALTH_MAX_HOURS:-30}
+      RESTORE_TEST_MAX_DAYS: ${RESTORE_TEST_MAX_DAYS:-90}
+      CELERY_QUEUE_WARNING_SIZE: ${CELERY_QUEUE_WARNING_SIZE:-100}
       N8N_WEBHOOK_URL:      ${N8N_WEBHOOK_URL:-}
       VAPID_PUBLIC_KEY:     ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY:    ${VAPID_PRIVATE_KEY:-}
@@ -106,7 +119,7 @@ services:
     # NOTA: requiere que 'localhost' siga en ALLOWED_HOSTS, o Django responde
     # 400 (DisallowedHost) a la sonda.
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=5).status == 200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; r=urllib.request.Request('http://localhost:8000/healthz',headers={'X-Forwarded-Proto':'https'}); sys.exit(0 if urllib.request.urlopen(r,timeout=5).status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -128,6 +141,7 @@ services:
     environment:
       SECRET_KEY:           ${SECRET_KEY}
       DEBUG:                ${DEBUG:-False}
+      SECURE_SSL_REDIRECT:  ${SECURE_SSL_REDIRECT:-True}
       ALLOWED_HOSTS:        ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DB_HOST:              db
       DB_NAME:              ${DB_NAME:-bolsas_inventario}
@@ -181,6 +195,7 @@ services:
     environment:
       SECRET_KEY:           ${SECRET_KEY}
       DEBUG:                ${DEBUG:-False}
+      SECURE_SSL_REDIRECT:  ${SECURE_SSL_REDIRECT:-True}
       ALLOWED_HOSTS:        ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DB_HOST:              db
       DB_NAME:              ${DB_NAME:-bolsas_inventario}
@@ -211,5 +226,6 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   static_files:
   media_files:

@@ -7,7 +7,7 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest import mock
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
@@ -15,7 +15,8 @@ from django.utils import timezone
 
 from apps.core.models import (
     BackupJob, Categoria, Cliente, Conteo, ConteoDetalle, DetalleMovimiento,
-    Item, MovimientoInventario, Stock, Ubicacion, WebPushScheduledEvent,
+    Item, MovimientoInventario, Stock, SystemHeartbeat, Ubicacion,
+    WebPushScheduledEvent,
 )
 from apps.core.services import notifications
 from apps.core.services.pigmentos import calcular_cobertura, payload_cobertura
@@ -38,6 +39,39 @@ class HealthzTests(TestCase):
         with mock.patch('django.db.connection.cursor', side_effect=Exception('db caída')):
             resp = self.client.get('/healthz')
         self.assertEqual(resp.status_code, 503)
+
+
+class OperationalHealthPanelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='health-admin', password='x')
+        self.url = reverse('operational_health')
+
+    def test_requiere_permiso(self):
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    def test_muestra_dependencias_y_latido(self):
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='ver_salud_operativa'))
+        SystemHeartbeat.objects.create(name='celery')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Base de datos')
+        self.assertContains(response, 'Redis')
+        self.assertContains(response, 'Celery beat + worker')
+        self.assertContains(response, 'Copia externa')
+
+    def test_tarea_actualiza_latido_persistente(self):
+        from apps.core.tasks import operational_heartbeat
+
+        operational_heartbeat()
+
+        heartbeat = SystemHeartbeat.objects.get(name='celery')
+        self.assertEqual(
+            heartbeat.details['worker_task'], 'operational_heartbeat')
 
 
 class NotifyStockCacheCaidaTests(TestCase):

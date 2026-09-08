@@ -6,10 +6,13 @@ Autenticación por token compartido (header X-API-Key), sin sesión.
 """
 from .common import *  # noqa: F401,F403
 
+import hashlib
+
 from django.utils.crypto import constant_time_compare
+from django.db import connection
 from django.views.decorators.csrf import csrf_exempt
 
-from ..models import DocumentoFactura
+from ..models import DocumentoFactura, SystemHeartbeat
 from ..services.facturas import bulk_service, clientes, invoice_service
 from ..services.facturas.pdf_extractors import filename_extractor
 
@@ -39,6 +42,43 @@ def _ingest_registrar_fallo(ip):
     except ValueError:
         # La clave no existía (o expiró): iniciar la ventana.
         cache.set(key, 1, _INGEST_VENTANA_SEG)
+
+
+def _buscar_duplicado(*, cliente, tipo, numero, categoria_id=None):
+    """Busca un documento con la misma identidad usada por la ingesta."""
+    if not numero:
+        return None
+    filtros = {
+        'cliente': cliente,
+        'tipo_documento': tipo,
+        'numero_documento': numero,
+    }
+    if tipo == 'envio':
+        filtros['categoria_id'] = categoria_id
+    return DocumentoFactura.objects.filter(**filtros).first()
+
+
+def _registrar_estado_ingesta(name, **details):
+    try:
+        SystemHeartbeat.objects.update_or_create(
+            name=name,
+            defaults={'last_seen_at': timezone.now(), 'details': details},
+        )
+    except Exception:
+        security_log.exception('No se pudo registrar el estado de ingesta.')
+
+
+def _bloquear_huella_ingesta(fingerprint):
+    """Serializa el mismo PDF incluso si dos solicitudes usan nombres distintos."""
+    if connection.vendor != 'postgresql':
+        return
+    # advisory locks reciben un entero signed de 64 bits y se liberan al
+    # terminar transaction.atomic(). No requieren filas auxiliares.
+    lock_id = int(fingerprint[:16], 16)
+    if lock_id >= 2 ** 63:
+        lock_id -= 2 ** 64
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT pg_advisory_xact_lock(%s)', [lock_id])
 
 
 @csrf_exempt
@@ -74,6 +114,12 @@ def factura_api_ingest(request):
     if not cabecera.startswith(b'%PDF'):
         return JsonResponse({'ok': False, 'error': 'el archivo no es un PDF válido'}, status=400)
 
+    digest = hashlib.sha256()
+    for chunk in archivo.chunks():
+        digest.update(chunk)
+    fingerprint = digest.hexdigest()
+    archivo.seek(0)
+
     tipo = invoice_service.detectar_tipo(archivo.name)
     nombre_cli = filename_extractor.extraer_de_nombre(archivo.name).get('cliente_nombre', '')
     cliente = bulk_service.match_cliente(nombre_cli, solo_exacto=True)
@@ -85,33 +131,53 @@ def factura_api_ingest(request):
     try:
         prev = invoice_service.previsualizar(tipo, archivo)
     except Exception:
+        _registrar_estado_ingesta('ingest_error', reason='pdf_processing')
         return JsonResponse({'ok': False, 'error': 'no se pudo procesar el PDF'}, status=400)
     datos = prev['datos']
     numero = datos.get('numero_documento', '')
+    categoria_id = datos.get('categoria_id')
 
-    # Deduplicación: mismo cliente + tipo + número ya existente → no duplicar.
-    if numero:
+    # En los envíos el consecutivo se reutiliza entre categorías (por ejemplo,
+    # "Envio 6" para lisa y "Envio Camiseta 6"). Por eso la categoría forma
+    # parte de la identidad del documento; ignorarla descartaría el segundo PDF
+    # como si fuera una repetición del primero.
+    # El lock del cliente hace atómica la secuencia buscar→crear. Todas las
+    # ingestas sin identificar comparten el mismo cliente centinela, por lo que
+    # también quedan protegidas ante reintentos simultáneos de n8n.
+    with transaction.atomic():
+        _bloquear_huella_ingesta(fingerprint)
+        cliente = Cliente.objects.select_for_update().get(pk=cliente.pk)
         existente = DocumentoFactura.objects.filter(
-            cliente=cliente, tipo_documento=tipo, numero_documento=numero).first()
+            ingest_fingerprint=fingerprint).first()
+        if existente is None:
+            existente = _buscar_duplicado(
+                cliente=cliente, tipo=tipo, numero=numero,
+                categoria_id=categoria_id)
         if existente:
+            transaction.on_commit(lambda: _registrar_estado_ingesta(
+                'ingest_success', duplicate=True))
             return JsonResponse({
                 'ok': True, 'duplicado': True, 'id': existente.pk,
                 'cliente': cliente.nombre, 'numero': numero,
             }, status=200)
 
-    archivo.seek(0)
-    doc = invoice_service.crear_documento(
-        cliente=cliente, tipo_documento=tipo, archivo=archivo,
-        datos=datos, texto_extraido=prev['texto_extraido'],
-    )
-    if requiere_revision:
-        doc.cliente_sugerido = (nombre_cli or '')[:200]
-        doc.notas = (
-            'Cliente no encontrado en ingesta automática.\n'
-            f'Cliente sugerido por archivo: {nombre_cli or "(sin nombre detectado)"}\n'
-            f'Archivo original: {archivo.name}'
+        archivo.seek(0)
+        doc = invoice_service.crear_documento(
+            cliente=cliente, tipo_documento=tipo, archivo=archivo,
+            datos=datos, texto_extraido=prev['texto_extraido'],
         )
-        doc.save(update_fields=['cliente_sugerido', 'notas'])
+        doc.ingest_fingerprint = fingerprint
+        doc.save(update_fields=['ingest_fingerprint'])
+        if requiere_revision:
+            doc.cliente_sugerido = (nombre_cli or '')[:200]
+            doc.notas = (
+                'Cliente no encontrado en ingesta automática.\n'
+                f'Cliente sugerido por archivo: {nombre_cli or "(sin nombre detectado)"}\n'
+                f'Archivo original: {archivo.name}'
+            )
+            doc.save(update_fields=['cliente_sugerido', 'notas'])
+        transaction.on_commit(lambda: _registrar_estado_ingesta(
+            'ingest_success', duplicate=False))
     return JsonResponse({
         'ok': True, 'id': doc.pk, 'cliente': cliente.nombre,
         'tipo': doc.tipo_documento, 'numero': doc.numero_documento,

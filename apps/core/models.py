@@ -260,6 +260,16 @@ class BackupJob(models.Model):
     archivo = models.CharField(max_length=255, blank=True)
     tamano = models.PositiveBigIntegerField(default=0)
     mensaje_error = models.TextField(blank=True)
+    copia_externa = models.CharField(
+        max_length=20,
+        choices=[
+            ('no_configurada', 'No configurada'),
+            ('exitosa', 'Exitosa'),
+            ('fallida', 'Fallida'),
+        ],
+        default='no_configurada',
+    )
+    fecha_copia_externa = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Trabajo de backup'
@@ -267,6 +277,7 @@ class BackupJob(models.Model):
         ordering = ['-fecha_inicio']
         permissions = [
             ('gestionar_backups', 'Puede gestionar backups'),
+            ('ver_salud_operativa', 'Puede ver la salud operativa'),
         ]
 
     def __str__(self):
@@ -681,6 +692,10 @@ class DocumentoFactura(models.Model):
 
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name='documentos')
     archivo_pdf = models.FileField(upload_to='facturas/%Y/%m/', null=True, blank=True)
+    ingest_fingerprint = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        help_text='SHA-256 del archivo recibido por la ingesta automática.',
+    )
     tipo_documento = models.CharField(max_length=10, choices=TIPO_CHOICES)
     numero_documento = models.CharField(max_length=60, blank=True)
     fecha_documento = models.DateField(null=True, blank=True)
@@ -896,6 +911,8 @@ class WebPushScheduledEvent(models.Model):
     key = models.CharField(max_length=180, unique=True)
     event_type = models.CharField(max_length=80)
     created_at = models.DateTimeField(auto_now_add=True)
+    enqueued_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=300, blank=True)
 
     class Meta:
         verbose_name = 'Evento Web Push programado'
@@ -904,3 +921,17 @@ class WebPushScheduledEvent(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class SystemHeartbeat(models.Model):
+    """Última señal de vida de procesos operativos como Celery beat/worker."""
+    name = models.CharField(max_length=80, unique=True)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    details = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Señal de salud del sistema'
+        verbose_name_plural = 'Señales de salud del sistema'
+
+    def __str__(self):
+        return f'{self.name}: {self.last_seen_at}'

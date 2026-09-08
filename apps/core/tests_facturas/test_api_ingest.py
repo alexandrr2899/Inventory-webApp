@@ -1,4 +1,5 @@
 import os
+from unittest.mock import patch
 import tempfile
 
 from django.core.cache import cache
@@ -6,7 +7,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from apps.core.models import Cliente, ClienteAlias, DocumentoFactura, TarifaCliente
+from apps.core.models import (
+    CategoriaProducto, Cliente, ClienteAlias, DocumentoFactura, TarifaCliente,
+)
+from apps.core.views.facturas_api import _buscar_duplicado
 
 _SAMPLES = os.path.normpath(os.path.join(
     os.path.dirname(__file__), '..', '..', '..', 'docs', 'facturas', 'samples'))
@@ -30,8 +34,57 @@ class IngestTokenTests(TestCase):
         Cliente.objects.create(nombre='Inversiones Zaga')
 
     def test_token_invalido_401(self):
-        resp = self.client.post(self.url, {'archivo': _factura_upload()}, HTTP_X_API_KEY='malo')
+        archivo = SimpleUploadedFile(
+            'documento.pdf', b'%PDF-1.4\n', content_type='application/pdf')
+        resp = self.client.post(
+            self.url, {'archivo': archivo}, HTTP_X_API_KEY='malo')
         self.assertEqual(resp.status_code, 401)
+
+    def test_mismo_pdf_sin_numero_es_idempotente_por_huella(self):
+        cliente = Cliente.objects.create(nombre='Cliente Huella')
+
+        def crear_documento(**kwargs):
+            return DocumentoFactura.objects.create(
+                cliente=kwargs['cliente'], tipo_documento='factura',
+                monto_total=100,
+            )
+
+        extractor_data = {
+            'tipo_documento': 'factura',
+            'cliente_nombre': cliente.nombre,
+        }
+        preview = {
+            'datos': {'monto_total': 100},
+            'texto_extraido': 'documento sin número',
+        }
+        with patch(
+            'apps.core.views.facturas_api.filename_extractor.extraer_de_nombre',
+            return_value=extractor_data,
+        ), patch(
+            'apps.core.views.facturas_api.bulk_service.match_cliente',
+            return_value=cliente,
+        ), patch(
+            'apps.core.views.facturas_api.invoice_service.previsualizar',
+            return_value=preview,
+        ), patch(
+            'apps.core.views.facturas_api.invoice_service.crear_documento',
+            side_effect=crear_documento,
+        ):
+            first = self.client.post(
+                self.url,
+                {'archivo': SimpleUploadedFile('a.pdf', b'%PDF-contenido')},
+                HTTP_X_API_KEY=TOKEN,
+            )
+            second = self.client.post(
+                self.url,
+                {'archivo': SimpleUploadedFile('otro.pdf', b'%PDF-contenido')},
+                HTTP_X_API_KEY=TOKEN,
+            )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.json()['duplicado'])
+        self.assertEqual(DocumentoFactura.objects.count(), 1)
 
     def test_sin_archivo_400(self):
         resp = self.client.post(self.url, {}, HTTP_X_API_KEY=TOKEN)
@@ -105,6 +158,56 @@ class IngestTokenTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertTrue(r2.json().get('duplicado'))
         self.assertEqual(DocumentoFactura.objects.count(), 1)
+
+    def test_mismo_numero_en_categorias_distintas_no_es_duplicado(self):
+        if not os.path.exists(_FACTURA):
+            self.skipTest('PDF de muestra ausente')
+        Cliente.objects.create(nombre='Nahun Rodriguez')
+        lisa = CategoriaProducto.objects.create(
+            nombre='Lisa', palabra_clave='lisa', es_predeterminada=True)
+        camiseta = CategoriaProducto.objects.create(
+            nombre='Camiseta', palabra_clave='camiseta')
+
+        lisa_resp = self.client.post(
+            self.url,
+            {'archivo': _factura_upload('Nahun Rodriguez Envio 6.pdf')},
+            HTTP_X_API_KEY=TOKEN,
+        )
+        camiseta_resp = self.client.post(
+            self.url,
+            {'archivo': _factura_upload('Nahun Rodriguez Envio Camiseta 6.pdf')},
+            HTTP_X_API_KEY=TOKEN,
+        )
+
+        self.assertEqual(lisa_resp.status_code, 201)
+        self.assertEqual(camiseta_resp.status_code, 201)
+        self.assertNotIn('duplicado', camiseta_resp.json())
+        documentos = DocumentoFactura.objects.filter(
+            cliente__nombre='Nahun Rodriguez', tipo_documento='envio',
+            numero_documento='6')
+        self.assertEqual(documentos.count(), 2)
+        self.assertSetEqual(
+            set(documentos.values_list('categoria_id', flat=True)),
+            {lisa.pk, camiseta.pk},
+        )
+
+    def test_deduplicacion_de_envios_incluye_categoria(self):
+        cliente = Cliente.objects.create(nombre='Nahun Rodriguez')
+        lisa = CategoriaProducto.objects.create(nombre='Lisa')
+        camiseta = CategoriaProducto.objects.create(nombre='Camiseta')
+        envio_lisa = DocumentoFactura.objects.create(
+            cliente=cliente, tipo_documento='envio', numero_documento='6',
+            categoria=lisa)
+
+        self.assertEqual(
+            _buscar_duplicado(
+                cliente=cliente, tipo='envio', numero='6', categoria_id=lisa.pk),
+            envio_lisa,
+        )
+        self.assertIsNone(_buscar_duplicado(
+            cliente=cliente, tipo='envio', numero='6',
+            categoria_id=camiseta.pk,
+        ))
 
     def test_guarda_el_nombre_sugerido_en_su_propio_campo(self):
         if not os.path.exists(_FACTURA):

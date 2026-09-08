@@ -108,15 +108,15 @@
 </div>
 {% endif %}
 
-{% if perms.core.crear_item or perms.core.importar_excel or perms.core.gestionar_backups or perms.core.gestionar_metodos_pago or perms.core.ver_reportes or perms.core.ver_inventario or perms.core.registrar_entrada or perms.core.registrar_produccion or user.is_superuser %}
+{% if perms.core.crear_item or perms.core.importar_excel or perms.core.gestionar_backups or perms.core.ver_salud_operativa or perms.core.gestionar_metodos_pago or perms.core.ver_reportes or perms.core.ver_inventario or perms.core.registrar_entrada or perms.core.registrar_produccion or user.is_superuser %}
 <a class="nav-link nav-group-toggle d-flex justify-content-between align-items-center"
    data-bs-toggle="collapse" href="#navConfig-{{ mid }}" role="button"
    aria-controls="navConfig-{{ mid }}"
-   aria-expanded="{% if 'maquina' in un or 'ubicacion' in un or 'importar' in un or 'backup' in un or 'usuario' in un or 'metodo_pago' in un or un == 'item_etiquetas' or un == 'notificaciones_panel' or un == 'produccion_nueva' or un == 'movimiento_entrada' %}true{% else %}false{% endif %}">
+   aria-expanded="{% if 'maquina' in un or 'ubicacion' in un or 'importar' in un or 'backup' in un or 'usuario' in un or 'metodo_pago' in un or un == 'operational_health' or un == 'item_etiquetas' or un == 'notificaciones_panel' or un == 'produccion_nueva' or un == 'movimiento_entrada' %}true{% else %}false{% endif %}">
   <span><i class="bi bi-gear-wide-connected"></i> Configuración</span>
   <i class="bi bi-chevron-down small chevron"></i>
 </a>
-<div class="collapse nav-group-sub {% if 'maquina' in un or 'ubicacion' in un or 'importar' in un or 'backup' in un or 'usuario' in un or 'metodo_pago' in un or un == 'item_etiquetas' or un == 'notificaciones_panel' or un == 'produccion_nueva' or un == 'movimiento_entrada' %}show{% endif %}"
+<div class="collapse nav-group-sub {% if 'maquina' in un or 'ubicacion' in un or 'importar' in un or 'backup' in un or 'usuario' in un or 'metodo_pago' in un or un == 'operational_health' or un == 'item_etiquetas' or un == 'notificaciones_panel' or un == 'produccion_nueva' or un == 'movimiento_entrada' %}show{% endif %}"
      id="navConfig-{{ mid }}">
 
   {% if perms.core.crear_item or perms.core.gestionar_metodos_pago %}
@@ -164,11 +164,16 @@
   {% endif %}
   {% endif %}
 
-  {% if perms.core.ver_reportes or perms.core.gestionar_backups or user.is_superuser %}
+  {% if perms.core.ver_reportes or perms.core.gestionar_backups or perms.core.ver_salud_operativa or user.is_superuser %}
   <div class="nav-subsection">Sistema</div>
   {% if perms.core.ver_reportes %}
   <a href="{% url 'notificaciones_panel' %}" class="nav-link {% if un == 'notificaciones_panel' %}active{% endif %}">
     <i class="bi bi-send-fill text-primary"></i> Notificaciones
+  </a>
+  {% endif %}
+  {% if perms.core.ver_salud_operativa or user.is_superuser %}
+  <a href="{% url 'operational_health' %}" class="nav-link {% if un == 'operational_health' %}active{% endif %}">
+    <i class="bi bi-heart-pulse-fill text-success"></i> Salud operativa
   </a>
   {% endif %}
   {% if perms.core.gestionar_backups or user.is_superuser %}

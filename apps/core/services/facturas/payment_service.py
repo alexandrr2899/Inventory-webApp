@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.core.exceptions import ValidationError
 
-from apps.core.models import Pago, AplicacionPago, DocumentoFactura
+from apps.core.models import Cliente, Pago, AplicacionPago, DocumentoFactura
 from . import status_service
 
 
@@ -13,6 +13,11 @@ def _validar_monto_positivo(monto):
     if monto <= 0:
         raise ValidationError('El monto debe ser mayor que cero.')
     return monto
+
+
+def _bloquear_cliente(cliente_id):
+    """Serializa todos los repartos del cliente con un orden de lock común."""
+    return Cliente.objects.select_for_update().get(pk=cliente_id)
 
 
 def _facturas_base(cliente, *, bloquear=False):
@@ -119,6 +124,7 @@ def registrar_abono(cliente, *, fecha_pago, metodo_pago, monto,
     por antigüedad.
     """
     monto = _validar_monto_positivo(monto)
+    cliente = _bloquear_cliente(cliente.pk)
     _facturas_pendientes(cliente, bloquear=True)
     pago = Pago.objects.create(
         cliente=cliente, fecha_pago=fecha_pago, metodo_pago=metodo_pago,
@@ -138,12 +144,14 @@ def editar_abono(pago, *, fecha_pago, metodo_pago, monto,
     None (para no borrar el archivo existente al editar sin subir uno nuevo).
     """
     monto = _validar_monto_positivo(monto)
+    pago_ref = Pago.objects.only('cliente_id').get(pk=pago.pk)
+    cliente = _bloquear_cliente(pago_ref.cliente_id)
     pago = Pago.objects.select_for_update(of=('self',)).select_related('cliente').get(pk=pago.pk)
     # Liberar ANTES de bloquear: las facturas que este abono había dejado en cero
     # vuelven a estar pendientes, y así entran en el mismo lote de bloqueo que el
     # resto en vez de bloquearse sueltas más tarde (orden de locks impredecible).
     pago.aplicaciones.all().delete()
-    _facturas_pendientes(pago.cliente, bloquear=True)
+    _facturas_pendientes(cliente, bloquear=True)
     pago.fecha_pago = fecha_pago
     pago.metodo_pago = metodo_pago
     pago.monto = monto
@@ -163,11 +171,13 @@ def aplicar_saldo_a_favor(documento):
     Devuelve el monto total aplicado.
     """
     aplicado = Decimal('0.00')
+    documento_ref = DocumentoFactura.objects.only('cliente_id').get(pk=documento.pk)
+    cliente = _bloquear_cliente(documento_ref.cliente_id)
     documento = DocumentoFactura.objects.select_for_update(of=('self',)).select_related('cliente').get(pk=documento.pk)
     if documento.estado_pago == 'anulada':
         return aplicado
-    _facturas_pendientes(documento.cliente, bloquear=True)
-    pagos = documento.cliente.pagos.select_for_update().order_by('fecha_pago', 'created_at')
+    _facturas_pendientes(cliente, bloquear=True)
+    pagos = cliente.pagos.select_for_update().order_by('fecha_pago', 'created_at')
     for pago in pagos:
         saldo_doc = documento.saldo_pendiente
         if saldo_doc <= 0:
@@ -184,4 +194,7 @@ def aplicar_saldo_a_favor(documento):
 @transaction.atomic
 def liberar_aplicaciones(documento):
     """Elimina las aplicaciones de una factura; el dinero vuelve a saldo a favor."""
+    documento_ref = DocumentoFactura.objects.only('cliente_id').get(pk=documento.pk)
+    _bloquear_cliente(documento_ref.cliente_id)
+    documento = DocumentoFactura.objects.select_for_update().get(pk=documento.pk)
     documento.aplicaciones.all().delete()

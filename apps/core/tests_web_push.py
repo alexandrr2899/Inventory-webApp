@@ -372,3 +372,14 @@ class OverdueTaskTests(TestCase):
         self.assertEqual(result, {'individuales': 0, 'resumen': False})
         delay.assert_not_called()
         self.assertFalse(WebPushScheduledEvent.objects.exists())
+
+    @patch(
+        'apps.core.tasks.fanout_web_push.delay',
+        side_effect=ConnectionError('broker caído'),
+    )
+    def test_fallo_de_broker_libera_la_clave_para_reintentar(self, delay):
+        with self.assertRaises(ConnectionError):
+            notify_overdue_invoices()
+
+        self.assertFalse(WebPushScheduledEvent.objects.exists())
+        delay.assert_called_once()

@@ -36,6 +36,7 @@ from .metodos_pago import *        # noqa: F401,F403
 from .categorias_producto import * # noqa: F401,F403
 from .facturas_estado_cuenta import *   # noqa: F401,F403
 from .busqueda import *                    # noqa: F401,F403
+from .health import *                      # noqa: F401,F403
 
 # ── Helpers con prefijo _ usados por código externo (tests) ──────────────────
 from .calc import _calcular_tramos                       # noqa: F401

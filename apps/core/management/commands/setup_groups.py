@@ -12,7 +12,7 @@ GRUPOS = {
         'ordenar_tabs_inventario',
         # Gestión de movimientos (solo admin)
         'editar_movimiento', 'anular_movimiento', 'eliminar_movimiento',
-        'gestionar_backups',
+        'gestionar_backups', 'ver_salud_operativa',
         # Módulo Facturas (exclusivo de Administrador)
         'ver_facturas', 'gestionar_facturas', 'registrar_pago_factura',
         'anular_factura', 'gestionar_tarifas',

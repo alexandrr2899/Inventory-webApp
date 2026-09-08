@@ -24,33 +24,25 @@ def extraer_de_nombre(nombre_archivo):
     base = os.path.basename(str(nombre_archivo))
     base = re.sub(r'\.pdf$', '', base, flags=re.IGNORECASE).strip()
 
-    es_envio = re.search(r'env[íi]o', base, re.IGNORECASE)
+    # "Envio" es el separador fiable entre cliente y datos del documento.
+    # Exigir límites de palabra evita detectar por accidente nombres que solo
+    # contengan esas letras.
+    es_envio = re.search(r'\benv[íi]o\b', base, re.IGNORECASE)
     es_factura = re.search(r'\bfact', base, re.IGNORECASE)
 
     if es_envio:
         datos['tipo_documento'] = 'envio'
-        # "<CLIENTE> Envio <PRODUCTO> <NUM>"
-        m = re.search(r'(.+?)\s+env[íi]o\s+([A-Za-zÁÉÍÓÚáéíóúÑñ]+)\s+(\d+)', base, re.IGNORECASE)
-        if m:
-            cliente = m.group(1).strip()
-            if cliente:
-                datos['cliente_nombre'] = cliente
-            datos['numero_documento'] = m.group(3)
-        else:
-            # "<CLIENTE> Envio <NUM>": algunos envíos de lisa no incluyen
-            # el producto en el nombre, pero todo lo anterior a "Envio" sigue
-            # siendo el nombre fiable del cliente.
-            m = re.search(r'(.+?)\s+env[íi]o\s+(\d+)$', base, re.IGNORECASE)
-            if m:
-                cliente = m.group(1).strip()
-                if cliente:
-                    datos['cliente_nombre'] = cliente
-                datos['numero_documento'] = m.group(2)
-            else:
-                # fallback final: último número del nombre
-                nums = re.findall(r'\d+', base)
-                if nums:
-                    datos['numero_documento'] = nums[-1]
+        # Todo lo anterior a "Envio" es siempre el cliente. Lo posterior puede
+        # ser producto + número, solo número o solo producto; no condicionamos
+        # la lectura del cliente a que el nombre del archivo tenga número.
+        cliente = base[:es_envio.start()].strip(' -_')
+        if cliente:
+            datos['cliente_nombre'] = cliente
+
+        sufijo = base[es_envio.end():].strip()
+        nums = re.findall(r'\d+', sufijo)
+        if nums:
+            datos['numero_documento'] = nums[-1]
     elif es_factura:
         datos['tipo_documento'] = 'factura'
         # "Fact <NUM> <CLIENTE>"

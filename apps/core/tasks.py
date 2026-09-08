@@ -11,7 +11,8 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
-    DocumentoFactura, WebPushScheduledEvent, WebPushSubscription,
+    DocumentoFactura, SystemHeartbeat, WebPushScheduledEvent,
+    WebPushSubscription,
 )
 from .services.web_push import (
     event_notification, user_can_receive_category, web_push_configured,
@@ -130,10 +131,29 @@ def flush_count_web_push(conteo_id):
 def _reserve_scheduled_event(key, event_type):
     try:
         with transaction.atomic():
-            WebPushScheduledEvent.objects.create(key=key, event_type=event_type)
-        return True
+            return WebPushScheduledEvent.objects.create(
+                key=key, event_type=event_type)
     except IntegrityError:
-        return False
+        return None
+
+
+def _mark_event_enqueued(event):
+    event.enqueued_at = timezone.now()
+    event.last_error = ''
+    event.save(update_fields=['enqueued_at', 'last_error'])
+
+
+@shared_task(**RETRY_KWARGS)
+def operational_heartbeat():
+    """Prueba en una sola señal que beat, broker, worker y PostgreSQL funcionan."""
+    heartbeat, _ = SystemHeartbeat.objects.update_or_create(
+        name='celery',
+        defaults={
+            'last_seen_at': timezone.now(),
+            'details': {'worker_task': 'operational_heartbeat'},
+        },
+    )
+    return heartbeat.last_seen_at.isoformat()
 
 
 @shared_task(**RETRY_KWARGS)
@@ -155,17 +175,26 @@ def notify_overdue_invoices():
         return {'individuales': 0, 'resumen': False}
 
     summary_key = f'resumen_facturas_vencidas:{today.isoformat()}'
-    summary_sent = _reserve_scheduled_event(
+    reservation = _reserve_scheduled_event(
         summary_key, 'resumen_facturas_vencidas')
-    if summary_sent:
+    if reservation:
         total = sum((doc.saldo_pendiente for doc in overdue), Decimal('0'))
-        fanout_web_push.delay('resumen_facturas_vencidas', {
-            'fecha': today.isoformat(),
-            'cantidad': len(overdue),
-            'clientes': len({doc.cliente_id for doc in overdue}),
-            'saldo_total': str(total),
-        })
-    return {'individuales': 0, 'resumen': summary_sent}
+        try:
+            fanout_web_push.delay('resumen_facturas_vencidas', {
+                'fecha': today.isoformat(),
+                'cantidad': len(overdue),
+                'clientes': len({doc.cliente_id for doc in overdue}),
+                'saldo_total': str(total),
+            })
+        except Exception as exc:
+            reservation.last_error = str(exc)[:300]
+            reservation.save(update_fields=['last_error'])
+            # La clave solo deduplica entregas aceptadas por el broker. Al
+            # borrarla, el autoretry puede volver a reservar y encolar.
+            reservation.delete()
+            raise
+        _mark_event_enqueued(reservation)
+    return {'individuales': 0, 'resumen': bool(reservation)}
 
 
 @shared_task(**RETRY_KWARGS)
@@ -192,9 +221,10 @@ def notify_pigment_coverage(dias_analisis=30, dias_objetivo=14):
     if not payload['pigmentos']:
         return {'enviado': False, 'en_riesgo': 0}
 
-    if not _reserve_scheduled_event(
+    reservation = _reserve_scheduled_event(
         f'cobertura_pigmentos:{hoy.isoformat()}', 'pigmentos_cobertura'
-    ):
+    )
+    if not reservation:
         return {'enviado': False, 'en_riesgo': len(payload['pigmentos'])}
 
     log.info(
@@ -202,6 +232,7 @@ def notify_pigment_coverage(dias_analisis=30, dias_objetivo=14):
         payload['total_criticos'], payload['total_bajos'],
     )
     send_event('pigmentos_cobertura', payload)
+    _mark_event_enqueued(reservation)
     return {'enviado': True, 'en_riesgo': len(payload['pigmentos'])}
 
 

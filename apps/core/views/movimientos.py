@@ -737,6 +737,22 @@ def movimiento_editar(request, pk):
                     messages.error(request, e)
             else:
                 with transaction.atomic():
+                    mov = get_object_or_404(
+                        MovimientoInventario.objects.select_for_update(), pk=pk)
+                    if not _movimiento_editable(mov):
+                        messages.error(
+                            request,
+                            'El movimiento cambió mientras lo editabas; recargá la página.',
+                        )
+                        return redirect('movimiento_detalle', pk=pk)
+                    detalles_bloqueados = {
+                        d.pk: d for d in DetalleMovimiento.objects.select_for_update()
+                        .filter(movimiento=mov).select_related('item')
+                    }
+                    nuevos_valores = [
+                        (detalles_bloqueados[det.pk], cantidad, origen, destino)
+                        for det, cantidad, origen, destino in nuevos_valores
+                    ]
                     # 1. Revertir todos los detalles originales
                     _revertir_todos_los_detalles(mov)
                     # 2. Actualizar cabecera
@@ -801,6 +817,14 @@ def movimiento_anular(request, pk):
             messages.error(request, 'El motivo de anulación es obligatorio.')
         else:
             with transaction.atomic():
+                mov = get_object_or_404(
+                    MovimientoInventario.objects.select_for_update(), pk=pk)
+                if mov.anulado:
+                    messages.warning(request, 'Este movimiento ya estaba anulado.')
+                    return redirect('movimiento_detalle', pk=pk)
+                if mov.eliminado:
+                    messages.error(request, 'No se puede anular un movimiento eliminado.')
+                    return redirect('movimiento_detalle', pk=pk)
                 _revertir_todos_los_detalles(mov)
                 mov.anulado           = True
                 mov.fecha_anulacion   = timezone.now()
@@ -858,6 +882,14 @@ def movimiento_eliminar(request, pk):
             messages.error(request, 'El motivo de eliminación es obligatorio.')
         else:
             with transaction.atomic():
+                mov = get_object_or_404(
+                    MovimientoInventario.objects.select_for_update(), pk=pk)
+                if mov.eliminado:
+                    messages.warning(request, 'Este movimiento ya estaba eliminado.')
+                    return redirect('movimiento_lista')
+                if mov.anulado and not request.user.is_superuser:
+                    messages.error(request, 'Solo un superusuario puede eliminar un movimiento ya anulado.')
+                    return redirect('movimiento_detalle', pk=pk)
                 # Solo revertir si no estaba ya anulado (el anulado ya lo revirtió)
                 if not mov.anulado:
                     _revertir_todos_los_detalles(mov)

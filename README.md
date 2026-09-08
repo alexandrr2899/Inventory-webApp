@@ -4,7 +4,7 @@ App web mobile-first para controlar inventario, movimientos, conteos fisicos,
 produccion, clientes, facturas, cobros, maquinas, usuarios, backups y alertas
 operativas.
 
-Stack principal: Django 4.2, PostgreSQL 15, Bootstrap 5, Gunicorn,
+Stack principal: Django 5.2 LTS, PostgreSQL 15, Bootstrap 5, Gunicorn,
 WhiteNoise, openpyxl, django-axes y Docker Compose.
 
 ---
@@ -28,7 +28,7 @@ WhiteNoise, openpyxl, django-axes y Docker Compose.
 | **Backups** | Backup diario de PostgreSQL y archivos adjuntos, manual desde Docker o panel web, verificacion de integridad, descarga y registro de trabajos |
 | **Notificaciones** | Envio opcional de eventos/reportes a n8n mediante `N8N_WEBHOOK_URL`, Web Push (VAPID) y alertas programadas (facturas vencidas, cobertura de pigmentos) |
 | **Integraciones** | Ingesta autenticada de documentos y API interna de Jaime, de solo lectura y con token independiente |
-| **Salud** | Sonda `/healthz` (sin autenticacion) usada por los healthchecks de Docker en `web`, `worker` y `beat` |
+| **Salud** | Sonda `/healthz` y panel autenticado `/salud/` con estado de PostgreSQL, Redis, Celery, integraciones y respaldos |
 
 ---
 
@@ -69,6 +69,10 @@ POSTGRES_HOST=db
 BACKUP_DIR=./backups
 BACKUP_RETENTION_DAYS=14
 BACKUP_TIMEOUT_SECONDS=900
+BACKUP_HEALTH_MAX_HOURS=30
+RESTORE_TEST_MAX_DAYS=90
+CELERY_QUEUE_WARNING_SIZE=100
+APP_BIND_IP=127.0.0.1
 APP_PORT=8000
 N8N_WEBHOOK_URL=
 FACTURAS_INGEST_TOKEN=
@@ -272,6 +276,9 @@ La referencia completa de endpoints y respuestas de Jaime esta en
 [docs/JAIME_API.md](docs/JAIME_API.md). Use tokens distintos, largos y
 aleatorios para cada integracion y no los guarde en el repositorio.
 
+La ingesta calcula además una huella SHA-256 del PDF. Los reintentos del mismo
+archivo son idempotentes incluso cuando el documento no contiene un número.
+
 ---
 
 ## Backups completos (PostgreSQL + archivos)
@@ -414,6 +421,22 @@ usan `acks_late`, asi que un worker que muere a mitad no pierde el trabajo.
 - `django-axes` bloquea intentos fallidos de login por IP despues de 5 fallos durante 1 hora.
 - En produccion, cookies de sesion y CSRF se marcan como seguras cuando `DEBUG=False`.
 - La app confia en `X-Forwarded-Proto` y `X-Forwarded-Host` para funcionar detras de Cloudflare Tunnel/proxy.
+- Docker publica la aplicación en `127.0.0.1` por defecto, para impedir que se
+  salte Cloudflare y se falsifique `CF-Connecting-IP`. Si el proxy está en otra
+  máquina, configure `APP_BIND_IP` junto con el firewall correspondiente.
+- Las cabeceras `CF-Connecting-IP` y `X-Forwarded-*` se descartan salvo que la
+  conexión llegue desde una red incluida en `TRUSTED_PROXY_CIDRS`.
+- Redis usa AOF y un volumen persistente para conservar la cola ante reinicios.
+
+El panel `/salud/` requiere el permiso `ver_salud_operativa`. El grupo
+Administrador lo recibe con `setup_groups`. El latido de Celery se actualiza
+cada minuto y prueba en conjunto scheduler, broker, worker y base de datos.
+Después de validar una restauración en un entorno de prueba, registre el ensayo
+para que su antigüedad aparezca en el panel:
+
+```bash
+python manage.py registrar_prueba_restauracion --notas "Backup y fecha probados"
+```
 
 ---
 
