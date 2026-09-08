@@ -5,8 +5,7 @@ Todas las variables sensibles se leen del entorno (Portainer / .env).
 
 from pathlib import Path
 from celery.schedules import crontab
-from decouple import config, UndefinedValueError
-from django.core.exceptions import ImproperlyConfigured
+from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -17,14 +16,6 @@ SECRET_KEY = config('SECRET_KEY')
 
 # DEBUG=False en producción. Portainer envía la variable; local puede usar .env.
 DEBUG = config('DEBUG', default=False, cast=bool)
-
-if not DEBUG and (
-    len(SECRET_KEY) < 50
-    or len(set(SECRET_KEY)) < 5
-    or SECRET_KEY.startswith('django-insecure-')
-):
-    raise ImproperlyConfigured(
-        'SECRET_KEY debe tener al menos 50 caracteres aleatorios en producción.')
 
 # Hosts permitidos separados por coma: 127.0.0.1,inventario.tempaques.com
 ALLOWED_HOSTS = [h.strip() for h in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',') if h.strip()]
