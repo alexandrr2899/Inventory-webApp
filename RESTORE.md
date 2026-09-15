@@ -8,7 +8,8 @@ inventario_YYYYMMDD_HHMM.tar.gz
 
 El paquete contiene `database.sql.gz` y `media/`. La base se restaura con
 `psql` y `gunzip`; los PDFs y comprobantes se copian nuevamente al volumen
-Docker `media_files`. `pg_restore` solo aplica a backups custom como
+Docker `media_files`. Esto incluye los comprobantes de gastos guardados bajo
+`media/contabilidad/comprobantes/`. `pg_restore` solo aplica a backups custom como
 `pg_dump -Fc`.
 
 No ejecutes una restauracion improvisada en produccion. Antes de empezar, confirma:

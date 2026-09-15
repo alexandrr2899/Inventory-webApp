@@ -2,9 +2,21 @@
   <span class="badge bg-primary-subtle text-primary-emphasis">Nuevo</span>
 {% elif metrica.tendencia == "sin_base" %}
   <span class="badge bg-secondary-subtle text-secondary-emphasis">Sin base comparable</span>
+{% elif metrica.tendencia == "baja_sin_base" %}
+  <span class="badge bg-danger-subtle text-danger-emphasis">
+    <i class="bi bi-arrow-down-right"></i> Sin base comparable
+  </span>
 {% elif metrica.tendencia == "sube" %}
   <span class="badge bg-success-subtle text-success-emphasis">
     <i class="bi bi-arrow-up-right"></i> +{{ metrica.variacion|floatformat:1 }}%
+  </span>
+{% elif metrica.tendencia == "sube_mal" %}
+  <span class="badge bg-danger-subtle text-danger-emphasis">
+    <i class="bi bi-arrow-up-right"></i> +{{ metrica.variacion|floatformat:1 }}%
+  </span>
+{% elif metrica.tendencia == "baja_bien" %}
+  <span class="badge bg-success-subtle text-success-emphasis">
+    <i class="bi bi-arrow-down-right"></i> {{ metrica.variacion|floatformat:1 }}%
   </span>
 {% elif metrica.tendencia == "baja" %}
   <span class="badge bg-danger-subtle text-danger-emphasis">

@@ -2,10 +2,12 @@ from django.db import models
 from django.db.models import Q
 from django.db.models.functions import Coalesce
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator
 from django.utils import timezone
 from decimal import Decimal
 
 from .textnorm import norm
+from .validators import validar_comprobante_gasto
 
 
 class Categoria(models.Model):
@@ -667,6 +669,74 @@ class MetodoPago(models.Model):
 
     def __str__(self):
         return self.nombre
+
+
+class CategoriaGasto(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+    descripcion = models.TextField(blank=True, verbose_name='Descripción')
+    orden = models.PositiveIntegerField(default=0)
+    activa = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Categoría de gasto'
+        verbose_name_plural = 'Categorías de gasto'
+        ordering = ['orden', 'nombre']
+        permissions = [
+            ('ver_contabilidad', 'Puede ver Contabilidad'),
+            ('administrar_gastos', 'Puede administrar gastos'),
+            ('administrar_categorias_gasto', 'Puede administrar categorías de gasto'),
+        ]
+
+    def __str__(self):
+        return self.nombre
+
+
+class Gasto(models.Model):
+    fecha = models.DateField(default=timezone.localdate)
+    categoria = models.ForeignKey(
+        CategoriaGasto, on_delete=models.PROTECT, related_name='gastos',
+    )
+    descripcion = models.CharField(max_length=240, verbose_name='Descripción')
+    monto = models.DecimalField(
+        max_digits=12, decimal_places=2, verbose_name='Monto total pagado',
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    proveedor = models.CharField(
+        max_length=160, blank=True, verbose_name='Proveedor/beneficiario',
+    )
+    metodo_pago = models.ForeignKey(
+        MetodoPago, on_delete=models.PROTECT, related_name='gastos',
+        verbose_name='Método de pago',
+    )
+    referencia = models.CharField(max_length=120, blank=True)
+    notas = models.TextField(blank=True)
+    comprobante = models.FileField(
+        upload_to='contabilidad/comprobantes/%Y/%m/', null=True, blank=True,
+        validators=[validar_comprobante_gasto],
+    )
+    registrado_por = models.ForeignKey(
+        User, on_delete=models.PROTECT, null=True, editable=False,
+        related_name='gastos_registrados',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Gasto'
+        verbose_name_plural = 'Gastos'
+        ordering = ['-fecha', '-created_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(monto__gt=0), name='gasto_monto_positivo',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['fecha'], name='gasto_fecha_idx'),
+            models.Index(fields=['categoria', 'fecha'], name='gasto_cat_fecha_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.fecha:%d/%m/%Y} · {self.descripcion} · L {self.monto}'
 
 
 class DocumentoFactura(models.Model):

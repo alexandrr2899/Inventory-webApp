@@ -22,6 +22,7 @@ WhiteNoise, openpyxl, django-axes y Docker Compose.
 | **Clientes** | Registro, alias, busqueda global, salidas, facturas y estado de cuenta por cliente |
 | **Facturas y envios** | Carga individual o por lote, revision, identificacion de cliente, vencimientos, PDFs y anulacion |
 | **Cobros** | Abonos, reparto entre documentos, saldo a favor, comprobantes y metodos de pago configurables |
+| **Contabilidad** | Control interno de egresos, ingresos documentados, utilidad y margen por periodo; exportacion CSV/PDF y comprobantes protegidos |
 | **Reportes** | Stock bajo, produccion, produccion avanzada y consumo de pigmentos |
 | **Importacion Excel** | Descarga de plantilla e importacion masiva de items |
 | **Usuarios y permisos** | Roles Administrador, Supervisor y Operador con permisos por modulo |
@@ -213,11 +214,24 @@ Roles incluidos:
 
 | Rol | Permisos principales |
 |---|---|
-| **Administrador** | Inventario, movimientos, conteos, reportes, importacion, produccion, backups y gestion avanzada de movimientos |
+| **Administrador** | Inventario, movimientos, conteos, reportes, importacion, produccion, backups, facturas, metodos de pago y Contabilidad (gastos y categorias) |
 | **Supervisor** | Inventario, entradas/salidas, conteos, conciliacion, reportes y produccion |
 | **Operador** | Inventario, conteos y produccion |
 
-La gestion de usuarios dentro de la app esta restringida a superusuarios.
+La gestion de usuarios dentro de la app esta restringida a superusuarios. Los
+permisos `ver_contabilidad`, `administrar_gastos` y
+`administrar_categorias_gasto` se asignan solamente al grupo Administrador;
+los superusuarios tienen acceso implicito.
+
+## Contabilidad
+
+El panel `/contabilidad/` abre en el mes actual. Los ingresos se calculan desde
+Facturas y Envios por `fecha_documento`, sin depender del cobro; se excluyen
+documentos anulados y saldos iniciales. Los egresos se registran manualmente en
+lempiras con categoria, metodo de pago y comprobante opcional PDF/JPG/PNG/WEBP
+de hasta 10 MB. Es un control financiero interno, no contabilidad fiscal ni
+partida doble. `CONTABILIDAD_PDF_MAX_REGISTROS` limita el detalle de cada PDF
+(2000 por defecto); el sistema pide acotar los filtros en vez de truncar datos.
 
 ---
 
@@ -292,7 +306,7 @@ El proyecto tiene tres formas de ejecutar backups:
 3. Panel web `/backups/` para usuarios con permiso `gestionar_backups`.
 
 Los tres generan un paquete comprimido con `database.sql.gz` y la carpeta
-`media/` completa (incluidos PDFs de facturas y comprobantes):
+`media/` completa (incluidos PDFs de facturas y comprobantes de pagos y gastos):
 
 ```text
 <BACKUP_DIR>/postgres/inventario_YYYYMMDD_HHMM.tar.gz

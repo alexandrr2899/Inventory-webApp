@@ -4,11 +4,13 @@ import os
 from django import forms
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User, Group
+from django.db.models import Q
 from decimal import Decimal, InvalidOperation
 from .models import (
     Item, Categoria, Ubicacion, Stock, Maquina, Cliente,
     MovimientoInventario, Conteo, ConteoDetalle,
     DocumentoFactura, TarifaCliente, MetodoPago, CategoriaProducto,
+    CategoriaGasto, Gasto,
 )
 
 _log = logging.getLogger(__name__)
@@ -831,6 +833,60 @@ class MetodoPagoForm(forms.ModelForm):
             'tipo': forms.Select(attrs={'class': 'form-select'}),
             'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'orden': forms.NumberInput(attrs={'class': 'form-control'}),
+        }
+
+
+class GastoForm(forms.ModelForm):
+    class Meta:
+        model = Gasto
+        fields = [
+            'fecha', 'categoria', 'descripcion', 'monto', 'proveedor',
+            'metodo_pago', 'referencia', 'notas', 'comprobante',
+        ]
+        widgets = {
+            'fecha': forms.DateInput(
+                attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d',
+            ),
+            'categoria': forms.Select(attrs={'class': 'form-select'}),
+            'descripcion': forms.TextInput(attrs={
+                'class': 'form-control', 'placeholder': 'Ej: Compra de resina',
+            }),
+            'monto': forms.NumberInput(attrs={
+                'class': 'form-control', 'step': '0.01', 'min': '0.01',
+            }),
+            'proveedor': forms.TextInput(attrs={'class': 'form-control'}),
+            'metodo_pago': forms.Select(attrs={'class': 'form-select'}),
+            'referencia': forms.TextInput(attrs={'class': 'form-control'}),
+            'notas': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'comprobante': forms.ClearableFileInput(attrs={
+                'class': 'form-control',
+                'accept': 'application/pdf,image/jpeg,image/png,image/webp',
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        categorias = CategoriaGasto.objects.filter(activa=True)
+        metodos = MetodoPago.objects.filter(activo=True)
+        if self.instance and self.instance.pk:
+            categorias = CategoriaGasto.objects.filter(
+                Q(activa=True) | Q(pk=self.instance.categoria_id)
+            )
+            metodos = MetodoPago.objects.filter(
+                Q(activo=True) | Q(pk=self.instance.metodo_pago_id)
+            )
+        self.fields['categoria'].queryset = categorias.order_by('orden', 'nombre')
+        self.fields['metodo_pago'].queryset = metodos.order_by('orden', 'nombre')
+
+class CategoriaGastoForm(forms.ModelForm):
+    class Meta:
+        model = CategoriaGasto
+        fields = ['nombre', 'descripcion', 'orden', 'activa']
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control'}),
+            'descripcion': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'orden': forms.NumberInput(attrs={'class': 'form-control', 'min': '0'}),
+            'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 

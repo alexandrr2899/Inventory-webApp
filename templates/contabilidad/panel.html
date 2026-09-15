@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% load facturas_extras %}
+{% block title %}Contabilidad{% endblock %}
+
+{% block extra_head %}
+<style>
+  .finance-kpi { border:0; border-left:4px solid var(--bs-primary); }
+  .finance-kpi.expense { border-color:var(--bs-danger); }
+  .finance-kpi.profit { border-color:var(--bs-success); }
+  @media (max-width:767.98px) { .accounting-table { display:none; } }
+  @media (min-width:768px) { .accounting-cards { display:none; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="background:linear-gradient(135deg,#174b3a,#198754);">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div>
+      <h1><i class="bi bi-calculator-fill me-2"></i>Contabilidad</h1>
+      <small class="opacity-75">Control interno de ingresos, gastos y utilidad</small>
+    </div>
+    {% if perms.core.administrar_gastos %}
+    <a href="{% url 'gasto_crear' %}" class="btn btn-light fw-semibold">
+      <i class="bi bi-plus-lg me-1"></i>Registrar gasto
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-6 col-lg-2"><label class="form-label" for="desde">Desde</label><input class="form-control" id="desde" name="desde" type="date" value="{{ desde|date:'Y-m-d' }}"></div>
+      <div class="col-6 col-lg-2"><label class="form-label" for="hasta">Hasta</label><input class="form-control" id="hasta" name="hasta" type="date" value="{{ hasta|date:'Y-m-d' }}"></div>
+      <div class="col-12 col-sm-6 col-lg-2">
+        <label class="form-label" for="categoria">Categoría</label>
+        <select class="form-select" id="categoria" name="categoria"><option value="">Todas</option>{% for c in categorias %}<option value="{{ c.pk }}" {% if categoria_seleccionada == c.pk|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-12 col-sm-6 col-lg-2">
+        <label class="form-label" for="metodo_pago">Método</label>
+        <select class="form-select" id="metodo_pago" name="metodo_pago"><option value="">Todos</option>{% for m in metodos_pago %}<option value="{{ m.pk }}" {% if metodo_seleccionado == m.pk|stringformat:'s' %}selected{% endif %}>{{ m.nombre }}</option>{% endfor %}</select>
+      </div>
+      <div class="col-12 col-sm-6 col-lg-2"><label class="form-label" for="proveedor">Proveedor</label><input class="form-control" id="proveedor" name="proveedor" value="{{ proveedor }}"></div>
+      <div class="col-12 col-sm-6 col-lg-2"><label class="form-label" for="q">Texto</label><input class="form-control" id="q" name="q" value="{{ q }}" placeholder="Descripción, referencia…"></div>
+      <div class="col-12 d-flex flex-wrap gap-2 mt-3">
+        <button class="btn btn-primary" type="submit"><i class="bi bi-funnel me-1"></i>Aplicar filtros</button>
+        <a class="btn btn-outline-secondary" href="{% url 'contabilidad_panel' %}">Limpiar</a>
+        <div class="ms-sm-auto d-flex gap-2">
+          <a class="btn btn-outline-success" href="{% url 'contabilidad_exportar_csv' %}{% if query_filtros %}?{{ query_filtros }}{% endif %}"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
+          <a class="btn btn-outline-danger" href="{% url 'contabilidad_exportar_pdf' %}{% if query_filtros %}?{{ query_filtros }}{% endif %}"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-2"><div class="card finance-kpi h-100"><div class="card-body"><div class="text-muted small">Facturas</div><div class="fw-bold fs-5">L {{ resumen.ingresos_facturas|moneda }}</div></div></div></div>
+  <div class="col-6 col-xl-2"><div class="card finance-kpi h-100"><div class="card-body"><div class="text-muted small">Envíos</div><div class="fw-bold fs-5">L {{ resumen.ingresos_envios|moneda }}</div></div></div></div>
+  <div class="col-6 col-xl-2"><div class="card finance-kpi h-100"><div class="card-body"><div class="text-muted small">Ingreso total</div><div class="fw-bold fs-5">L {{ resumen.ingreso_total|moneda }}</div></div></div></div>
+  <div class="col-6 col-xl-2"><div class="card finance-kpi expense h-100"><div class="card-body"><div class="text-muted small">Gastos</div><div class="fw-bold fs-5 text-danger">L {{ resumen.gastos_totales|moneda }}</div></div></div></div>
+  <div class="col-6 col-xl-2"><div class="card finance-kpi profit h-100"><div class="card-body"><div class="text-muted small">Utilidad neta</div><div class="fw-bold fs-5 {% if resumen.utilidad < 0 %}text-danger{% else %}text-success{% endif %}">L {{ resumen.utilidad|moneda }}</div></div></div></div>
+  <div class="col-6 col-xl-2"><div class="card finance-kpi profit h-100"><div class="card-body"><div class="text-muted small">Margen</div><div class="fw-bold fs-5 {% if resumen.margen < 0 %}text-danger{% else %}text-success{% endif %}">{{ resumen.margen|floatformat:2 }}%</div></div></div></div>
+</div>
+
+{% if hay_filtros_gasto %}
+<div class="alert alert-info py-2">
+  <i class="bi bi-info-circle-fill me-1"></i>
+  Los indicadores anteriores representan todo el período. Los filtros adicionales
+  seleccionan <strong>L {{ gastos_filtrados_total|moneda }}</strong> en gastos para
+  el desglose, el detalle y las exportaciones.
+</div>
+{% endif %}
+
+{% if desglose %}
+<div class="card mb-3">
+    <div class="card-header bg-white fw-bold"><i class="bi bi-pie-chart-fill text-danger me-2"></i>Gastos por categoría{% if hay_filtros_gasto %} según filtros{% endif %}</div>
+  <div class="card-body"><div class="row g-2">{% for fila in desglose %}<div class="col-12 col-md-6 col-xl-4"><div class="d-flex justify-content-between border rounded p-2"><span>{{ fila.categoria__nombre }} <small class="text-muted">({{ fila.cantidad }})</small></span><strong>L {{ fila.total|moneda }}</strong></div></div>{% endfor %}</div></div>
+</div>
+{% endif %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h2 class="h5 mb-0">Detalle de gastos</h2>
+  {% if perms.core.administrar_categorias_gasto %}<a href="{% url 'categoria_gasto_lista' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-tags me-1"></i>Categorías</a>{% endif %}
+</div>
+
+<div class="accounting-cards">
+  {% for gasto in gastos %}
+  <a href="{% url 'gasto_detalle' gasto.pk %}" class="card mb-2 text-decoration-none text-body">
+    <div class="card-body py-3"><div class="d-flex justify-content-between gap-3"><div><div class="fw-bold">{{ gasto.descripcion }}</div><div class="small text-muted">{{ gasto.fecha|date:'d/m/Y' }} · {{ gasto.categoria.nombre }}</div><div class="small">{{ gasto.proveedor|default:'Sin proveedor' }}</div></div><div class="text-end"><div class="fw-bold text-danger">L {{ gasto.monto|moneda }}</div><small class="text-muted">{{ gasto.metodo_pago.nombre }}</small></div></div></div>
+  </a>
+  {% empty %}<div class="text-center text-muted py-5"><i class="bi bi-receipt fs-1 d-block mb-2"></i>No hay gastos para estos filtros.</div>{% endfor %}
+</div>
+
+<div class="card accounting-table">
+  <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Proveedor</th><th>Método</th><th class="text-end">Monto</th><th></th></tr></thead><tbody>
+    {% for gasto in gastos %}<tr><td>{{ gasto.fecha|date:'d/m/Y' }}</td><td class="fw-semibold">{{ gasto.descripcion }}</td><td>{{ gasto.categoria.nombre }}</td><td>{{ gasto.proveedor|default:'—' }}</td><td>{{ gasto.metodo_pago.nombre }}</td><td class="text-end fw-bold">L {{ gasto.monto|moneda }}</td><td><a href="{% url 'gasto_detalle' gasto.pk %}" class="btn btn-sm btn-outline-primary">Ver</a></td></tr>
+    {% empty %}<tr><td colspan="7" class="text-center text-muted py-5">No hay gastos para estos filtros.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% include "includes/pagination.html" %}
+{% endblock %}

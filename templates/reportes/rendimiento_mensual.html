@@ -153,6 +153,20 @@
   {% endif %}
 </div>
 
+{% if finanzas %}
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    {% include "reportes/_kpi_comparativo.html" with titulo="Ingreso total" metrica=finanzas.ingreso_total icono="bi-cash-coin" color="primary" moneda=True %}
+  </div>
+  <div class="col-12 col-md-4">
+    {% include "reportes/_kpi_comparativo.html" with titulo="Gastos" metrica=finanzas.gastos icono="bi-wallet2" color="danger" moneda=True %}
+  </div>
+  <div class="col-12 col-md-4">
+    {% include "reportes/_kpi_comparativo.html" with titulo="Utilidad neta" metrica=finanzas.utilidad icono="bi-graph-up-arrow" color="success" moneda=True %}
+  </div>
+</div>
+{% endif %}
+
 {% if not puede_ver_facturacion %}
 <div class="alert alert-secondary">
   <i class="bi bi-lock-fill me-2"></i>
@@ -252,6 +266,26 @@
           <td class="text-end fw-semibold">L {{ facturacion.envio.actual|moneda }}</td>
           <td class="text-end">L {{ facturacion.envio.anterior|moneda }}</td>
           <td class="text-end">{% include "reportes/_variacion.html" with metrica=facturacion.envio %}</td>
+        </tr>
+        {% endif %}
+        {% if finanzas %}
+        <tr>
+          <td><i class="bi bi-cash-coin text-primary me-2"></i>Ingreso total</td>
+          <td class="text-end fw-semibold">L {{ finanzas.ingreso_total.actual|moneda }}</td>
+          <td class="text-end">L {{ finanzas.ingreso_total.anterior|moneda }}</td>
+          <td class="text-end">{% include "reportes/_variacion.html" with metrica=finanzas.ingreso_total %}</td>
+        </tr>
+        <tr>
+          <td><i class="bi bi-wallet2 text-danger me-2"></i>Gastos</td>
+          <td class="text-end fw-semibold">L {{ finanzas.gastos.actual|moneda }}</td>
+          <td class="text-end">L {{ finanzas.gastos.anterior|moneda }}</td>
+          <td class="text-end">{% include "reportes/_variacion.html" with metrica=finanzas.gastos %}</td>
+        </tr>
+        <tr>
+          <td><i class="bi bi-graph-up-arrow text-success me-2"></i>Utilidad neta</td>
+          <td class="text-end fw-semibold">L {{ finanzas.utilidad.actual|moneda }} <small class="text-muted">({{ finanzas.margen_actual|floatformat:2 }}%)</small></td>
+          <td class="text-end">L {{ finanzas.utilidad.anterior|moneda }} <small class="text-muted">({{ finanzas.margen_anterior|floatformat:2 }}%)</small></td>
+          <td class="text-end">{% include "reportes/_variacion.html" with metrica=finanzas.utilidad %}</td>
         </tr>
         {% endif %}
       </tbody>

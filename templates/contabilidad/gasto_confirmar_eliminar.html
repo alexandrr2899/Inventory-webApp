@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% load facturas_extras %}
+{% block title %}Eliminar gasto{% endblock %}
+{% block content %}
+<div class="page-header bg-danger"><h1><i class="bi bi-exclamation-triangle-fill me-2"></i>Eliminar gasto</h1></div>
+<div class="card border-danger"><div class="card-body"><p>Se eliminará definitivamente <strong>{{ gasto.descripcion }}</strong> por <strong>L {{ gasto.monto|moneda }}</strong>. El comprobante adjunto también se borrará.</p><form method="post">{% csrf_token %}<button class="btn btn-danger" type="submit">Sí, eliminar definitivamente</button> <a href="{% url 'gasto_detalle' gasto.pk %}" class="btn btn-outline-secondary">Cancelar</a></form></div></div>
+{% endblock %}

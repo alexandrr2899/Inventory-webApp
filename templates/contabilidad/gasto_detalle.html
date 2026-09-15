@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% load facturas_extras %}
+{% block title %}Gasto {{ gasto.pk }}{% endblock %}
+{% block content %}
+<div class="page-header"><div class="d-flex justify-content-between align-items-center gap-2"><div><h1><i class="bi bi-receipt me-2"></i>{{ gasto.descripcion }}</h1><small class="opacity-75">Registrado el {{ gasto.created_at|date:'d/m/Y H:i' }}</small></div><a href="{% url 'contabilidad_panel' %}" class="btn btn-light btn-sm"><i class="bi bi-arrow-left me-1"></i>Volver</a></div></div>
+<div class="d-flex flex-wrap gap-2 mb-3">
+  {% if perms.core.administrar_gastos %}<a href="{% url 'gasto_editar' gasto.pk %}" class="btn btn-primary"><i class="bi bi-pencil me-1"></i>Editar</a><a href="{% url 'gasto_eliminar' gasto.pk %}" class="btn btn-outline-danger"><i class="bi bi-trash me-1"></i>Eliminar</a>{% endif %}
+  {% if gasto.comprobante %}<a href="{% url 'gasto_comprobante' gasto.pk %}" target="_blank" class="btn btn-outline-secondary"><i class="bi bi-paperclip me-1"></i>Abrir comprobante</a>{% endif %}
+</div>
+<div class="card"><div class="card-body"><dl class="row mb-0">
+  <dt class="col-5 col-md-3">Fecha</dt><dd class="col-7 col-md-9">{{ gasto.fecha|date:'d/m/Y' }}</dd>
+  <dt class="col-5 col-md-3">Categoría</dt><dd class="col-7 col-md-9">{{ gasto.categoria.nombre }}</dd>
+  <dt class="col-5 col-md-3">Monto</dt><dd class="col-7 col-md-9 fs-5 fw-bold text-danger">L {{ gasto.monto|moneda }}</dd>
+  <dt class="col-5 col-md-3">Proveedor</dt><dd class="col-7 col-md-9">{{ gasto.proveedor|default:'—' }}</dd>
+  <dt class="col-5 col-md-3">Método</dt><dd class="col-7 col-md-9">{{ gasto.metodo_pago.nombre }}</dd>
+  <dt class="col-5 col-md-3">Referencia</dt><dd class="col-7 col-md-9">{{ gasto.referencia|default:'—' }}</dd>
+  <dt class="col-5 col-md-3">Notas</dt><dd class="col-7 col-md-9">{{ gasto.notas|linebreaksbr|default:'—' }}</dd>
+  <dt class="col-5 col-md-3">Registrado por</dt><dd class="col-7 col-md-9">{{ gasto.registrado_por.get_full_name|default:gasto.registrado_por.username|default:'Usuario eliminado' }}</dd>
+</dl></div></div>
+{% endblock %}

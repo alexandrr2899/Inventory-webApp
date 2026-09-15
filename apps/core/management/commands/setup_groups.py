@@ -16,6 +16,10 @@ GRUPOS = {
         # Módulo Facturas (exclusivo de Administrador)
         'ver_facturas', 'gestionar_facturas', 'registrar_pago_factura',
         'anular_factura', 'gestionar_tarifas',
+        'gestionar_metodos_pago',
+        # Control financiero interno (exclusivo de Administrador)
+        'ver_contabilidad', 'administrar_gastos',
+        'administrar_categorias_gasto',
     ],
     'Supervisor': [
         'ver_inventario', 'registrar_entrada', 'registrar_salida',

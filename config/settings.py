@@ -209,6 +209,12 @@ FACTURAS_MODULE_ENABLED = config('FACTURAS_MODULE_ENABLED', default=True, cast=b
 # Vacío = endpoint deshabilitado. Generá uno largo y secreto.
 FACTURAS_INGEST_TOKEN = config('FACTURAS_INGEST_TOKEN', default='')
 
+# Evita construir en memoria PDFs contables desproporcionados. La exportación
+# rechaza el pedido y solicita acotar filtros; nunca trunca registros.
+CONTABILIDAD_PDF_MAX_REGISTROS = config(
+    'CONTABILIDAD_PDF_MAX_REGISTROS', default=2000, cast=int,
+)
+
 # Token exclusivo para la API interna read-only de Jaime. Vacío deshabilita
 # todo acceso a /api/jaime/.
 JAIME_API_TOKEN = config('JAIME_API_TOKEN', default='')

@@ -5,6 +5,7 @@ from .models import (
     DocumentoFactura, TarifaCliente, MetodoPago, Pago, AplicacionPago,
     CategoriaProducto, WebPushSubscription, WebPushPreference,
     WebPushScheduledEvent,
+    CategoriaGasto, Gasto,
 )
 
 admin.site.site_header = "Transformadora de Empaques"
@@ -134,6 +135,28 @@ class MetodoPagoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'tipo', 'activo', 'orden')
     list_filter = ('tipo', 'activo')
     search_fields = ('nombre',)
+
+
+@admin.register(CategoriaGasto)
+class CategoriaGastoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'orden', 'activa')
+    list_filter = ('activa',)
+    search_fields = ('nombre', 'descripcion')
+    list_editable = ('orden', 'activa')
+
+
+@admin.register(Gasto)
+class GastoAdmin(admin.ModelAdmin):
+    list_display = ('fecha', 'descripcion', 'categoria', 'monto', 'proveedor', 'metodo_pago', 'registrado_por')
+    list_filter = ('fecha', 'categoria', 'metodo_pago')
+    search_fields = ('descripcion', 'proveedor', 'referencia', 'notas')
+    readonly_fields = ('registrado_por', 'created_at', 'updated_at')
+    date_hierarchy = 'fecha'
+
+    def save_model(self, request, obj, form, change):
+        if not obj.registrado_por_id:
+            obj.registrado_por = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(CategoriaProducto)

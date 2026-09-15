@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1><i class="bi bi-cash-stack me-2"></i>{{ titulo }}</h1></div>
+<div class="card"><div class="card-body">
+  <form method="post" enctype="multipart/form-data" novalidate>{% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="row g-3">
+      {% for field in form %}
+      <div class="{% if field.name == 'notas' or field.name == 'comprobante' %}col-12{% else %}col-12 col-md-6{% endif %}">
+        <label class="form-label fw-semibold" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+        {{ field }}
+        {% if field.name == 'comprobante' %}<div class="form-text">PDF, JPG, PNG o WEBP. Máximo 10 MB.</div>{% endif %}
+        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <hr class="my-4"><div class="d-flex gap-2"><button class="btn btn-primary btn-lg" type="submit"><i class="bi bi-check-lg me-1"></i>Guardar</button><a href="{% if gasto %}{% url 'gasto_detalle' gasto.pk %}{% else %}{% url 'contabilidad_panel' %}{% endif %}" class="btn btn-outline-secondary btn-lg">Cancelar</a></div>
+  </form>
+</div></div>
+{% endblock %}

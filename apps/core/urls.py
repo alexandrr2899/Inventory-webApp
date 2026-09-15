@@ -76,6 +76,21 @@ urlpatterns = [
     path('reportes/pigmentos/', views.reporte_consumo_pigmentos, name='reporte_consumo_pigmentos'),
     path('reportes/produccion-avanzado/', views.reporte_produccion_avanzado, name='reporte_produccion_avanzado'),
 
+    # Contabilidad
+    path('contabilidad/', views.contabilidad_panel, name='contabilidad_panel'),
+    path('contabilidad/gastos/nuevo/', views.gasto_crear, name='gasto_crear'),
+    path('contabilidad/gastos/<int:pk>/', views.gasto_detalle, name='gasto_detalle'),
+    path('contabilidad/gastos/<int:pk>/editar/', views.gasto_editar, name='gasto_editar'),
+    path('contabilidad/gastos/<int:pk>/eliminar/', views.gasto_eliminar, name='gasto_eliminar'),
+    path('contabilidad/gastos/<int:pk>/comprobante/', views.gasto_comprobante, name='gasto_comprobante'),
+    path('contabilidad/categorias/', views.categoria_gasto_lista, name='categoria_gasto_lista'),
+    path('contabilidad/categorias/nueva/', views.categoria_gasto_crear, name='categoria_gasto_crear'),
+    path('contabilidad/categorias/<int:pk>/editar/', views.categoria_gasto_editar, name='categoria_gasto_editar'),
+    path('contabilidad/categorias/<int:pk>/toggle/', views.categoria_gasto_toggle, name='categoria_gasto_toggle'),
+    path('contabilidad/categorias/<int:pk>/eliminar/', views.categoria_gasto_eliminar, name='categoria_gasto_eliminar'),
+    path('contabilidad/exportar/csv/', views.contabilidad_exportar_csv, name='contabilidad_exportar_csv'),
+    path('contabilidad/exportar/pdf/', views.contabilidad_exportar_pdf, name='contabilidad_exportar_pdf'),
+
     # Producción
     path('produccion/nueva/', views.produccion_nueva, name='produccion_nueva'),
 

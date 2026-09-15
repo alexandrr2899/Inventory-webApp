@@ -1,10 +1,11 @@
 import logging
 
 from django.contrib.auth.signals import user_login_failed
-from django.db.models.signals import post_delete, post_save
+from django.db import transaction
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
-from .models import AplicacionPago
+from .models import AplicacionPago, Gasto
 from .net import get_client_ip
 from .services.facturas import status_service
 
@@ -19,6 +20,36 @@ def _aplicacion_borrada(sender, instance, **kwargs):
     from .models import DocumentoFactura
     if DocumentoFactura.objects.filter(pk=instance.documento_id).exists():
         status_service.actualizar_estado_pago(instance.documento)
+
+
+def _borrar_archivo_al_confirmar(storage, name):
+    if name:
+        transaction.on_commit(lambda: storage.delete(name))
+
+
+@receiver(pre_save, sender=Gasto)
+def _limpiar_comprobante_reemplazado(sender, instance, **kwargs):
+    if not instance.pk:
+        return
+    anterior = sender.objects.filter(pk=instance.pk).only('comprobante').first()
+    if anterior and anterior.comprobante and anterior.comprobante.name != instance.comprobante.name:
+        instance._comprobante_anterior = (
+            anterior.comprobante.storage, anterior.comprobante.name,
+        )
+
+
+@receiver(post_save, sender=Gasto)
+def _confirmar_limpieza_comprobante_reemplazado(sender, instance, **kwargs):
+    anterior = getattr(instance, '_comprobante_anterior', None)
+    if anterior:
+        _borrar_archivo_al_confirmar(*anterior)
+        del instance._comprobante_anterior
+
+
+@receiver(post_delete, sender=Gasto)
+def _limpiar_comprobante_eliminado(sender, instance, **kwargs):
+    if instance.comprobante:
+        _borrar_archivo_al_confirmar(instance.comprobante.storage, instance.comprobante.name)
 
 security_log = logging.getLogger('security')
 

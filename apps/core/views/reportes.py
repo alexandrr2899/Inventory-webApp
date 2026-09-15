@@ -7,6 +7,7 @@ from .calc import *      # noqa: F401,F403
 from .payloads import *  # noqa: F401,F403
 
 from ..services import pigmentos as pigmentos_service
+from ..services import contabilidad as contabilidad_service
 
 
 # ─── REPORTES ─────────────────────────────────────────────────────────────────
@@ -28,18 +29,30 @@ def _parametros_periodo(tipo, inicio):
     return f'periodo=anio&anio={inicio.year}'
 
 
-def _comparar_periodos(actual, anterior):
-    """Construye la variación de un KPI sin dividir entre cero."""
+def _comparar_periodos(actual, anterior, *, menor_es_mejor=False):
+    """Construye la variación, incluso con signo o métricas de costo."""
     actual = actual or Decimal('0')
     anterior = anterior or Decimal('0')
     diferencia = actual - anterior
 
     if anterior == 0:
         variacion = None
-        tendencia = 'nuevo' if actual > 0 else 'igual'
+        if actual > 0:
+            tendencia = 'nuevo'
+        elif actual < 0:
+            tendencia = 'baja_sin_base'
+        else:
+            tendencia = 'igual'
     else:
-        variacion = (diferencia / anterior * Decimal('100')).quantize(Decimal('0.1'))
+        variacion = (
+            diferencia / abs(anterior) * Decimal('100')
+        ).quantize(Decimal('0.1'))
         tendencia = 'sube' if diferencia > 0 else 'baja' if diferencia < 0 else 'igual'
+        if menor_es_mejor:
+            tendencia = {
+                'sube': 'sube_mal',
+                'baja': 'baja_bien',
+            }.get(tendencia, tendencia)
 
     return {
         'actual': actual,
@@ -52,26 +65,7 @@ def _comparar_periodos(actual, anterior):
 
 def _totales_facturacion(fecha_inicio, fecha_fin):
     """Totales y cantidad de documentos activos por tipo."""
-    from ..models import DocumentoFactura
-
-    totales = {
-        'factura': {'total': Decimal('0'), 'documentos': 0},
-        'envio': {'total': Decimal('0'), 'documentos': 0},
-    }
-    filas = (
-        DocumentoFactura.objects
-        .filter(fecha_documento__range=[fecha_inicio, fecha_fin])
-        .exclude(estado_pago='anulada')
-        .values('tipo_documento')
-        .annotate(total=Sum('monto_total'), documentos=Count('id'))
-    )
-    for fila in filas:
-        if fila['tipo_documento'] in totales:
-            totales[fila['tipo_documento']] = {
-                'total': fila['total'] or Decimal('0'),
-                'documentos': fila['documentos'],
-            }
-    return totales
+    return contabilidad_service.ingresos_por_tipo(fecha_inicio, fecha_fin)
 
 
 def _facturacion_por_categoria(fecha_inicio, fecha_fin):
@@ -291,6 +285,26 @@ def reporte_rendimiento_mensual(request):
             })
             facturacion_por_categoria.append(metrica)
 
+    puede_ver_contabilidad = request.user.has_perm(_perm('ver_contabilidad'))
+    finanzas = None
+    if puede_ver_contabilidad:
+        resumen_actual = contabilidad_service.resumen_financiero(inicio_actual, fin_actual)
+        resumen_anterior = contabilidad_service.resumen_financiero(inicio_anterior, fin_anterior)
+        finanzas = {
+            'ingreso_total': _comparar_periodos(
+                resumen_actual['ingreso_total'], resumen_anterior['ingreso_total'],
+            ),
+            'gastos': _comparar_periodos(
+                resumen_actual['gastos_totales'], resumen_anterior['gastos_totales'],
+                menor_es_mejor=True,
+            ),
+            'utilidad': _comparar_periodos(
+                resumen_actual['utilidad'], resumen_anterior['utilidad'],
+            ),
+            'margen_actual': resumen_actual['margen'],
+            'margen_anterior': resumen_anterior['margen'],
+        }
+
     return render(request, 'reportes/rendimiento_mensual.html', {
         'tipo_periodo': tipo_periodo,
         'periodo_actual_titulo': _titulo_periodo(inicio_actual),
@@ -314,6 +328,8 @@ def reporte_rendimiento_mensual(request):
         'facturacion': facturacion,
         'facturacion_por_categoria': facturacion_por_categoria,
         'puede_ver_facturacion': puede_ver_facturacion,
+        'puede_ver_contabilidad': puede_ver_contabilidad,
+        'finanzas': finanzas,
     })
 
 
