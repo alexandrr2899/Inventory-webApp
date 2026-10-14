@@ -321,6 +321,8 @@ def _recalcular_diferencias_conteo(conteo):
     detalles = list(conteo.detalles.select_related('item', 'ubicacion'))
     stocks = _stocks_en_momento_batch(detalles, conteo.fecha_hora_conteo)
     for detalle in detalles:
+        if detalle.ajuste_aplicado:
+            continue
         stock_teorico = stocks[(detalle.item_id, detalle.ubicacion_id)]
         diferencia_final = detalle.cantidad_contada - stock_teorico
         if detalle.diferencia_final != diferencia_final:
@@ -357,7 +359,13 @@ def _plan_conciliacion(conteo, *, persistir=False):
         # Stock teórico al momento del conteo usando fecha_movimiento como
         # timestamp oficial. No depende de cuándo se registró el movimiento.
         stock_teorico = stocks[clave]
-        diferencia_final = detalle.cantidad_contada - stock_teorico
+        if detalle.ajuste_aplicado and detalle.diferencia_final is not None:
+            # El ajuste ya forma parte del stock actual. Conservar la base
+            # anterior al ajuste para mostrar el cálculo que se aplicó.
+            diferencia_final = detalle.diferencia_final
+            stock_teorico = detalle.cantidad_contada - diferencia_final
+        else:
+            diferencia_final = detalle.cantidad_contada - stock_teorico
 
         if persistir and detalle.diferencia_final != diferencia_final:
             detalle.diferencia_final = diferencia_final
@@ -379,6 +387,69 @@ def _plan_conciliacion(conteo, *, persistir=False):
             'movs_tardios': movs_tardios,   # solo informativos
         })
     return plan
+
+
+def _autoconciliar_salidas_negativas(conteo, usuario):
+    """Aplica el faltante de producción implícito en un conteo tras una salida pendiente.
+
+    Solo se hace para salidas que ya ocurrieron al momento del conteo y cuyo
+    stock teórico quedó negativo. Las demás diferencias siguen el flujo manual.
+    Debe ejecutarse dentro de transaction.atomic().
+    """
+    detalles = list(conteo.detalles.select_related('item', 'ubicacion'))
+    list(Stock.objects.select_for_update().filter(
+        item_id__in=[d.item_id for d in detalles],
+        ubicacion_id__in=[d.ubicacion_id for d in detalles],
+    ))
+    stocks = _stocks_en_momento_batch(detalles, conteo.fecha_hora_conteo)
+    umbral = conteo.fecha_hora_conteo.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    pendientes = set(
+        DetalleMovimiento.objects.filter(
+            pendiente_conciliacion=True,
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__lt=umbral,
+            item_id__in=[d.item_id for d in detalles],
+            ubicacion_origen_id__in=[d.ubicacion_id for d in detalles],
+        ).values_list('item_id', 'ubicacion_origen_id')
+    )
+    candidatos = [
+        (d, d.cantidad_contada - stocks[(d.item_id, d.ubicacion_id)])
+        for d in detalles
+        if (d.item_id, d.ubicacion_id) in pendientes
+        and stocks[(d.item_id, d.ubicacion_id)] < 0
+    ]
+    if not candidatos:
+        return 0
+
+    _recalcular_diferencias_conteo(conteo)
+    for detalle, diferencia in candidatos:
+        movimiento = MovimientoInventario.objects.create(
+            tipo_movimiento='ajuste',
+            fecha_movimiento=conteo.fecha_hora_conteo,
+            motivo=f'Ajuste por conciliación automática — Conteo #{conteo.pk} ({conteo.get_turno_display()} {conteo.fecha})',
+            usuario=usuario,
+        )
+        ajuste = DetalleMovimiento.objects.create(
+            movimiento=movimiento,
+            item=detalle.item,
+            cantidad=diferencia,
+            ubicacion_destino=detalle.ubicacion,
+        )
+        _aplicar_efecto_detalle(ajuste)
+        DetalleMovimiento.objects.filter(
+            item=detalle.item,
+            ubicacion_origen=detalle.ubicacion,
+            pendiente_conciliacion=True,
+            movimiento__anulado=False,
+            movimiento__eliminado=False,
+            movimiento__fecha_movimiento__lt=umbral,
+        ).update(pendiente_conciliacion=False, fecha_conciliacion=timezone.now())
+        ConteoDetalle.objects.filter(pk=detalle.pk).update(ajuste_aplicado=True)
+
+    conteo.actualizar_estado()
+    _notificar_si_conciliacion_completa(conteo, 'pendiente', usuario.get_full_name() or usuario.username)
+    return len(candidatos)
 
 
 @login_required
@@ -556,6 +627,7 @@ def conteo_nuevo(request):
                         cantidad_contada=cantidad_contada,
                         cantidad_sistema_al_conteo=cantidad_sistema,
                     )
+                ajustes_automaticos = _autoconciliar_salidas_negativas(conteo, request.user)
         except IntegrityError:
             # Carrera contra el UniqueConstraint conteo_activo_unico: otro
             # usuario registró el mismo (fecha, turno, tipo) en paralelo.
@@ -575,12 +647,15 @@ def conteo_nuevo(request):
             'items_contados': len(filas),
             'usuario': request.user.get_full_name() or request.user.username,
         })
-        messages.success(
-            request,
-            f'Conteo {label_tipo} - {conteo.get_turno_display()} registrado con {len(filas)} ítem(s). '
-            f'Revisá la conciliación para calcular diferencias.'
-        )
-        return redirect('conteo_conciliar', pk=conteo.pk)
+        mensaje = f'Conteo {label_tipo} - {conteo.get_turno_display()} registrado con {len(filas)} ítem(s). '
+        if ajustes_automaticos:
+            mensaje += f'{ajustes_automaticos} salida(s) con stock negativo conciliada(s) automáticamente. '
+        if conteo.estado != 'conciliado':
+            mensaje += 'Revisá las demás diferencias en la conciliación.'
+        messages.success(request, mensaje)
+        if request.user.has_perm(_perm('aplicar_conciliacion')):
+            return redirect('conteo_conciliar', pk=conteo.pk)
+        return redirect('conteo_detalle', pk=conteo.pk)
 
     form = ConteoForm(initial={
         'fecha': hoy,

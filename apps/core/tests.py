@@ -3,11 +3,13 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+import importlib
 import tempfile
 
+from django.apps import apps as django_apps
 from django.contrib.auth.models import Group, Permission, User
 from django.core.cache import cache
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -924,6 +926,109 @@ class SalidaPendienteConciliacionTests(TestCase):
         diferencia = Decimal('21') - stock_teorico  # 21 - (-4) = 25
         self.assertEqual(stock_teorico, Decimal('-4'))
         self.assertEqual(diferencia, Decimal('25'))
+
+    def test_conteo_autoconcilia_salida_negativa_y_produccion_es_26(self):
+        self.user.user_permissions.add(
+            Permission.objects.get(codename='registrar_conteo'),
+            Permission.objects.get(codename='aplicar_conciliacion'),
+        )
+        self.client.force_login(self.user)
+        inicio = timezone.localtime(timezone.now()).replace(hour=8, minute=0, second=0, microsecond=0)
+        cierre = inicio + timedelta(hours=2)
+        Stock.objects.filter(item=self.item, ubicacion=self.ubicacion).update(cantidad_actual=0)
+        ConteoDetalle.objects.create(
+            conteo=Conteo.objects.create(
+                fecha=inicio.date(), turno='manana', tipo_conteo='camiseta',
+                usuario=self.user, fecha_hora_conteo=inicio,
+            ),
+            item=self.item, ubicacion=self.ubicacion,
+            cantidad_contada=0, cantidad_sistema_al_conteo=0,
+        )
+        _, salida = self._crear_salida(6, pendiente=True, fecha=inicio + timedelta(hours=1))
+        self.assertEqual(Stock.objects.get(item=self.item, ubicacion=self.ubicacion).cantidad_actual, -6)
+
+        response = self.client.post(reverse('conteo_nuevo'), {
+            'fecha': cierre.date().isoformat(),
+            'turno': 'tarde',
+            'tipo_conteo': 'camiseta',
+            'fecha_hora_conteo': cierre.strftime('%Y-%m-%dT%H:%M'),
+            'item[]': [str(self.item.pk)],
+            'ubicacion[]': [str(self.ubicacion.pk)],
+            'cantidad_contada[]': ['20'],
+        })
+
+        self.assertEqual(response.status_code, 302)
+        conteo = Conteo.objects.get(turno='tarde')
+        detalle = conteo.detalles.get()
+        salida.refresh_from_db()
+        self.assertEqual(detalle.diferencia_final, 26)
+        self.assertTrue(detalle.ajuste_aplicado)
+        self.assertEqual(conteo.estado, 'conciliado')
+        self.assertFalse(salida.pendiente_conciliacion)
+        self.assertEqual(Stock.objects.get(item=self.item, ubicacion=self.ubicacion).cantidad_actual, 20)
+        self.assertEqual(_calcular_produccion(inicio.date())['produccion_dia'], 26)
+        plan = self.client.get(reverse('conteo_conciliar', args=[conteo.pk])).context['plan']
+        self.assertEqual(plan[0]['stock_teorico'], -6)
+        self.assertEqual(plan[0]['diferencia_final'], 26)
+        self.assertEqual(
+            MovimientoInventario.objects.filter(tipo_movimiento='ajuste', motivo__contains=f'Conteo #{conteo.pk}').count(),
+            1,
+        )
+
+    def test_migracion_concilia_conteo_existente_una_sola_vez(self):
+        inicio = timezone.localtime(timezone.now()).replace(hour=8, minute=0, second=0, microsecond=0)
+        Stock.objects.filter(item=self.item, ubicacion=self.ubicacion).update(cantidad_actual=0)
+        _, salida = self._crear_salida(6, pendiente=True, fecha=inicio + timedelta(hours=1))
+        conteo = Conteo.objects.create(
+            fecha=inicio.date(), turno='tarde', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=inicio + timedelta(hours=2),
+        )
+        detalle = ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ubicacion,
+            cantidad_contada=20, cantidad_sistema_al_conteo=-6,
+        )
+        migracion = importlib.import_module('apps.core.migrations.0043_autoconciliar_conteos_existentes')
+        editor = SimpleNamespace(connection=connection)
+
+        migracion.conciliar_existentes(django_apps, editor)
+        migracion.conciliar_existentes(django_apps, editor)
+
+        detalle.refresh_from_db()
+        conteo.refresh_from_db()
+        salida.refresh_from_db()
+        self.assertEqual(detalle.diferencia_final, 26)
+        self.assertTrue(detalle.ajuste_aplicado)
+        self.assertEqual(conteo.estado, 'conciliado')
+        self.assertFalse(salida.pendiente_conciliacion)
+        self.assertEqual(Stock.objects.get(item=self.item, ubicacion=self.ubicacion).cantidad_actual, 20)
+        self.assertEqual(MovimientoInventario.objects.filter(tipo_movimiento='ajuste').count(), 1)
+
+    def test_migracion_no_duplica_ajuste_posterior(self):
+        inicio = timezone.localtime(timezone.now()).replace(hour=8, minute=0, second=0, microsecond=0)
+        Stock.objects.filter(item=self.item, ubicacion=self.ubicacion).update(cantidad_actual=0)
+        self._crear_salida(6, pendiente=True, fecha=inicio + timedelta(hours=1))
+        conteo = Conteo.objects.create(
+            fecha=inicio.date(), turno='tarde', tipo_conteo='camiseta',
+            usuario=self.user, fecha_hora_conteo=inicio + timedelta(hours=2),
+        )
+        ConteoDetalle.objects.create(
+            conteo=conteo, item=self.item, ubicacion=self.ubicacion,
+            cantidad_contada=20, cantidad_sistema_al_conteo=-6,
+        )
+        ajuste = MovimientoInventario.objects.create(
+            tipo_movimiento='ajuste', usuario=self.user,
+            fecha_movimiento=inicio + timedelta(hours=3),
+        )
+        _aplicar_efecto_detalle(DetalleMovimiento.objects.create(
+            movimiento=ajuste, item=self.item, cantidad=26,
+            ubicacion_destino=self.ubicacion,
+        ))
+        migracion = importlib.import_module('apps.core.migrations.0043_autoconciliar_conteos_existentes')
+
+        migracion.conciliar_existentes(django_apps, SimpleNamespace(connection=connection))
+
+        self.assertEqual(Stock.objects.get(item=self.item, ubicacion=self.ubicacion).cantidad_actual, 20)
+        self.assertEqual(MovimientoInventario.objects.filter(tipo_movimiento='ajuste').count(), 1)
 
     def test_get_conciliar_no_persiste_diferencia_final(self):
         ahora = timezone.now()
