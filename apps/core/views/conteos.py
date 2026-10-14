@@ -389,40 +389,28 @@ def _plan_conciliacion(conteo, *, persistir=False):
     return plan
 
 
-def _autoconciliar_salidas_negativas(conteo, usuario):
-    """Aplica el faltante de producción implícito en un conteo tras una salida pendiente.
+def _autoconciliar_productos(conteo, usuario):
+    """Ajusta al conteo físico todas las diferencias de producto terminado.
 
-    Solo se hace para salidas que ya ocurrieron al momento del conteo y cuyo
-    stock teórico quedó negativo. Las demás diferencias siguen el flujo manual.
-    Debe ejecutarse dentro de transaction.atomic().
+    Los demás tipos de ítem conservan la revisión manual. Debe ejecutarse
+    dentro de transaction.atomic().
     """
     detalles = list(conteo.detalles.select_related('item', 'ubicacion'))
+    productos = [d for d in detalles if d.item.tipo == 'producto']
+    if not productos:
+        return 0
     list(Stock.objects.select_for_update().filter(
         item_id__in=[d.item_id for d in detalles],
         ubicacion_id__in=[d.ubicacion_id for d in detalles],
     ))
     stocks = _stocks_en_momento_batch(detalles, conteo.fecha_hora_conteo)
     umbral = conteo.fecha_hora_conteo.replace(second=0, microsecond=0) + timedelta(minutes=1)
-    pendientes = set(
-        DetalleMovimiento.objects.filter(
-            pendiente_conciliacion=True,
-            movimiento__anulado=False,
-            movimiento__eliminado=False,
-            movimiento__fecha_movimiento__lt=umbral,
-            item_id__in=[d.item_id for d in detalles],
-            ubicacion_origen_id__in=[d.ubicacion_id for d in detalles],
-        ).values_list('item_id', 'ubicacion_origen_id')
-    )
+    _recalcular_diferencias_conteo(conteo)
     candidatos = [
         (d, d.cantidad_contada - stocks[(d.item_id, d.ubicacion_id)])
-        for d in detalles
-        if (d.item_id, d.ubicacion_id) in pendientes
-        and stocks[(d.item_id, d.ubicacion_id)] < 0
+        for d in productos
+        if d.cantidad_contada != stocks[(d.item_id, d.ubicacion_id)]
     ]
-    if not candidatos:
-        return 0
-
-    _recalcular_diferencias_conteo(conteo)
     for detalle, diferencia in candidatos:
         movimiento = MovimientoInventario.objects.create(
             tipo_movimiento='ajuste',
@@ -437,6 +425,9 @@ def _autoconciliar_salidas_negativas(conteo, usuario):
             ubicacion_destino=detalle.ubicacion,
         )
         _aplicar_efecto_detalle(ajuste)
+        ConteoDetalle.objects.filter(pk=detalle.pk).update(ajuste_aplicado=True)
+
+    for detalle in productos:
         DetalleMovimiento.objects.filter(
             item=detalle.item,
             ubicacion_origen=detalle.ubicacion,
@@ -445,7 +436,6 @@ def _autoconciliar_salidas_negativas(conteo, usuario):
             movimiento__eliminado=False,
             movimiento__fecha_movimiento__lt=umbral,
         ).update(pendiente_conciliacion=False, fecha_conciliacion=timezone.now())
-        ConteoDetalle.objects.filter(pk=detalle.pk).update(ajuste_aplicado=True)
 
     conteo.actualizar_estado()
     _notificar_si_conciliacion_completa(conteo, 'pendiente', usuario.get_full_name() or usuario.username)
@@ -627,7 +617,7 @@ def conteo_nuevo(request):
                         cantidad_contada=cantidad_contada,
                         cantidad_sistema_al_conteo=cantidad_sistema,
                     )
-                ajustes_automaticos = _autoconciliar_salidas_negativas(conteo, request.user)
+                ajustes_automaticos = _autoconciliar_productos(conteo, request.user)
         except IntegrityError:
             # Carrera contra el UniqueConstraint conteo_activo_unico: otro
             # usuario registró el mismo (fecha, turno, tipo) en paralelo.
@@ -649,7 +639,7 @@ def conteo_nuevo(request):
         })
         mensaje = f'Conteo {label_tipo} - {conteo.get_turno_display()} registrado con {len(filas)} ítem(s). '
         if ajustes_automaticos:
-            mensaje += f'{ajustes_automaticos} salida(s) con stock negativo conciliada(s) automáticamente. '
+            mensaje += f'{ajustes_automaticos} diferencia(s) de producto conciliada(s) automáticamente. '
         if conteo.estado != 'conciliado':
             mensaje += 'Revisá las demás diferencias en la conciliación.'
         messages.success(request, mensaje)
